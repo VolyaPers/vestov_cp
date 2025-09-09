@@ -1,0 +1,1037 @@
+import { Router } from 'express';
+import { Pool } from 'pg';
+import { eq, desc, and, sql, isNull, gt, asc } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { serviceTypes, clientServices, clients, users, developers, clientServiceDevelopers, developerPriceHistory } from '../db/schema.js';
+import { requireAuth } from '../middleware/auth.js';
+const router = Router();
+// Initialize database connection
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
+});
+const db = drizzle(pool);
+// Get all service types
+router.get('/service-types', requireAuth, async (req, res) => {
+    try {
+        console.log('Fetching service types for user:', req.user?.username);
+        const services = await db
+            .select()
+            .from(serviceTypes)
+            .orderBy(desc(serviceTypes.createdAt));
+        console.log('Found', services.length, 'service types');
+        res.json(services);
+    }
+    catch (error) {
+        console.error('Error fetching service types:', error);
+        res.status(500).json({ error: 'Failed to fetch service types' });
+    }
+});
+// Create new service type
+router.post('/service-types', requireAuth, async (req, res) => {
+    try {
+        const { name, description, category, billingModel } = req.body;
+        if (!name || !category || !billingModel) {
+            return res.status(400).json({ error: 'Name, category, and billing model are required' });
+        }
+        const [newService] = await db
+            .insert(serviceTypes)
+            .values({
+            name,
+            description,
+            category,
+            billingModel,
+        })
+            .returning();
+        res.status(201).json(newService);
+    }
+    catch (error) {
+        console.error('Error creating service type:', error);
+        res.status(500).json({ error: 'Failed to create service type' });
+    }
+});
+// Update service type
+router.put('/service-types/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, category, billingModel } = req.body;
+        const [updatedService] = await db
+            .update(serviceTypes)
+            .set({
+            name,
+            description,
+            category,
+            billingModel,
+            updatedAt: new Date(),
+        })
+            .where(eq(serviceTypes.id, parseInt(id)))
+            .returning();
+        if (!updatedService) {
+            return res.status(404).json({ error: 'Service type not found' });
+        }
+        res.json(updatedService);
+    }
+    catch (error) {
+        console.error('Error updating service type:', error);
+        res.status(500).json({ error: 'Failed to update service type' });
+    }
+});
+// Delete service type
+router.delete('/service-types/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Attempting to delete service type:', id);
+        // Check if service type is in active use (only check active assignments)
+        const usage = await db
+            .select({ count: sql `count(*)` })
+            .from(clientServices)
+            .where(and(eq(clientServices.serviceTypeId, parseInt(id)), eq(clientServices.isActive, true)));
+        console.log('Active service usage count:', usage[0]?.count);
+        if (usage[0]?.count > 0) {
+            console.log('Service is actively in use, cannot delete');
+            return res.status(400).json({ error: 'Cannot delete service type that is in use' });
+        }
+        const [deletedService] = await db
+            .delete(serviceTypes)
+            .where(eq(serviceTypes.id, parseInt(id)))
+            .returning();
+        if (!deletedService) {
+            console.log('Service type not found:', id);
+            return res.status(404).json({ error: 'Service type not found' });
+        }
+        console.log('Service type deleted successfully:', deletedService.name);
+        res.json({ message: 'Service type deleted successfully' });
+    }
+    catch (error) {
+        console.error('Error deleting service type:', error);
+        res.status(500).json({ error: 'Failed to delete service type' });
+    }
+});
+// Get client services with details
+router.get('/client-services', requireAuth, async (req, res) => {
+    try {
+        const services = await db
+            .select({
+            id: clientServices.id,
+            clientId: clientServices.clientId,
+            clientName: clients.name,
+            serviceTypeId: clientServices.serviceTypeId,
+            serviceTypeName: serviceTypes.name,
+            serviceCategory: serviceTypes.category,
+            billingModel: serviceTypes.billingModel,
+            rate: clientServices.rate,
+            startDate: clientServices.startDate,
+            endDate: clientServices.endDate,
+            isActive: clientServices.isActive,
+            createdAt: clientServices.createdAt,
+        })
+            .from(clientServices)
+            .leftJoin(clients, eq(clientServices.clientId, clients.id))
+            .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
+            .orderBy(desc(clientServices.createdAt));
+        res.json(services);
+    }
+    catch (error) {
+        console.error('Error fetching client services:', error);
+        res.status(500).json({ error: 'Failed to fetch client services' });
+    }
+});
+// Create new client service assignment
+router.post('/client-services', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceTypeId, rate, startDate, endDate } = req.body;
+        if (!clientId || !serviceTypeId || !startDate) {
+            return res.status(400).json({ error: 'Client ID, service type ID, and start date are required' });
+        }
+        const [newClientService] = await db
+            .insert(clientServices)
+            .values({
+            clientId: parseInt(clientId),
+            serviceTypeId: parseInt(serviceTypeId),
+            rate: rate ? parseFloat(rate) : null,
+            startDate,
+            endDate: endDate || null,
+        })
+            .returning();
+        res.status(201).json(newClientService);
+    }
+    catch (error) {
+        console.error('Error creating client service:', error);
+        res.status(500).json({ error: 'Failed to create client service' });
+    }
+});
+// Update client service
+router.put('/client-services/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { rate, endDate, isActive } = req.body;
+        const [updatedService] = await db
+            .update(clientServices)
+            .set({
+            rate: rate ? parseFloat(rate) : null,
+            endDate: endDate || null,
+            isActive: isActive !== undefined ? isActive : true,
+        })
+            .where(eq(clientServices.id, parseInt(id)))
+            .returning();
+        if (!updatedService) {
+            return res.status(404).json({ error: 'Client service not found' });
+        }
+        res.json(updatedService);
+    }
+    catch (error) {
+        console.error('Error updating client service:', error);
+        res.status(500).json({ error: 'Failed to update client service' });
+    }
+});
+// Get service analytics
+router.get('/analytics', requireAuth, async (req, res) => {
+    try {
+        // Service type distribution
+        const serviceDistribution = await db
+            .select({
+            category: serviceTypes.category,
+            count: sql `count(${clientServices.id})`,
+            totalRevenue: sql `sum(${clientServices.rate})`,
+        })
+            .from(serviceTypes)
+            .leftJoin(clientServices, and(eq(serviceTypes.id, clientServices.serviceTypeId), eq(clientServices.isActive, true)))
+            .groupBy(serviceTypes.category);
+        // Active services count
+        const activeServicesCount = await db
+            .select({ count: sql `count(*)` })
+            .from(clientServices)
+            .where(eq(clientServices.isActive, true));
+        // Top services by revenue
+        const topServices = await db
+            .select({
+            serviceTypeName: serviceTypes.name,
+            category: serviceTypes.category,
+            activeAssignments: sql `count(${clientServices.id})`,
+            totalRevenue: sql `sum(${clientServices.rate})`,
+        })
+            .from(serviceTypes)
+            .leftJoin(clientServices, and(eq(serviceTypes.id, clientServices.serviceTypeId), eq(clientServices.isActive, true)))
+            .groupBy(serviceTypes.id, serviceTypes.name, serviceTypes.category)
+            .orderBy(sql `sum(${clientServices.rate}) desc nulls last`)
+            .limit(5);
+        res.json({
+            serviceDistribution,
+            activeServicesCount: activeServicesCount[0]?.count || 0,
+            topServices,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching service analytics:', error);
+        res.status(500).json({ error: 'Failed to fetch service analytics' });
+    }
+});
+// Client Management Routes
+// Client analytics (must come before /clients/:id route)
+router.get('/clients/analytics', requireAuth, async (req, res) => {
+    try {
+        // Total clients count
+        const totalClients = await db
+            .select({ count: sql `count(*)` })
+            .from(clients);
+        // Active clients (those with active services)
+        const activeClients = await db
+            .select({ count: sql `count(distinct ${clients.id})` })
+            .from(clients)
+            .innerJoin(clientServices, eq(clients.id, clientServices.clientId))
+            .where(eq(clientServices.isActive, true));
+        // Total revenue from all active services
+        const totalRevenue = await db
+            .select({ total: sql `sum(${clientServices.rate})` })
+            .from(clientServices)
+            .where(eq(clientServices.isActive, true));
+        // Top clients by revenue
+        const topClients = await db
+            .select({
+            clientId: clients.id,
+            clientName: clients.name,
+            activeServices: sql `count(${clientServices.id})`,
+            totalRevenue: sql `sum(${clientServices.rate})`,
+        })
+            .from(clients)
+            .leftJoin(clientServices, and(eq(clients.id, clientServices.clientId), eq(clientServices.isActive, true)))
+            .groupBy(clients.id, clients.name)
+            .orderBy(sql `sum(${clientServices.rate}) desc nulls last`)
+            .limit(5);
+        res.json({
+            totalClients: totalClients[0]?.count || 0,
+            activeClients: activeClients[0]?.count || 0,
+            totalRevenue: totalRevenue[0]?.total || 0,
+            topClients,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching client analytics:', error);
+        res.status(500).json({ error: 'Failed to fetch client analytics' });
+    }
+});
+// Get all clients with their service assignments
+router.get('/clients', requireAuth, async (req, res) => {
+    try {
+        console.log('Fetching clients for user:', req.user?.username);
+        // Get clients with their basic info
+        const clientsWithServices = await db
+            .select({
+            id: clients.id,
+            name: clients.name,
+            industry: clients.industry,
+            contactEmail: clients.email,
+            contactPhone: clients.phone,
+            address: clients.address,
+            contractType: clients.contractType,
+            contractStartDate: clients.contractStart,
+            contractEndDate: clients.contractEnd,
+            billingCycle: clients.billingCycle,
+            status: clients.status,
+            teamSize: clients.teamSize,
+            createdAt: clients.createdAt,
+        })
+            .from(clients)
+            .orderBy(desc(clients.createdAt));
+        // Get service assignments for each client
+        const clientsWithServiceData = await Promise.all(clientsWithServices.map(async (client) => {
+            const services = await db
+                .select({
+                id: clientServices.id,
+                serviceTypeId: clientServices.serviceTypeId,
+                serviceTypeName: serviceTypes.name,
+                serviceCategory: serviceTypes.category,
+                billingModel: serviceTypes.billingModel,
+                rate: clientServices.rate,
+                serviceLevelPrice: clientServices.serviceLevelPrice,
+                startDate: clientServices.startDate,
+                endDate: clientServices.endDate,
+                isActive: clientServices.isActive,
+            })
+                .from(clientServices)
+                .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
+                .where(eq(clientServices.clientId, client.id));
+            return {
+                ...client,
+                services,
+                activeServicesCount: services.filter(s => s.isActive).length,
+                totalMonthlyRevenue: services
+                    .filter(s => s.isActive)
+                    .reduce((sum, s) => sum + (parseFloat(s.rate?.toString() || '0') || 0), 0)
+            };
+        }));
+        console.log(`Found ${clientsWithServiceData.length} clients`);
+        res.json(clientsWithServiceData);
+    }
+    catch (error) {
+        console.error('Error fetching clients:', error);
+        res.status(500).json({ error: 'Failed to fetch clients' });
+    }
+});
+// Get specific client with detailed service assignments
+router.get('/clients/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Fetching client details for ID:', id);
+        // Validate that id is a valid number
+        const clientId = parseInt(id);
+        if (isNaN(clientId)) {
+            return res.status(400).json({ error: 'Invalid client ID format' });
+        }
+        const [client] = await db
+            .select()
+            .from(clients)
+            .where(eq(clients.id, clientId));
+        if (!client) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+        // Get all service assignments with details
+        const services = await db
+            .select({
+            id: clientServices.id,
+            serviceTypeId: clientServices.serviceTypeId,
+            serviceTypeName: serviceTypes.name,
+            serviceDescription: serviceTypes.description,
+            serviceCategory: serviceTypes.category,
+            billingModel: serviceTypes.billingModel,
+            rate: clientServices.rate,
+            serviceLevelPrice: clientServices.serviceLevelPrice,
+            startDate: clientServices.startDate,
+            endDate: clientServices.endDate,
+            isActive: clientServices.isActive,
+            createdAt: clientServices.createdAt,
+        })
+            .from(clientServices)
+            .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
+            .where(eq(clientServices.clientId, clientId))
+            .orderBy(desc(clientServices.createdAt));
+        res.json({
+            ...client,
+            services,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching client details:', error);
+        res.status(500).json({ error: 'Failed to fetch client details' });
+    }
+});
+// Remove/deactivate client service assignment
+router.delete('/clients/:clientId/services/:serviceId', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId } = req.params;
+        const { permanent } = req.query;
+        console.log(`${permanent ? 'Permanently deleting' : 'Deactivating'} service ${serviceId} from client ${clientId}`);
+        if (permanent === 'true') {
+            // Permanently delete the service assignment
+            const [deletedService] = await db
+                .delete(clientServices)
+                .where(and(eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))))
+                .returning();
+            if (!deletedService) {
+                return res.status(404).json({ error: 'Service assignment not found' });
+            }
+            console.log('Service assignment permanently deleted');
+            res.json({ message: 'Service assignment permanently removed', service: deletedService });
+        }
+        else {
+            // Just deactivate the service assignment
+            const [updatedService] = await db
+                .update(clientServices)
+                .set({
+                isActive: false,
+                endDate: new Date().toISOString().split('T')[0], // Set end date to today
+            })
+                .where(and(eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))))
+                .returning();
+            if (!updatedService) {
+                return res.status(404).json({ error: 'Service assignment not found' });
+            }
+            console.log('Service assignment deactivated successfully');
+            res.json({ message: 'Service assignment deactivated successfully', service: updatedService });
+        }
+    }
+    catch (error) {
+        console.error('Error removing service assignment:', error);
+        res.status(500).json({ error: 'Failed to remove service assignment' });
+    }
+});
+// Add service to client
+router.post('/clients/:clientId/services', requireAuth, async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const { serviceTypeId, rate, startDate } = req.body;
+        console.log(`Adding service ${serviceTypeId} to client ${clientId}`);
+        if (!serviceTypeId || !startDate) {
+            return res.status(400).json({ error: 'Service type and start date are required' });
+        }
+        const [newAssignment] = await db
+            .insert(clientServices)
+            .values({
+            clientId: parseInt(clientId),
+            serviceTypeId: parseInt(serviceTypeId),
+            rate: rate ? parseFloat(rate) : null,
+            startDate,
+            isActive: true,
+        })
+            .returning();
+        console.log('Service assignment created successfully');
+        res.status(201).json(newAssignment);
+    }
+    catch (error) {
+        console.error('Error adding service to client:', error);
+        res.status(500).json({ error: 'Failed to add service to client' });
+    }
+});
+// Create new client
+router.post('/clients', requireAuth, async (req, res) => {
+    try {
+        const { name, industry, contactPerson, email, phone, address, contractType, contractStart, contractEnd, billingCycle, teamSize } = req.body;
+        console.log('Creating new client:', name);
+        if (!name) {
+            return res.status(400).json({ error: 'Name is required' });
+        }
+        if (contractType && !['outstaffing', 'outsourcing', 'hybrid'].includes(contractType)) {
+            return res.status(400).json({ error: 'Contract type must be outstaffing, outsourcing, or hybrid' });
+        }
+        const [newClient] = await db
+            .insert(clients)
+            .values({
+            name,
+            industry,
+            contactPerson,
+            email,
+            phone,
+            address,
+            contractType,
+            contractStart,
+            contractEnd,
+            billingCycle,
+            teamSize: teamSize ? parseInt(teamSize) : 0,
+            status: 'active'
+        })
+            .returning();
+        console.log('Client created successfully:', newClient.name);
+        res.status(201).json(newClient);
+    }
+    catch (error) {
+        console.error('Error creating client:', error);
+        res.status(500).json({ error: 'Failed to create client' });
+    }
+});
+// Update client
+router.put('/clients/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, industry, contactPerson, email, phone, address, status, contractType, contractStart, contractEnd, billingCycle, teamSize } = req.body;
+        console.log('Updating client:', id);
+        const [updatedClient] = await db
+            .update(clients)
+            .set({
+            name,
+            industry,
+            contactPerson,
+            email,
+            phone,
+            address,
+            status,
+            contractType,
+            contractStart,
+            contractEnd,
+            billingCycle,
+            teamSize: teamSize ? parseInt(teamSize) : null,
+            updatedAt: new Date()
+        })
+            .where(eq(clients.id, parseInt(id)))
+            .returning();
+        if (!updatedClient) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+        console.log('Client updated successfully:', updatedClient.name);
+        res.json(updatedClient);
+    }
+    catch (error) {
+        console.error('Error updating client:', error);
+        res.status(500).json({ error: 'Failed to update client' });
+    }
+});
+// Get all developers
+router.get('/developers', requireAuth, async (req, res) => {
+    try {
+        console.log('Fetching developers for user:', req.user?.username);
+        const devs = await db
+            .select()
+            .from(developers)
+            .orderBy(desc(developers.createdAt));
+        console.log('Found', devs.length, 'developers');
+        res.json(devs);
+    }
+    catch (error) {
+        console.error('Error fetching developers:', error);
+        res.status(500).json({ error: 'Failed to fetch developers' });
+    }
+});
+// Get developers assigned to a specific client service
+router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId } = req.params;
+        console.log(`Fetching developers for client ${clientId}, service ${serviceId}`);
+        const assignedDevelopers = await db
+            .select({
+            id: clientServiceDevelopers.id,
+            developerId: clientServiceDevelopers.developerId,
+            name: developers.name,
+            email: developers.email,
+            skills: developers.skills,
+            hourlyRate: clientServiceDevelopers.hourlyRate,
+            fixedPrice: clientServiceDevelopers.fixedPrice,
+            employmentType: clientServiceDevelopers.employmentType,
+            isActive: clientServiceDevelopers.isActive,
+            startDate: clientServiceDevelopers.startDate,
+            endDate: clientServiceDevelopers.endDate,
+            avatarUrl: developers.avatarUrl,
+        })
+            .from(clientServiceDevelopers)
+            .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
+            .leftJoin(clientServices, eq(clientServiceDevelopers.clientServiceId, clientServices.id))
+            .where(and(eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))));
+        res.json(assignedDevelopers);
+    }
+    catch (error) {
+        console.error('Error fetching service developers:', error);
+        res.status(500).json({ error: 'Failed to fetch service developers' });
+    }
+});
+// Add developer to client service
+router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId } = req.params;
+        const { developerId, employmentType, hourlyRate, fixedPrice, startDate } = req.body;
+        console.log(`Adding developer ${developerId} to client ${clientId}, service ${serviceId}`);
+        if (!developerId || !employmentType || !startDate) {
+            return res.status(400).json({ error: 'Developer, employment type, and start date are required' });
+        }
+        if (!['fulltime', 'part_time'].includes(employmentType)) {
+            return res.status(400).json({ error: 'Employment type must be fulltime or part_time' });
+        }
+        // First verify that the client service exists
+        const clientService = await db
+            .select()
+            .from(clientServices)
+            .where(and(eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))))
+            .limit(1);
+        if (clientService.length === 0) {
+            return res.status(404).json({ error: 'Client service not found' });
+        }
+        const [newAssignment] = await db
+            .insert(clientServiceDevelopers)
+            .values({
+            clientServiceId: parseInt(serviceId),
+            developerId: parseInt(developerId),
+            employmentType,
+            hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
+            fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
+            startDate,
+            isActive: true,
+        })
+            .returning();
+        console.log('Developer assignment created successfully');
+        res.status(201).json(newAssignment);
+    }
+    catch (error) {
+        console.error('Error adding developer to service:', error);
+        res.status(500).json({ error: 'Failed to add developer to service' });
+    }
+});
+// Remove developer from client service
+router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId, assignmentId } = req.params;
+        const { permanent } = req.query;
+        console.log(`${permanent ? 'Permanently removing' : 'Deactivating'} developer assignment ${assignmentId}`);
+        if (permanent === 'true') {
+            const [deletedAssignment] = await db
+                .delete(clientServiceDevelopers)
+                .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+                .returning();
+            if (!deletedAssignment) {
+                return res.status(404).json({ error: 'Developer assignment not found' });
+            }
+            console.log('Developer assignment permanently deleted');
+            res.json({ message: 'Developer assignment permanently removed', assignment: deletedAssignment });
+        }
+        else {
+            const [updatedAssignment] = await db
+                .update(clientServiceDevelopers)
+                .set({
+                isActive: false,
+                endDate: new Date().toISOString().split('T')[0],
+            })
+                .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+                .returning();
+            if (!updatedAssignment) {
+                return res.status(404).json({ error: 'Developer assignment not found' });
+            }
+            console.log('Developer assignment deactivated successfully');
+            res.json({ message: 'Developer assignment deactivated successfully', assignment: updatedAssignment });
+        }
+    }
+    catch (error) {
+        console.error('Error removing developer assignment:', error);
+        res.status(500).json({ error: 'Failed to remove developer assignment' });
+    }
+});
+// Update client service
+router.put('/clients/:clientId/services/:serviceId', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId } = req.params;
+        const { rate, serviceLevelPrice, startDate, endDate, isActive } = req.body;
+        console.log(`Updating client service ${serviceId} for client ${clientId}`);
+        const updateData = {};
+        if (rate !== undefined)
+            updateData.rate = rate ? parseFloat(rate) : null;
+        if (serviceLevelPrice !== undefined)
+            updateData.serviceLevelPrice = serviceLevelPrice ? parseFloat(serviceLevelPrice) : null;
+        if (startDate !== undefined)
+            updateData.startDate = startDate;
+        if (endDate !== undefined)
+            updateData.endDate = endDate;
+        if (isActive !== undefined)
+            updateData.isActive = isActive;
+        const [updatedService] = await db
+            .update(clientServices)
+            .set(updateData)
+            .where(and(eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))))
+            .returning();
+        if (!updatedService) {
+            return res.status(404).json({ error: 'Client service not found' });
+        }
+        console.log('Client service updated successfully');
+        res.json(updatedService);
+    }
+    catch (error) {
+        console.error('Error updating client service:', error);
+        res.status(500).json({ error: 'Failed to update client service' });
+    }
+});
+// Update service-level pricing (legacy endpoint)
+router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId } = req.params;
+        const { serviceLevelPrice } = req.body;
+        console.log(`Updating service-level pricing for client ${clientId}, service ${serviceId}`);
+        const [updatedService] = await db
+            .update(clientServices)
+            .set({
+            serviceLevelPrice: serviceLevelPrice ? parseFloat(serviceLevelPrice) : null,
+        })
+            .where(and(eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))))
+            .returning();
+        if (!updatedService) {
+            return res.status(404).json({ error: 'Client service not found' });
+        }
+        console.log('Service-level pricing updated successfully');
+        res.json(updatedService);
+    }
+    catch (error) {
+        console.error('Error updating service pricing:', error);
+        res.status(500).json({ error: 'Failed to update service pricing' });
+    }
+});
+// Developer CRUD operations
+// Create developer
+router.post('/developers', requireAuth, async (req, res) => {
+    try {
+        const { name, email, skills, hourlyRate, experienceLevel, status, bio, location, avatarUrl } = req.body;
+        console.log('Creating new developer:', name);
+        const [newDeveloper] = await db
+            .insert(developers)
+            .values({
+            name,
+            email,
+            skills: skills || [],
+            hourlyRate: hourlyRate ? parseFloat(hourlyRate.toString()) : null,
+            experienceLevel,
+            status: status || 'available',
+            bio,
+            location,
+            avatarUrl,
+        })
+            .returning();
+        console.log('Developer created successfully:', newDeveloper.name);
+        res.status(201).json(newDeveloper);
+    }
+    catch (error) {
+        console.error('Error creating developer:', error);
+        if (error.code === '23505') { // Unique constraint violation
+            return res.status(400).json({ error: 'A developer with this email already exists' });
+        }
+        res.status(500).json({ error: 'Failed to create developer' });
+    }
+});
+// Update developer
+router.put('/developers/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email, skills, hourlyRate, experienceLevel, status, bio, location, avatarUrl } = req.body;
+        console.log('Updating developer:', id);
+        const [updatedDeveloper] = await db
+            .update(developers)
+            .set({
+            name,
+            email,
+            skills: skills || [],
+            hourlyRate: hourlyRate ? parseFloat(hourlyRate.toString()) : null,
+            experienceLevel,
+            status,
+            bio,
+            location,
+            avatarUrl,
+            updatedAt: new Date(),
+        })
+            .where(eq(developers.id, parseInt(id)))
+            .returning();
+        if (!updatedDeveloper) {
+            return res.status(404).json({ error: 'Developer not found' });
+        }
+        console.log('Developer updated successfully:', updatedDeveloper.name);
+        res.json(updatedDeveloper);
+    }
+    catch (error) {
+        console.error('Error updating developer:', error);
+        if (error.code === '23505') { // Unique constraint violation
+            return res.status(400).json({ error: 'A developer with this email already exists' });
+        }
+        res.status(500).json({ error: 'Failed to update developer' });
+    }
+});
+// Delete developer
+router.delete('/developers/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Deleting developer:', id);
+        // Check if developer is assigned to any active services
+        const assignments = await db
+            .select({ count: sql `count(*)` })
+            .from(clientServiceDevelopers)
+            .where(and(eq(clientServiceDevelopers.developerId, parseInt(id)), eq(clientServiceDevelopers.isActive, true)));
+        const assignmentCount = parseInt(assignments[0]?.count || '0');
+        if (assignmentCount > 0) {
+            return res.status(400).json({
+                error: `Cannot delete developer who is currently assigned to ${assignmentCount} active service(s). Please remove all assignments first.`
+            });
+        }
+        const [deletedDeveloper] = await db
+            .delete(developers)
+            .where(eq(developers.id, parseInt(id)))
+            .returning();
+        if (!deletedDeveloper) {
+            return res.status(404).json({ error: 'Developer not found' });
+        }
+        console.log('Developer deleted successfully:', deletedDeveloper.name);
+        res.json({ message: 'Developer deleted successfully', developer: deletedDeveloper });
+    }
+    catch (error) {
+        console.error('Error deleting developer:', error);
+        res.status(500).json({ error: 'Failed to delete developer' });
+    }
+});
+// Get developer price history
+router.get('/client-service-developers/:id/price-history', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Getting price history for client service developer:', id);
+        const priceHistory = await db
+            .select({
+            id: developerPriceHistory.id,
+            hourlyRate: developerPriceHistory.hourlyRate,
+            fixedPrice: developerPriceHistory.fixedPrice,
+            effectiveDate: developerPriceHistory.effectiveDate,
+            endDate: developerPriceHistory.endDate,
+            notes: developerPriceHistory.notes,
+            isActive: developerPriceHistory.isActive,
+            createdAt: developerPriceHistory.createdAt,
+            createdBy: {
+                id: users.id,
+                fullName: users.fullName,
+                email: users.email,
+            }
+        })
+            .from(developerPriceHistory)
+            .leftJoin(users, eq(developerPriceHistory.createdBy, users.id))
+            .where(eq(developerPriceHistory.clientServiceDeveloperId, parseInt(id)))
+            .orderBy(desc(developerPriceHistory.effectiveDate));
+        res.json(priceHistory);
+    }
+    catch (error) {
+        console.error('Error getting price history:', error);
+        res.status(500).json({ error: 'Failed to get price history' });
+    }
+});
+// Update developer price with history tracking
+router.put('/client-service-developers/:id/price', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { hourlyRate, fixedPrice, effectiveDate, notes } = req.body;
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+        console.log('Updating developer price for client service developer:', id);
+        await db.transaction(async (tx) => {
+            // Get current price
+            const [currentAssignment] = await tx
+                .select()
+                .from(clientServiceDevelopers)
+                .where(eq(clientServiceDevelopers.id, parseInt(id)));
+            if (!currentAssignment) {
+                throw new Error('Client service developer not found');
+            }
+            const today = new Date().toISOString().split('T')[0];
+            const priceEffectiveDate = effectiveDate || today;
+            // If effective date is today or in the past, update current price immediately
+            if (priceEffectiveDate <= today) {
+                // End current price history entry if it exists
+                await tx
+                    .update(developerPriceHistory)
+                    .set({
+                    endDate: priceEffectiveDate,
+                    isActive: false
+                })
+                    .where(and(eq(developerPriceHistory.clientServiceDeveloperId, parseInt(id)), isNull(developerPriceHistory.endDate)));
+                // Update the current price in the main table
+                await tx
+                    .update(clientServiceDevelopers)
+                    .set({
+                    hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
+                    fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
+                })
+                    .where(eq(clientServiceDevelopers.id, parseInt(id)));
+            }
+            // Create new price history entry
+            await tx
+                .insert(developerPriceHistory)
+                .values({
+                clientServiceDeveloperId: parseInt(id),
+                hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
+                fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
+                effectiveDate: priceEffectiveDate,
+                endDate: priceEffectiveDate > today ? null : null, // null for future prices until they become active
+                notes: notes || null,
+                createdBy: userId,
+                isActive: priceEffectiveDate <= today,
+            });
+        });
+        console.log('Developer price updated successfully');
+        res.json({ message: 'Price updated successfully' });
+    }
+    catch (error) {
+        console.error('Error updating developer price:', error);
+        res.status(500).json({ error: 'Failed to update developer price' });
+    }
+});
+// Get current and future prices for a developer
+router.get('/client-service-developers/:id/current-price', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Getting current price for client service developer:', id);
+        const today = new Date().toISOString().split('T')[0];
+        // Get current price from main table
+        const [currentAssignment] = await db
+            .select({
+            id: clientServiceDevelopers.id,
+            hourlyRate: clientServiceDevelopers.hourlyRate,
+            fixedPrice: clientServiceDevelopers.fixedPrice,
+            developerId: clientServiceDevelopers.developerId,
+            employmentType: clientServiceDevelopers.employmentType,
+            developer: {
+                name: developers.name,
+                email: developers.email,
+            }
+        })
+            .from(clientServiceDevelopers)
+            .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
+            .where(eq(clientServiceDevelopers.id, parseInt(id)));
+        if (!currentAssignment) {
+            return res.status(404).json({ error: 'Client service developer not found' });
+        }
+        // Get future price changes
+        const futurePrices = await db
+            .select({
+            id: developerPriceHistory.id,
+            hourlyRate: developerPriceHistory.hourlyRate,
+            fixedPrice: developerPriceHistory.fixedPrice,
+            effectiveDate: developerPriceHistory.effectiveDate,
+            notes: developerPriceHistory.notes,
+        })
+            .from(developerPriceHistory)
+            .where(and(eq(developerPriceHistory.clientServiceDeveloperId, parseInt(id)), gt(developerPriceHistory.effectiveDate, today), eq(developerPriceHistory.isActive, true)))
+            .orderBy(asc(developerPriceHistory.effectiveDate));
+        res.json({
+            current: currentAssignment,
+            futurePrices
+        });
+    }
+    catch (error) {
+        console.error('Error getting current price:', error);
+        res.status(500).json({ error: 'Failed to get current price' });
+    }
+});
+// Update a future price change
+router.put('/price-history/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { hourlyRate, fixedPrice, effectiveDate, notes } = req.body;
+        console.log('Updating price history entry:', id);
+        const today = new Date().toISOString().split('T')[0];
+        // Only allow editing of future price changes
+        const [existingEntry] = await db
+            .select()
+            .from(developerPriceHistory)
+            .where(eq(developerPriceHistory.id, parseInt(id)));
+        if (!existingEntry) {
+            return res.status(404).json({ error: 'Price history entry not found' });
+        }
+        if (existingEntry.effectiveDate <= today) {
+            return res.status(400).json({ error: 'Cannot edit price changes that are already effective' });
+        }
+        // Update the price history entry
+        const [updatedEntry] = await db
+            .update(developerPriceHistory)
+            .set({
+            hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
+            fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
+            effectiveDate: effectiveDate || existingEntry.effectiveDate,
+            notes: notes !== undefined ? notes : existingEntry.notes,
+        })
+            .where(eq(developerPriceHistory.id, parseInt(id)))
+            .returning();
+        console.log('Price history entry updated successfully');
+        res.json({ message: 'Price change updated successfully', entry: updatedEntry });
+    }
+    catch (error) {
+        console.error('Error updating price history entry:', error);
+        res.status(500).json({ error: 'Failed to update price change' });
+    }
+});
+// Delete/cancel a future price change
+router.delete('/price-history/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Deleting price history entry:', id);
+        const today = new Date().toISOString().split('T')[0];
+        // Only allow deletion of future price changes
+        const [priceEntry] = await db
+            .select()
+            .from(developerPriceHistory)
+            .where(eq(developerPriceHistory.id, parseInt(id)));
+        if (!priceEntry) {
+            return res.status(404).json({ error: 'Price history entry not found' });
+        }
+        if (priceEntry.effectiveDate <= today) {
+            return res.status(400).json({ error: 'Cannot delete price changes that are already effective' });
+        }
+        await db
+            .delete(developerPriceHistory)
+            .where(eq(developerPriceHistory.id, parseInt(id)));
+        console.log('Price history entry deleted successfully');
+        res.json({ message: 'Price change cancelled successfully' });
+    }
+    catch (error) {
+        console.error('Error deleting price history entry:', error);
+        res.status(500).json({ error: 'Failed to cancel price change' });
+    }
+});
+// Update developer employment type
+router.put('/clients/:clientId/services/:serviceId/developers/:assignmentId/employment', requireAuth, async (req, res) => {
+    try {
+        const { clientId, serviceId, assignmentId } = req.params;
+        const { employmentType } = req.body;
+        console.log(`Updating employment type for assignment ${assignmentId} to ${employmentType}`);
+        if (!employmentType || !['fulltime', 'part_time'].includes(employmentType)) {
+            return res.status(400).json({ error: 'Employment type must be fulltime or part_time' });
+        }
+        // Verify the assignment exists and belongs to the correct client/service
+        const [existingAssignment] = await db
+            .select()
+            .from(clientServiceDevelopers)
+            .leftJoin(clientServices, eq(clientServiceDevelopers.clientServiceId, clientServices.id))
+            .where(and(eq(clientServiceDevelopers.id, parseInt(assignmentId)), eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))));
+        if (!existingAssignment) {
+            return res.status(404).json({ error: 'Developer assignment not found' });
+        }
+        // Update the employment type
+        const [updatedAssignment] = await db
+            .update(clientServiceDevelopers)
+            .set({
+            employmentType: employmentType
+        })
+            .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+            .returning();
+        console.log('Employment type updated successfully');
+        res.json({ message: 'Employment type updated successfully', assignment: updatedAssignment });
+    }
+    catch (error) {
+        console.error('Error updating employment type:', error);
+        res.status(500).json({ error: 'Failed to update employment type' });
+    }
+});
+export { router as servicesRouter };

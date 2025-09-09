@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(open http://localhost:5173/admin/team)",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(pkill:*)",
+      "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U postgres -d vestov_portal -c \"SELECT COUNT(*) FROM clients;\")",
+      "Bash(psql:*)",
+      "Bash(curl:*)",
+      "Bash(PGPASSWORD='' psql -h localhost -p 5432 -U postgres -d vestov_portal -c \"SELECT COUNT(*) FROM invoices;\")",
+      "Bash(cat:*)",
+      "Bash(open http://localhost:5173/admin/invoices)",
+      "Bash(open http://localhost:5174/admin/invoices)",
+      "Bash(npm install:*)",
+      "Bash(open http://localhost:5174/admin/clients)",
+      "Bash(npm uninstall:*)",
+      "Bash(open http://localhost:5174/admin/clients/1)",
+      "Bash(npx tsc:*)",
+      "Bash(open http://localhost:5173/admin/clients/1)",
+      "Bash(osascript:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
