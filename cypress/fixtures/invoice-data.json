@@ -1,0 +1,36 @@
+{
+  "testClient": {
+    "id": 1,
+    "name": "Test Client Corp"
+  },
+  "testInvoices": {
+    "manual": {
+      "amount": 5000,
+      "description": "Custom consulting services",
+      "notes": "Manual invoice created via Cypress test"
+    },
+    "serviceBased": {
+      "description": "Development services for Q4 2025",
+      "notes": "Service-based invoice with assigned developers"
+    }
+  },
+  "developerRates": {
+    "hourly": {
+      "rate": 100,
+      "hours": 40
+    },
+    "fixed": {
+      "price": 5000
+    }
+  },
+  "dateRanges": {
+    "currentMonth": {
+      "start": "2025-09-01",
+      "end": "2025-09-30"
+    },
+    "previousMonth": {
+      "start": "2025-08-01", 
+      "end": "2025-08-31"
+    }
+  }
+}
