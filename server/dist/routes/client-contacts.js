@@ -1,0 +1,176 @@
+import { Router } from 'express';
+import { db } from '../db/index.js';
+import { clientContacts, clients } from '../db/schema.js';
+import { requireAuth } from '../middleware/auth.js';
+import { eq, and, desc } from 'drizzle-orm';
+const router = Router();
+// Get all contacts for a client
+router.get('/client/:clientId', requireAuth, async (req, res) => {
+    try {
+        const user = req.user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        const { clientId } = req.params;
+        const contacts = await db
+            .select()
+            .from(clientContacts)
+            .where(and(eq(clientContacts.clientId, parseInt(clientId)), eq(clientContacts.isActive, true)))
+            .orderBy(desc(clientContacts.isPrimary), desc(clientContacts.createdAt));
+        res.json(contacts);
+    }
+    catch (error) {
+        console.error('Error fetching client contacts:', error);
+        res.status(500).json({ error: 'Failed to fetch contacts' });
+    }
+});
+// Create a new contact for a client
+router.post('/client/:clientId', requireAuth, async (req, res) => {
+    try {
+        const user = req.user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        const { clientId } = req.params;
+        const { fullName, position, email, phone, notes, isPrimary } = req.body;
+        if (!fullName) {
+            return res.status(400).json({ error: 'Full name is required' });
+        }
+        // Verify client exists
+        const client = await db
+            .select()
+            .from(clients)
+            .where(eq(clients.id, parseInt(clientId)))
+            .limit(1);
+        if (client.length === 0) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+        // If setting as primary, unset other primary contacts
+        if (isPrimary) {
+            await db
+                .update(clientContacts)
+                .set({ isPrimary: false })
+                .where(eq(clientContacts.clientId, parseInt(clientId)));
+        }
+        // Create new contact
+        const [newContact] = await db
+            .insert(clientContacts)
+            .values({
+            clientId: parseInt(clientId),
+            fullName,
+            position: position || null,
+            email: email || null,
+            phone: phone || null,
+            notes: notes || null,
+            isPrimary: isPrimary || false,
+        })
+            .returning();
+        res.json(newContact);
+    }
+    catch (error) {
+        console.error('Error creating contact:', error);
+        res.status(500).json({ error: 'Failed to create contact' });
+    }
+});
+// Update a contact
+router.put('/:contactId', requireAuth, async (req, res) => {
+    try {
+        const user = req.user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        const { contactId } = req.params;
+        const { fullName, position, email, phone, notes, isPrimary } = req.body;
+        if (!fullName) {
+            return res.status(400).json({ error: 'Full name is required' });
+        }
+        // Get current contact to find clientId
+        const currentContact = await db
+            .select()
+            .from(clientContacts)
+            .where(eq(clientContacts.id, parseInt(contactId)))
+            .limit(1);
+        if (currentContact.length === 0) {
+            return res.status(404).json({ error: 'Contact not found' });
+        }
+        // If setting as primary, unset other primary contacts for this client
+        if (isPrimary && !currentContact[0].isPrimary) {
+            await db
+                .update(clientContacts)
+                .set({ isPrimary: false })
+                .where(eq(clientContacts.clientId, currentContact[0].clientId));
+        }
+        // Update contact
+        const [updatedContact] = await db
+            .update(clientContacts)
+            .set({
+            fullName,
+            position: position || null,
+            email: email || null,
+            phone: phone || null,
+            notes: notes || null,
+            isPrimary: isPrimary || false,
+            updatedAt: new Date(),
+        })
+            .where(eq(clientContacts.id, parseInt(contactId)))
+            .returning();
+        if (!updatedContact) {
+            return res.status(404).json({ error: 'Contact not found' });
+        }
+        res.json(updatedContact);
+    }
+    catch (error) {
+        console.error('Error updating contact:', error);
+        res.status(500).json({ error: 'Failed to update contact' });
+    }
+});
+// Delete a contact (soft delete)
+router.delete('/:contactId', requireAuth, async (req, res) => {
+    try {
+        const user = req.user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        const { contactId } = req.params;
+        const [deletedContact] = await db
+            .update(clientContacts)
+            .set({
+            isActive: false,
+            updatedAt: new Date(),
+        })
+            .where(eq(clientContacts.id, parseInt(contactId)))
+            .returning();
+        if (!deletedContact) {
+            return res.status(404).json({ error: 'Contact not found' });
+        }
+        res.json({ message: 'Contact deleted successfully' });
+    }
+    catch (error) {
+        console.error('Error deleting contact:', error);
+        res.status(500).json({ error: 'Failed to delete contact' });
+    }
+});
+// Get a specific contact
+router.get('/:contactId', requireAuth, async (req, res) => {
+    try {
+        const user = req.user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        const { contactId } = req.params;
+        const contact = await db
+            .select()
+            .from(clientContacts)
+            .where(and(eq(clientContacts.id, parseInt(contactId)), eq(clientContacts.isActive, true)))
+            .limit(1);
+        if (contact.length === 0) {
+            return res.status(404).json({ error: 'Contact not found' });
+        }
+        res.json(contact[0]);
+    }
+    catch (error) {
+        console.error('Error fetching contact:', error);
+        res.status(500).json({ error: 'Failed to fetch contact' });
+    }
+});
+export { router as clientContactsRouter };

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRoute } from 'wouter'
-import { ArrowLeft, Edit, Save, X, Building, Mail, Phone, MapPin, Calendar, DollarSign, Users, Plus, Trash2, Settings } from 'lucide-react'
+import { ArrowLeft, Edit, Save, X, Building, Mail, Phone, MapPin, Calendar, DollarSign, Users, Plus, Trash2, Settings, FileText, Upload, Download, Eye, UserPlus, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -24,16 +24,13 @@ interface ClientDetails {
   id: number
   name: string
   industry?: string
-  contactPerson?: string
-  email?: string
-  phone?: string
-  address?: string
   status: 'active' | 'inactive' | 'prospect'
   contractType?: 'outstaffing' | 'outsourcing' | 'hybrid'
   contractStart?: string
   contractEnd?: string
   billingCycle?: string
   teamSize?: number
+  logoUrl?: string
   createdAt: string
   services: Array<{
     id: number
@@ -78,10 +75,80 @@ interface ServiceDeveloper {
   skills: string[]
   hourlyRate?: number
   fixedPrice?: number
+  workSchedule?: Record<string, string>
   employmentType: 'fulltime' | 'part_time'
   isActive: boolean
   startDate: string
   endDate?: string
+}
+
+interface Document {
+  id: number
+  name: string
+  type: string
+  fileSize: number
+  url: string
+  createdAt: string
+  lastUpdated: string
+}
+
+interface DocumentWithUploader {
+  document: Document
+  uploadedBy: {
+    id: number
+    fullName: string
+    email: string
+  }
+}
+
+interface DocumentType {
+  value: string
+  label: string
+}
+
+interface ClientContact {
+  id: number
+  clientId: number
+  fullName: string
+  position?: string
+  email?: string
+  phone?: string
+  notes?: string
+  isPrimary: boolean
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface User {
+  id: number
+  username: string
+  fullName: string
+  email: string
+  role: 'admin' | 'team_member' | 'client'
+  position?: string
+  avatarUrl?: string
+  isActive: boolean
+  lastLoginAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface ClientUser {
+  id: number
+  username: string
+  fullName: string
+  email: string
+  role: 'admin' | 'team_member' | 'client'
+  position?: string
+  avatarUrl?: string
+  isActive: boolean
+  lastLoginAt?: string
+  assignmentId: number
+  accessLevel: 'read' | 'write' | 'admin'
+  assignmentActive: boolean
+  assignedAt: string
+  assignedBy: number
 }
 
 export function ClientDetailsPage() {
@@ -94,10 +161,6 @@ export function ClientDetailsPage() {
   const [editData, setEditData] = useState({
     name: '',
     industry: '',
-    contactPerson: '',
-    email: '',
-    phone: '',
-    address: '',
     status: 'active' as 'active' | 'inactive' | 'prospect',
     contractType: '' as '' | 'outstaffing' | 'outsourcing' | 'hybrid',
     contractStart: '',
@@ -135,13 +198,71 @@ export function ClientDetailsPage() {
     fixedPrice: '',
     startDate: new Date().toISOString().split('T')[0],
   })
-  
+  const [isEditDeveloperDialogOpen, setIsEditDeveloperDialogOpen] = useState(false)
+  const [editingDeveloper, setEditingDeveloper] = useState<{
+    serviceId: number
+    assignmentId: number
+    name: string
+    hourlyRate?: number
+    fixedPrice?: number
+    workSchedule?: Record<string, string>
+  } | null>(null)
+  const [editDeveloperData, setEditDeveloperData] = useState({
+    hourlyRate: '',
+    fixedPrice: '',
+    workSchedule: {
+      monday: 'full',
+      tuesday: 'full',
+      wednesday: 'full',
+      thursday: 'full',
+      friday: 'full',
+      saturday: 'off',
+      sunday: 'off',
+    },
+  })
+
+  // Document management state
+  const [documents, setDocuments] = useState<DocumentWithUploader[]>([])
+  const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([])
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false)
+  const [isDocumentDialogOpen, setIsDocumentDialogOpen] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadDocumentType, setUploadDocumentType] = useState('general')
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
+  const [previewDocument, setPreviewDocument] = useState<DocumentWithUploader | null>(null)
+
+  // Contact management state
+  const [contacts, setContacts] = useState<ClientContact[]>([])
+  const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
+  const [editingContact, setEditingContact] = useState<ClientContact | null>(null)
+  const [contactFormData, setContactFormData] = useState({
+    fullName: '',
+    position: '',
+    email: '',
+    phone: '',
+    notes: '',
+    isPrimary: false
+  })
+
+  // User management state
+  const [clientUsers, setClientUsers] = useState<ClientUser[]>([])
+  const [availableUsers, setAvailableUsers] = useState<User[]>([])
+  const [isAssignUserDialogOpen, setIsAssignUserDialogOpen] = useState(false)
+  const [assignUserData, setAssignUserData] = useState({
+    userId: '',
+    accessLevel: 'read' as 'read' | 'write' | 'admin',
+  })
+
+  // Logo upload state
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
+
   console.log('ClientDetailsPage - params:', params, 'clientId:', clientId)
 
   useEffect(() => {
     const loadClient = async () => {
       if (!clientId) return
-      
+
       try {
         const response = await api.getClient(clientId)
         setClient(response)
@@ -149,11 +270,7 @@ export function ClientDetailsPage() {
         setEditData({
           name: response.name || '',
           industry: response.industry || '',
-          contactPerson: response.contactPerson || '',
-          email: response.email || '',
-          phone: response.phone || '',
-          address: response.address || '',
-          status: response.status || 'active',
+                status: response.status || 'active',
           contractType: response.contractType || '',
           contractStart: response.contractStart || '',
           contractEnd: response.contractEnd || '',
@@ -170,12 +287,17 @@ export function ClientDetailsPage() {
     loadClient()
     loadServiceTypes()
     loadDevelopers()
+    loadDocuments()
+    loadDocumentTypes()
+    loadContacts()
+    loadClientUsers()
+    loadAvailableUsers()
   }, [clientId])
 
   // Load developers for service when client data changes
   useEffect(() => {
-    if (client && client.services.length > 0) {
-      client.services.forEach(service => {
+    if (client && client.services?.length > 0) {
+      client.services?.forEach(service => {
         loadServiceDevelopers(service.id)
       })
     }
@@ -224,10 +346,6 @@ export function ClientDetailsPage() {
     setEditData({
       name: client.name || '',
       industry: client.industry || '',
-      contactPerson: client.contactPerson || '',
-      email: client.email || '',
-      phone: client.phone || '',
-      address: client.address || '',
       status: client.status || 'active',
       contractType: client.contractType || '',
       contractStart: client.contractStart || '',
@@ -367,26 +485,93 @@ export function ClientDetailsPage() {
 
   const handleRemoveDeveloper = async (serviceId: number, assignmentId: number, permanent = false) => {
     if (!clientId) return
-    
-    const message = permanent 
+
+    const message = permanent
       ? 'Are you sure you want to permanently remove this developer from the service?'
       : 'Are you sure you want to deactivate this developer assignment?'
-    
+
     if (!confirm(message)) return
 
     try {
       await api.removeDeveloperFromService(parseInt(clientId), serviceId, assignmentId, permanent)
-      
+
       // Refresh service developers
       loadServiceDevelopers(serviceId)
-      
-      const successMessage = permanent 
+
+      const successMessage = permanent
         ? 'Developer assignment permanently removed'
         : 'Developer assignment deactivated successfully'
       alert(successMessage)
     } catch (error: any) {
       console.error('Failed to remove developer:', error)
       alert(error.message || 'Failed to remove developer assignment')
+    }
+  }
+
+  const handleEditDeveloper = (serviceId: number, developer: ServiceDeveloper) => {
+    const defaultSchedule = {
+      monday: 'full',
+      tuesday: 'full',
+      wednesday: 'full',
+      thursday: 'full',
+      friday: 'full',
+      saturday: 'off',
+      sunday: 'off',
+    }
+
+    setEditingDeveloper({
+      serviceId,
+      assignmentId: developer.id,
+      name: developer.name,
+      hourlyRate: developer.hourlyRate,
+      fixedPrice: developer.fixedPrice,
+      workSchedule: developer.workSchedule || defaultSchedule,
+    })
+    setEditDeveloperData({
+      hourlyRate: developer.hourlyRate?.toString() || '',
+      fixedPrice: developer.fixedPrice?.toString() || '',
+      workSchedule: developer.workSchedule || defaultSchedule,
+    })
+    setIsEditDeveloperDialogOpen(true)
+  }
+
+  const handleSaveDeveloperPricing = async () => {
+    if (!clientId || !editingDeveloper) return
+
+    try {
+      await api.updateDeveloperPricing(
+        parseInt(clientId),
+        editingDeveloper.serviceId,
+        editingDeveloper.assignmentId,
+        {
+          hourlyRate: editDeveloperData.hourlyRate ? parseFloat(editDeveloperData.hourlyRate) : undefined,
+          fixedPrice: editDeveloperData.fixedPrice ? parseFloat(editDeveloperData.fixedPrice) : undefined,
+          workSchedule: editDeveloperData.workSchedule,
+        }
+      )
+
+      // Refresh service developers
+      loadServiceDevelopers(editingDeveloper.serviceId)
+      setIsEditDeveloperDialogOpen(false)
+      setEditingDeveloper(null)
+      setEditDeveloperData({
+        hourlyRate: '',
+        fixedPrice: '',
+        workSchedule: {
+          monday: 'full',
+          tuesday: 'full',
+          wednesday: 'full',
+          thursday: 'full',
+          friday: 'full',
+          saturday: 'off',
+          sunday: 'off',
+        },
+      })
+
+      alert('Developer details updated successfully!')
+    } catch (error: any) {
+      console.error('Failed to update developer details:', error)
+      alert(error.message || 'Failed to update developer details')
     }
   }
 
@@ -444,6 +629,384 @@ export function ClientDetailsPage() {
     setEditingServiceData(null)
   }
 
+  // Document management functions
+  const loadDocuments = async () => {
+    if (!clientId) return
+    try {
+      const response = await api.request(`/documents/client/${clientId}`, {
+        method: 'GET',
+      })
+      setDocuments(response)
+    } catch (error) {
+      console.error('Failed to load documents:', error)
+    }
+  }
+
+  const loadDocumentTypes = async () => {
+    try {
+      const response = await api.request('/documents/types', {
+        method: 'GET',
+      })
+      setDocumentTypes(response)
+    } catch (error) {
+      console.error('Failed to load document types:', error)
+    }
+  }
+
+  const handleDocumentUpload = async () => {
+    if (!clientId || !selectedFile) return
+
+    setIsUploadingDocument(true)
+    try {
+      const formData = new FormData()
+      formData.append('document', selectedFile)
+      formData.append('clientId', clientId)
+      formData.append('type', uploadDocumentType)
+
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorMessage = 'Failed to upload document'
+        try {
+          const errorJson = JSON.parse(errorText)
+          errorMessage = errorJson.error || errorMessage
+        } catch {
+          errorMessage = errorText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
+      // Refresh documents list
+      await loadDocuments()
+      setIsDocumentDialogOpen(false)
+      resetDocumentForm()
+      alert('Document uploaded successfully!')
+    } catch (error: any) {
+      console.error('Failed to upload document:', error)
+      alert(error.message || 'Failed to upload document')
+    } finally {
+      setIsUploadingDocument(false)
+    }
+  }
+
+  const handleDocumentDownload = async (documentId: number, filename: string) => {
+    try {
+      const response = await fetch(`/api/documents/download/${documentId}`, {
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to download document')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.style.display = 'none'
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error: any) {
+      console.error('Failed to download document:', error)
+      alert(error.message || 'Failed to download document')
+    }
+  }
+
+  const handleDocumentDelete = async (documentId: number, filename: string) => {
+    if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      await api.request(`/documents/${documentId}`, {
+        method: 'DELETE',
+      })
+
+      // Refresh documents list
+      await loadDocuments()
+      alert('Document deleted successfully!')
+    } catch (error: any) {
+      console.error('Failed to delete document:', error)
+      alert(error.message || 'Failed to delete document')
+    }
+  }
+
+  const resetDocumentForm = () => {
+    setSelectedFile(null)
+    setUploadDocumentType('general')
+  }
+
+  const handleDocumentPreview = (doc: DocumentWithUploader) => {
+    setPreviewDocument(doc)
+    setIsPreviewDialogOpen(true)
+  }
+
+  const getPreviewUrl = (documentId: number) => {
+    return `/api/documents/preview/${documentId}`
+  }
+
+  const canPreview = (filename: string) => {
+    const ext = filename.toLowerCase().split('.').pop()
+    return ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '')
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  // Contact management functions
+  const loadContacts = async () => {
+    if (!clientId) return
+    try {
+      const response = await api.request(`/client-contacts/client/${clientId}`, {
+        method: 'GET',
+      })
+      setContacts(response)
+    } catch (error) {
+      console.error('Failed to load contacts:', error)
+    }
+  }
+
+  const handleCreateContact = async () => {
+    if (!clientId || !contactFormData.fullName.trim()) {
+      alert('Full name is required')
+      return
+    }
+
+    try {
+      const response = await api.request(`/client-contacts/client/${clientId}`, {
+        method: 'POST',
+        body: JSON.stringify(contactFormData),
+      })
+
+      // Refresh contacts list
+      await loadContacts()
+      setIsContactDialogOpen(false)
+      resetContactForm()
+      alert('Contact created successfully!')
+    } catch (error: any) {
+      console.error('Failed to create contact:', error)
+      alert(error.message || 'Failed to create contact')
+    }
+  }
+
+  const handleUpdateContact = async () => {
+    if (!editingContact || !contactFormData.fullName.trim()) {
+      alert('Full name is required')
+      return
+    }
+
+    try {
+      await api.request(`/client-contacts/${editingContact.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(contactFormData),
+      })
+
+      // Refresh contacts list
+      await loadContacts()
+      setIsContactDialogOpen(false)
+      resetContactForm()
+      alert('Contact updated successfully!')
+    } catch (error: any) {
+      console.error('Failed to update contact:', error)
+      alert(error.message || 'Failed to update contact')
+    }
+  }
+
+  const handleDeleteContact = async (contactId: number, contactName: string) => {
+    if (!confirm(`Are you sure you want to delete "${contactName}"?`)) {
+      return
+    }
+
+    try {
+      await api.request(`/client-contacts/${contactId}`, {
+        method: 'DELETE',
+      })
+
+      // Refresh contacts list
+      await loadContacts()
+      alert('Contact deleted successfully!')
+    } catch (error: any) {
+      console.error('Failed to delete contact:', error)
+      alert(error.message || 'Failed to delete contact')
+    }
+  }
+
+  const handleEditContact = (contact: ClientContact) => {
+    setEditingContact(contact)
+    setContactFormData({
+      fullName: contact.fullName,
+      position: contact.position || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      notes: contact.notes || '',
+      isPrimary: contact.isPrimary,
+    })
+    setIsContactDialogOpen(true)
+  }
+
+  const resetContactForm = () => {
+    setContactFormData({
+      fullName: '',
+      position: '',
+      email: '',
+      phone: '',
+      notes: '',
+      isPrimary: false,
+    })
+    setEditingContact(null)
+  }
+
+  // User management functions
+  const loadClientUsers = async () => {
+    if (!clientId) return
+    try {
+      const response = await api.getClientUsers(Number(clientId))
+      setClientUsers(response)
+    } catch (error) {
+      console.error('Failed to load client users:', error)
+    }
+  }
+
+  const loadAvailableUsers = async () => {
+    try {
+      // Only load users with 'client' role
+      const response = await api.getUsers({ role: 'client' })
+      setAvailableUsers(response.users || [])
+    } catch (error) {
+      console.error('Failed to load available users:', error)
+    }
+  }
+
+
+  const handleAssignUser = async () => {
+    if (!assignUserData.userId || !clientId) {
+      alert('Please select a user')
+      return
+    }
+
+    try {
+      await api.assignUserToClient(Number(assignUserData.userId), Number(clientId), {
+        accessLevel: assignUserData.accessLevel,
+        assignedBy: 1 // TODO: Get current user ID
+      })
+
+      // Refresh client users
+      await loadClientUsers()
+      setIsAssignUserDialogOpen(false)
+      resetAssignUserForm()
+      alert('User assigned to client successfully!')
+    } catch (error: any) {
+      console.error('Failed to assign user:', error)
+      alert(error.message || 'Failed to assign user to client')
+    }
+  }
+
+  const handleUpdateUserAccess = async (userId: number, accessLevel: 'read' | 'write' | 'admin') => {
+    if (!clientId) return
+
+    try {
+      await api.updateClientAssignment(userId, Number(clientId), { accessLevel })
+      await loadClientUsers()
+      alert('User access level updated successfully!')
+    } catch (error: any) {
+      console.error('Failed to update user access:', error)
+      alert(error.message || 'Failed to update user access')
+    }
+  }
+
+  const handleRemoveUserFromClient = async (userId: number, userName: string) => {
+    if (!confirm(`Are you sure you want to remove "${userName}" from this client?`)) {
+      return
+    }
+
+    if (!clientId) return
+
+    try {
+      await api.removeUserFromClient(userId, Number(clientId))
+      await loadClientUsers()
+      alert('User removed from client successfully!')
+    } catch (error: any) {
+      console.error('Failed to remove user from client:', error)
+      alert(error.message || 'Failed to remove user from client')
+    }
+  }
+
+  const resetAssignUserForm = () => {
+    setAssignUserData({
+      userId: '',
+      accessLevel: 'read',
+    })
+  }
+
+  const handleUploadLogo = async () => {
+    if (!clientId || !selectedLogoFile) {
+      alert('Please select a logo file')
+      return
+    }
+
+    setIsUploadingLogo(true)
+    try {
+      const result = await api.uploadClientLogo(Number(clientId), selectedLogoFile)
+      
+      // Update client data with new logo
+      if (client) {
+        setClient({
+          ...client,
+          logoUrl: result.logoUrl
+        })
+      }
+      
+      setSelectedLogoFile(null)
+      alert('Logo uploaded successfully!')
+    } catch (error: any) {
+      console.error('Failed to upload logo:', error)
+      alert(error.message || 'Failed to upload logo')
+    } finally {
+      setIsUploadingLogo(false)
+    }
+  }
+
+  const handleLogoFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file && clientId) {
+      setSelectedLogoFile(file)
+      setIsUploadingLogo(true)
+      try {
+        const result = await api.uploadClientLogo(Number(clientId), file)
+
+        // Update client data with new logo
+        if (client) {
+          setClient({
+            ...client,
+            logoUrl: result.logoUrl
+          })
+        }
+
+        setSelectedLogoFile(null)
+        // Clear the input
+        e.target.value = ''
+      } catch (error: any) {
+        console.error('Failed to upload logo:', error)
+        alert(error.message || 'Failed to upload logo')
+      } finally {
+        setIsUploadingLogo(false)
+      }
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -477,8 +1040,32 @@ export function ClientDetailsPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-primary/10 rounded-lg">
-              <Building className="h-8 w-8 text-primary" />
+            <div className="relative group">
+              <div className="p-3 bg-primary/10 rounded-lg">
+                {client.logoUrl ? (
+                  <img
+                    src={client.logoUrl}
+                    alt={`${client.name} logo`}
+                    className="h-12 w-12 object-contain"
+                  />
+                ) : (
+                  <Building className="h-8 w-8 text-primary" />
+                )}
+              </div>
+              {isEditing && (
+                <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                  <label htmlFor="logo-upload" className="cursor-pointer">
+                    <Upload className="h-6 w-6 text-white" />
+                  </label>
+                  <input
+                    id="logo-upload"
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                    className="hidden"
+                    onChange={handleLogoFileSelected}
+                  />
+                </div>
+              )}
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
@@ -521,8 +1108,21 @@ export function ClientDetailsPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
-            <CardDescription>Primary contact details</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Contact Information</CardTitle>
+                <CardDescription>Client contacts and communication details</CardDescription>
+              </div>
+              <Button
+                onClick={() => setIsContactDialogOpen(true)}
+                size="sm"
+                variant="outline"
+                className="gap-2"
+              >
+                <UserPlus className="h-4 w-4" />
+                Add Contact
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {isEditing ? (
@@ -545,44 +1145,6 @@ export function ClientDetailsPage() {
                     placeholder="e.g., Technology, Healthcare"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contactPerson">Contact Person</Label>
-                  <Input
-                    id="contactPerson"
-                    value={editData.contactPerson}
-                    onChange={(e) => setEditData({ ...editData, contactPerson: e.target.value })}
-                    placeholder="Contact person name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={editData.email}
-                    onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                    placeholder="contact@company.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={editData.phone}
-                    onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                    placeholder="+1 (555) 123-4567"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Textarea
-                    id="address"
-                    value={editData.address}
-                    onChange={(e) => setEditData({ ...editData, address: e.target.value })}
-                    placeholder="Full address"
-                    rows={3}
-                  />
-                </div>
               </>
             ) : (
               <>
@@ -596,40 +1158,78 @@ export function ClientDetailsPage() {
                     <p className="text-sm text-gray-600">{client.industry}</p>
                   </div>
                 )}
-                {client.contactPerson && (
-                  <div className="flex items-center space-x-3">
-                    <Users className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Contact Person</p>
-                      <p className="text-sm text-gray-600">{client.contactPerson}</p>
+
+                {/* Contact Management Section */}
+                {!isEditing && (
+                  <div className="border-t pt-4 mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-900">Additional Contacts</h4>
+                      {contacts.length > 0 && (
+                        <span className="text-xs text-gray-500">{contacts.length} contact{contacts.length !== 1 ? 's' : ''}</span>
+                      )}
                     </div>
-                  </div>
-                )}
-                {client.email && (
-                  <div className="flex items-center space-x-3">
-                    <Mail className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Email</p>
-                      <p className="text-sm text-gray-600">{client.email}</p>
-                    </div>
-                  </div>
-                )}
-                {client.phone && (
-                  <div className="flex items-center space-x-3">
-                    <Phone className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Phone</p>
-                      <p className="text-sm text-gray-600">{client.phone}</p>
-                    </div>
-                  </div>
-                )}
-                {client.address && (
-                  <div className="flex items-center space-x-3">
-                    <MapPin className="h-5 w-5 text-gray-400" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Address</p>
-                      <p className="text-sm text-gray-600">{client.address}</p>
-                    </div>
+
+                    {contacts.length > 0 ? (
+                      <div className="space-y-3">
+                        {contacts.map((contact) => (
+                          <div key={contact.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="text-sm font-medium text-gray-900 truncate">{contact.fullName}</p>
+                                {contact.isPrimary && (
+                                  <Star className="h-3 w-3 text-yellow-500 fill-current" title="Primary Contact" />
+                                )}
+                              </div>
+                              {contact.position && (
+                                <p className="text-xs text-gray-600 mb-1">{contact.position}</p>
+                              )}
+                              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                                {contact.email && (
+                                  <div className="flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    <span className="truncate max-w-[120px]">{contact.email}</span>
+                                  </div>
+                                )}
+                                {contact.phone && (
+                                  <div className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    <span>{contact.phone}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {contact.notes && (
+                                <p className="text-xs text-gray-600 mt-1 italic truncate">"{contact.notes}"</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 ml-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditContact(contact)}
+                                className="h-6 w-6 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Edit contact"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteContact(contact.id, contact.fullName)}
+                                className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete contact"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 text-gray-400 bg-gray-50 rounded-lg">
+                        <UserPlus className="mx-auto h-6 w-6 mb-2" />
+                        <p className="text-xs">No additional contacts</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -835,9 +1435,9 @@ export function ClientDetailsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {client.services.length > 0 ? (
+          {client.services?.length > 0 ? (
             <div className="space-y-4">
-              {client.services.map((service) => (
+              {client.services?.map((service) => (
                 <div key={service.id} className="border rounded-lg overflow-hidden">
                   {/* Service Header */}
                   <div className="flex items-center justify-between p-4 bg-gray-50 border-b">
@@ -956,6 +1556,28 @@ export function ClientDetailsPage() {
                                 {developer.fixedPrice && <span>Fixed: ${developer.fixedPrice}</span>}
                                 <span>Started: {new Date(developer.startDate).toLocaleDateString()}</span>
                               </div>
+                              {developer.workSchedule && (
+                                <div className="flex items-center gap-1 mt-2">
+                                  <span className="text-xs text-gray-600 mr-2">Schedule:</span>
+                                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((dayLetter, idx) => {
+                                    const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                                    const dayValue = developer.workSchedule?.[dayNames[idx]] || 'off'
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`w-6 h-6 rounded flex items-center justify-center text-xs font-medium ${
+                                          dayValue === 'full' ? 'bg-green-100 text-green-800' :
+                                          dayValue === 'half' ? 'bg-yellow-100 text-yellow-800' :
+                                          'bg-gray-100 text-gray-400'
+                                        }`}
+                                        title={`${dayNames[idx]}: ${dayValue}`}
+                                      >
+                                        {dayLetter}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
                               {developer.skills && developer.skills.length > 0 && (
                                 <div className="flex gap-1 mt-2">
                                   {developer.skills.slice(0, 3).map((skill, index) => (
@@ -972,6 +1594,15 @@ export function ClientDetailsPage() {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditDeveloper(service.id, developer)}
+                                className="text-blue-600 hover:text-blue-700"
+                                title="Edit developer pricing"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
                               {developer.isActive ? (
                                 <Button
                                   variant="outline"
@@ -1295,6 +1926,678 @@ export function ClientDetailsPage() {
             </Button>
             <Button onClick={handleUpdateService}>
               Update Service
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Developer Pricing Dialog */}
+      <Dialog open={isEditDeveloperDialogOpen} onOpenChange={setIsEditDeveloperDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Developer Details: {editingDeveloper?.name}</DialogTitle>
+            <DialogDescription>
+              Update pricing and work schedule for this developer assignment.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingDeveloper && (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="editHourlyRate">Hourly Rate (Optional)</Label>
+                  <Input
+                    id="editHourlyRate"
+                    type="number"
+                    step="0.01"
+                    value={editDeveloperData.hourlyRate}
+                    onChange={(e) => setEditDeveloperData({
+                      ...editDeveloperData,
+                      hourlyRate: e.target.value
+                    })}
+                    placeholder="Hourly rate ($/hr)"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="editFixedPrice">Fixed Price (Optional)</Label>
+                  <Input
+                    id="editFixedPrice"
+                    type="number"
+                    step="0.01"
+                    value={editDeveloperData.fixedPrice}
+                    onChange={(e) => setEditDeveloperData({
+                      ...editDeveloperData,
+                      fixedPrice: e.target.value
+                    })}
+                    placeholder="Fixed price ($)"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="mb-3 block">Work Schedule</Label>
+                <div className="space-y-2">
+                  {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => (
+                    <div key={day} className="flex items-center gap-4 p-3 border rounded">
+                      <div className="w-24 font-medium capitalize">{day}</div>
+                      <div className="flex gap-2 flex-1">
+                        <Button
+                          type="button"
+                          variant={editDeveloperData.workSchedule[day] === 'full' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setEditDeveloperData({
+                            ...editDeveloperData,
+                            workSchedule: { ...editDeveloperData.workSchedule, [day]: 'full' }
+                          })}
+                          className="flex-1"
+                        >
+                          Full Day
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={editDeveloperData.workSchedule[day] === 'half' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setEditDeveloperData({
+                            ...editDeveloperData,
+                            workSchedule: { ...editDeveloperData.workSchedule, [day]: 'half' }
+                          })}
+                          className="flex-1"
+                        >
+                          Half Day
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={editDeveloperData.workSchedule[day] === 'off' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setEditDeveloperData({
+                            ...editDeveloperData,
+                            workSchedule: { ...editDeveloperData.workSchedule, [day]: 'off' }
+                          })}
+                          className="flex-1"
+                        >
+                          Off
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+                <p><strong>Pricing:</strong> Set hourly rate, fixed price, or both depending on the pricing model.</p>
+                <p className="mt-1"><strong>Schedule:</strong> Full Day = 8 hours, Half Day = 4 hours, Off = not working.</p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDeveloperDialogOpen(false)
+                setEditingDeveloper(null)
+                setEditDeveloperData({
+                  hourlyRate: '',
+                  fixedPrice: '',
+                  workSchedule: {
+                    monday: 'full',
+                    tuesday: 'full',
+                    wednesday: 'full',
+                    thursday: 'full',
+                    friday: 'full',
+                    saturday: 'off',
+                    sunday: 'off',
+                  },
+                })
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDeveloperPricing}>
+              Update Details
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* User Management */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                User Access Management
+              </CardTitle>
+              <CardDescription>Manage users who can access this client's portal</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setIsAssignUserDialogOpen(true)}
+                size="sm"
+                className="gap-2"
+              >
+                <UserPlus className="h-4 w-4" />
+                Assign User
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {clientUsers.length > 0 ? (
+            <div className="space-y-4">
+              {clientUsers.map((user) => (
+                <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Users className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{user.fullName}</p>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <span>@{user.username}</span>
+                          <span>{user.email}</span>
+                          {user.position && <span>{user.position}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <Badge variant={user.role === 'admin' ? 'default' : user.role === 'team_member' ? 'secondary' : 'outline'}>
+                        {user.role.replace('_', ' ')}
+                      </Badge>
+                      <Badge className={
+                        user.accessLevel === 'admin' ? 'bg-red-100 text-red-800' :
+                        user.accessLevel === 'write' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }>
+                        {user.accessLevel} access
+                      </Badge>
+                      {!user.assignmentActive && (
+                        <Badge variant="outline" className="text-red-600">
+                          Inactive
+                        </Badge>
+                      )}
+                      <span className="text-gray-500">
+                        Assigned: {new Date(user.assignedAt).toLocaleDateString()}
+                      </span>
+                      {user.lastLoginAt && (
+                        <span className="text-gray-500">
+                          Last login: {new Date(user.lastLoginAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={user.accessLevel}
+                      onValueChange={(value: 'read' | 'write' | 'admin') =>
+                        handleUpdateUserAccess(user.id, value)
+                      }
+                    >
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="read">Read</SelectItem>
+                        <SelectItem value="write">Write</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRemoveUserFromClient(user.id, user.fullName)}
+                      className="text-red-600 hover:text-red-700"
+                      title="Remove user from client"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Users className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Users Assigned</h3>
+              <p>This client doesn't have any users with portal access yet.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Documents Management */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Documents
+              </CardTitle>
+              <CardDescription>Client documents and files</CardDescription>
+            </div>
+            <Button onClick={() => setIsDocumentDialogOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Document
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {documents.length > 0 ? (
+            <div className="space-y-3">
+              {documents.map((doc) => (
+                <div key={doc.document.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <FileText className="h-5 w-5 text-gray-400" />
+                      <div>
+                        <p className="font-medium text-gray-900">{doc.document.name}</p>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <Badge variant="outline" className="text-xs">
+                            {doc.document.type}
+                          </Badge>
+                          <span>{formatFileSize(doc.document.fileSize)}</span>
+                          <span>Uploaded: {new Date(doc.document.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Uploaded by: {doc.uploadedBy.fullName} ({doc.uploadedBy.email})
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {canPreview(doc.document.name) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDocumentPreview(doc)}
+                        className="text-green-600 hover:text-green-700"
+                        title="Preview document"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDocumentDownload(doc.document.id, doc.document.name)}
+                      className="text-blue-600 hover:text-blue-700"
+                      title="Download document"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDocumentDelete(doc.document.id, doc.document.name)}
+                      className="text-red-600 hover:text-red-700"
+                      title="Delete document"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <FileText className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Documents</h3>
+              <p>This client doesn't have any documents uploaded yet.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Upload Document Dialog */}
+      <Dialog open={isDocumentDialogOpen} onOpenChange={setIsDocumentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload Document for {client?.name}</DialogTitle>
+            <DialogDescription>
+              Upload a document for this client. Supported formats: PDF, Word, Excel, Images, and Text files.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="documentFile">Document File</Label>
+              <Input
+                id="documentFile"
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt"
+                className="cursor-pointer"
+              />
+              {selectedFile && (
+                <p className="text-sm text-gray-600 mt-2">
+                  Selected: {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="documentType">Document Type</Label>
+              <Select
+                value={uploadDocumentType}
+                onValueChange={setUploadDocumentType}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {documentTypes.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+              <p><strong>File Limits:</strong> Maximum 10MB per file. Allowed types: PDF, Word, Excel, Images (JPG, PNG, GIF), and Text files.</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDocumentDialogOpen(false)
+                resetDocumentForm()
+              }}
+              disabled={isUploadingDocument}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDocumentUpload}
+              disabled={!selectedFile || isUploadingDocument}
+            >
+              {isUploadingDocument ? 'Uploading...' : 'Upload Document'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Preview Dialog - Custom Wide Modal */}
+      {isPreviewDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50"
+            onClick={() => setIsPreviewDialogOpen(false)}
+          />
+          <div className="relative stripe-card rounded-lg w-[90vw] md:w-[70vw] max-h-[95vh] overflow-y-auto mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold leading-none tracking-tight text-slate-900">
+                  Preview: {previewDocument?.document.name}
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Document preview - {previewDocument ? formatFileSize(previewDocument.document.fileSize) : ''}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPreviewDialogOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {previewDocument && (
+                <div className="w-full h-[80vh] border rounded">
+                  {previewDocument.document.name.toLowerCase().endsWith('.pdf') ? (
+                    <iframe
+                      src={getPreviewUrl(previewDocument.document.id)}
+                      className="w-full h-full"
+                      title="Document Preview"
+                    />
+                  ) : previewDocument.document.name.toLowerCase().endsWith('.txt') ? (
+                    <iframe
+                      src={getPreviewUrl(previewDocument.document.id)}
+                      className="w-full h-full bg-white"
+                      title="Document Preview"
+                    />
+                  ) : ['jpg', 'jpeg', 'png', 'gif'].some(ext =>
+                      previewDocument.document.name.toLowerCase().endsWith(ext)
+                    ) ? (
+                    <div className="flex items-center justify-center h-full bg-gray-50">
+                      <img
+                        src={getPreviewUrl(previewDocument.document.id)}
+                        alt="Document Preview"
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full bg-gray-50 text-gray-500">
+                      <div className="text-center">
+                        <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                        <p className="text-lg font-medium">Preview not available</p>
+                        <p className="text-sm">This file type cannot be previewed in the browser.</p>
+                        <Button
+                          className="mt-4"
+                          onClick={() => previewDocument && handleDocumentDownload(previewDocument.document.id, previewDocument.document.name)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download to View
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between w-full mt-6">
+              <div className="text-sm text-gray-500">
+                Uploaded by: {previewDocument?.uploadedBy.fullName} on{' '}
+                {previewDocument ? new Date(previewDocument.document.createdAt).toLocaleDateString() : ''}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => previewDocument && handleDocumentDownload(previewDocument.document.id, previewDocument.document.name)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsPreviewDialogOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Contact Dialog */}
+      <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingContact ? 'Edit Contact' : `Add Contact for ${client?.name}`}
+            </DialogTitle>
+            <DialogDescription>
+              {editingContact ? 'Update contact information.' : 'Add a new point of contact for this client.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="contactFullName">Full Name *</Label>
+              <Input
+                id="contactFullName"
+                value={contactFormData.fullName}
+                onChange={(e) => setContactFormData({ ...contactFormData, fullName: e.target.value })}
+                placeholder="John Doe"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="contactPosition">Position</Label>
+              <Input
+                id="contactPosition"
+                value={contactFormData.position}
+                onChange={(e) => setContactFormData({ ...contactFormData, position: e.target.value })}
+                placeholder="e.g., CTO, Project Manager"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="contactEmail">Email</Label>
+                <Input
+                  id="contactEmail"
+                  type="email"
+                  value={contactFormData.email}
+                  onChange={(e) => setContactFormData({ ...contactFormData, email: e.target.value })}
+                  placeholder="john@company.com"
+                />
+              </div>
+              <div>
+                <Label htmlFor="contactPhone">Phone</Label>
+                <Input
+                  id="contactPhone"
+                  type="tel"
+                  value={contactFormData.phone}
+                  onChange={(e) => setContactFormData({ ...contactFormData, phone: e.target.value })}
+                  placeholder="+1 (555) 123-4567"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="contactNotes">Notes</Label>
+              <Textarea
+                id="contactNotes"
+                value={contactFormData.notes}
+                onChange={(e) => setContactFormData({ ...contactFormData, notes: e.target.value })}
+                placeholder="Additional notes about this contact..."
+                rows={3}
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="contactIsPrimary"
+                checked={contactFormData.isPrimary}
+                onChange={(e) => setContactFormData({ ...contactFormData, isPrimary: e.target.checked })}
+                className="rounded"
+              />
+              <Label htmlFor="contactIsPrimary" className="flex items-center gap-2">
+                <Star className="h-4 w-4 text-yellow-500" />
+                Primary Contact
+              </Label>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+              <p><strong>Note:</strong> Only one contact can be marked as primary at a time. Setting this as primary will automatically update any existing primary contact.</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsContactDialogOpen(false)
+                resetContactForm()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={editingContact ? handleUpdateContact : handleCreateContact}>
+              {editingContact ? 'Update Contact' : 'Add Contact'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Assign User Dialog */}
+      <Dialog open={isAssignUserDialogOpen} onOpenChange={setIsAssignUserDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign User to {client?.name}</DialogTitle>
+            <DialogDescription>
+              Assign an existing client user to this client's portal. Only users with 'client' role can be assigned.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="assignUser">Select User</Label>
+              <Select
+                value={assignUserData.userId}
+                onValueChange={(value) => setAssignUserData({ ...assignUserData, userId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a user to assign" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableUsers
+                    .filter(user => !clientUsers.some(cu => cu.id === user.id))
+                    .map((user) => (
+                    <SelectItem key={user.id} value={user.id.toString()}>
+                      {user.fullName} (@{user.username}) - {user.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="assignAccessLevel">Access Level</Label>
+              <Select
+                value={assignUserData.accessLevel}
+                onValueChange={(value: 'read' | 'write' | 'admin') =>
+                  setAssignUserData({ ...assignUserData, accessLevel: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="read">Read - View only access</SelectItem>
+                  <SelectItem value="write">Write - Can view and edit</SelectItem>
+                  <SelectItem value="admin">Admin - Full access</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+              <p><strong>Access Levels:</strong></p>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li><strong>Read:</strong> Can view client information, services, documents, and invoices</li>
+                <li><strong>Write:</strong> Can edit client information and manage some resources</li>
+                <li><strong>Admin:</strong> Full access to all client resources and settings</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAssignUserDialogOpen(false)
+                resetAssignUserForm()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleAssignUser}>
+              Assign User
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,8 @@
 import { Router } from 'express'
 import { eq, desc, and, sql } from 'drizzle-orm'
+import multer from 'multer'
+import path from 'path'
+import fs from 'fs'
 import { db } from '../db/index.js'
 import { 
   clients, 
@@ -22,6 +25,44 @@ const router = Router()
 
 // Apply admin middleware to all routes
 router.use(requireAdmin)
+
+// Configure multer for logo uploads
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(process.cwd(), 'uploads', 'logos')
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true })
+    }
+    cb(null, uploadPath)
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname))
+  }
+})
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for logos
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow common image types
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml'
+    ]
+
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Invalid file type. Only image files (JPEG, PNG, GIF, WebP, SVG) are allowed.'))
+    }
+  }
+})
 
 // Dashboard
 router.get('/dashboard', async (req, res) => {
@@ -63,23 +104,69 @@ router.get('/clients', async (req, res) => {
 })
 
 router.get('/clients/:id', async (req, res) => {
+  console.log('[ROUTE HANDLER] GET /clients/:id START')
+  console.log('[ROUTE HANDLER] req.params:', req.params)
+  console.log('[ROUTE HANDLER] req.params.id:', req.params.id)
+
   try {
-    const [client] = await db.select().from(clients).where(eq(clients.id, parseInt(req.params.id)))
+    const clientId = parseInt(req.params.id)
+    console.log('[ROUTE HANDLER] Parsed clientId:', clientId, 'Type:', typeof clientId)
+
+    if (isNaN(clientId)) {
+      console.log('[ROUTE HANDLER] Invalid ID - not a number')
+      return res.status(400).json({ error: 'Invalid client ID' })
+    }
+
+    console.log('[ROUTE HANDLER] About to query database...')
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId))
+    console.log('[ROUTE HANDLER] Database query completed. Result:', client)
+
     if (!client) {
+      console.log('[ROUTE HANDLER] Client not found in database')
       return res.status(404).json({ error: 'Client not found' })
     }
+
+    console.log('[ROUTE HANDLER] Success! Returning client:', client.name)
     res.json(client)
   } catch (error) {
+    console.error('[ROUTE HANDLER] CAUGHT ERROR:', error)
+    console.error('[ROUTE HANDLER] Error stack:', error instanceof Error ? error.stack : 'No stack')
     res.status(500).json({ error: 'Failed to fetch client' })
   }
 })
 
 router.post('/clients', async (req, res) => {
   try {
-    const [client] = await db.insert(clients).values(req.body).returning()
+    console.log('[POST /admin/clients] Request body:', req.body)
+
+    // Clean up empty strings for optional fields
+    const cleanedData = { ...req.body }
+
+    // Convert empty strings to null for date fields
+    if (cleanedData.contractStart === '') cleanedData.contractStart = null
+    if (cleanedData.contractEnd === '') cleanedData.contractEnd = null
+
+    // Convert empty strings to null for optional text fields
+    if (cleanedData.contractType === '') cleanedData.contractType = null
+    if (cleanedData.industry === '') cleanedData.industry = null
+    if (cleanedData.contactPerson === '') cleanedData.contactPerson = null
+    if (cleanedData.email === '') cleanedData.email = null
+    if (cleanedData.phone === '') cleanedData.phone = null
+    if (cleanedData.address === '') cleanedData.address = null
+    if (cleanedData.billingCycle === '') cleanedData.billingCycle = null
+
+    console.log('[POST /admin/clients] Cleaned data:', cleanedData)
+
+    const [client] = await db.insert(clients).values(cleanedData).returning()
+    console.log('[POST /admin/clients] Client created successfully:', client.id)
     res.json(client)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create client' })
+    console.error('[POST /admin/clients] Error creating client:', error)
+    console.error('[POST /admin/clients] Request body was:', req.body)
+
+    // Send more specific error message
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create client'
+    res.status(500).json({ error: errorMessage })
   }
 })
 
@@ -100,10 +187,77 @@ router.put('/clients/:id', async (req, res) => {
   }
 })
 
+// Upload client logo
+router.post('/clients/:id/logo', logoUpload.single('logo'), async (req, res) => {
+  try {
+    const clientId = parseInt(req.params.id)
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' })
+    }
+
+    // Verify client exists
+    const [client] = await db
+      .select()
+      .from(clients)
+      .where(eq(clients.id, clientId))
+      .limit(1)
+
+    if (!client) {
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path)
+      return res.status(404).json({ error: 'Client not found' })
+    }
+
+    // Delete old logo if it exists
+    if (client.logoUrl) {
+      const oldLogoPath = path.join(process.cwd(), 'uploads', 'logos', path.basename(client.logoUrl))
+      try {
+        if (fs.existsSync(oldLogoPath)) {
+          fs.unlinkSync(oldLogoPath)
+        }
+      } catch (error) {
+        console.error('Error deleting old logo:', error)
+      }
+    }
+
+    // Update client with new logo URL
+    const logoUrl = `/uploads/logos/${req.file.filename}`
+    const [updatedClient] = await db
+      .update(clients)
+      .set({
+        logoUrl,
+        updatedAt: new Date()
+      })
+      .where(eq(clients.id, clientId))
+      .returning()
+
+    res.json({
+      ...updatedClient,
+      message: 'Logo uploaded successfully'
+    })
+  } catch (error) {
+    console.error('Error uploading logo:', error)
+
+    // Clean up uploaded file on error
+    if (req.file) {
+      try {
+        fs.unlinkSync(req.file.path)
+      } catch (cleanupError) {
+        console.error('Error cleaning up uploaded file:', cleanupError)
+      }
+    }
+
+    res.status(500).json({ error: 'Failed to upload logo' })
+  }
+})
+
 // Team Members CRUD
 router.get('/team-members', async (req, res) => {
   try {
-    const members = await db
+    const { billable, email } = req.query
+
+    let query = db
       .select({
         id: teamMembers.id,
         name: teamMembers.name,
@@ -114,6 +268,7 @@ router.get('/team-members', async (req, res) => {
         bio: teamMembers.bio,
         hourlyRate: teamMembers.hourlyRate,
         monthlyRate: teamMembers.monthlyRate,
+        isBillable: teamMembers.isBillable,
         status: teamMembers.status,
         startDate: teamMembers.startDate,
         location: teamMembers.location,
@@ -123,8 +278,27 @@ router.get('/team-members', async (req, res) => {
       })
       .from(teamMembers)
       .leftJoin(clients, eq(teamMembers.clientId, clients.id))
-      .orderBy(desc(teamMembers.createdAt))
-    
+
+    let conditions = []
+
+    // Add billable filter if provided
+    if (billable === 'true') {
+      conditions.push(eq(teamMembers.isBillable, true))
+    } else if (billable === 'false') {
+      conditions.push(eq(teamMembers.isBillable, false))
+    }
+
+    // Add email filter if provided
+    if (email) {
+      conditions.push(eq(teamMembers.email, email as string))
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions))
+    }
+
+    const members = await query.orderBy(desc(teamMembers.createdAt))
+
     res.json(members)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch team members' })
@@ -144,6 +318,7 @@ router.get('/team-members/:id', async (req, res) => {
         bio: teamMembers.bio,
         hourlyRate: teamMembers.hourlyRate,
         monthlyRate: teamMembers.monthlyRate,
+        isBillable: teamMembers.isBillable,
         status: teamMembers.status,
         startDate: teamMembers.startDate,
         location: teamMembers.location,
@@ -187,6 +362,67 @@ router.put('/team-members/:id', async (req, res) => {
     res.json(member)
   } catch (error) {
     res.status(500).json({ error: 'Failed to update team member' })
+  }
+})
+
+router.delete('/team-members/:id', async (req, res) => {
+  try {
+    console.log(`Attempting to delete team member with ID: ${req.params.id}`)
+    const memberId = parseInt(req.params.id)
+
+    // First, check if the team member exists
+    const existingMember = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.id, memberId))
+      .limit(1)
+
+    if (existingMember.length === 0) {
+      console.log(`Team member with ID ${req.params.id} not found`)
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    // Delete all related records to avoid foreign key constraint violations
+    console.log(`Deleting related records for team member ${memberId}`)
+
+    // 1. Delete leave request events first (they reference leave requests)
+    const memberLeaveRequests = await db
+      .select({ id: leaveRequests.id })
+      .from(leaveRequests)
+      .where(eq(leaveRequests.employeeId, memberId))
+
+    for (const request of memberLeaveRequests) {
+      await db.delete(leaveRequestEvents).where(eq(leaveRequestEvents.leaveRequestId, request.id))
+    }
+
+    // 2. Delete leave requests
+    await db.delete(leaveRequests).where(eq(leaveRequests.employeeId, memberId))
+
+    // 3. Delete leave balances
+    await db.delete(leaveBalances).where(eq(leaveBalances.employeeId, memberId))
+
+    // 4. Delete employment cycles
+    await db.delete(employmentCycles).where(eq(employmentCycles.employeeId, memberId))
+
+    // 5. Delete feedback records
+    await db.delete(feedback).where(eq(feedback.teamMemberId, memberId))
+
+    // 6. Update time entries to remove team member reference (set to null instead of deleting)
+    await db.update(timeEntries)
+      .set({ teamMemberId: null })
+      .where(eq(timeEntries.teamMemberId, memberId))
+
+    // Now delete the team member
+    const [member] = await db
+      .delete(teamMembers)
+      .where(eq(teamMembers.id, memberId))
+      .returning()
+
+    console.log(`Successfully deleted team member: ${member.id}`)
+    res.json({ message: 'Team member deleted successfully', id: member.id })
+  } catch (error) {
+    console.error('Error deleting team member:', error)
+    res.status(500).json({ error: 'Failed to delete team member' })
   }
 })
 
@@ -415,6 +651,34 @@ router.get('/leave-types', async (req, res) => {
     res.json(types)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch leave types' })
+  }
+})
+
+// Delete Client
+router.delete('/clients/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const clientId = parseInt(id)
+
+    // Check if client exists
+    const [client] = await db
+      .select()
+      .from(clients)
+      .where(eq(clients.id, clientId))
+
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' })
+    }
+
+    // Delete client (related data will be cascade deleted by database constraints)
+    await db
+      .delete(clients)
+      .where(eq(clients.id, clientId))
+
+    res.json({ message: 'Client deleted successfully', clientId })
+  } catch (error) {
+    console.error('Error deleting client:', error)
+    res.status(500).json({ error: 'Failed to delete client' })
   }
 })
 

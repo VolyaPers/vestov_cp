@@ -82,10 +82,22 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-          <div className="mt-6 text-sm text-gray-600 text-center">
-            <p><strong>Demo Credentials:</strong></p>
-            <p>Admin: admin / admin123</p>
-            <p>Client: client / client123</p>
+          <div className="mt-6 text-sm text-gray-600">
+            <p className="font-semibold text-center mb-2">Demo Credentials:</p>
+            <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <span className="font-medium text-gray-700">Admin:</span>
+                <span className="text-gray-900">admin / admin123</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <span className="font-medium text-gray-700">Client:</span>
+                <span className="text-gray-900">client / client123</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-gray-700">Employee:</span>
+                <span className="text-gray-900">eduardo / eduardo123</span>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -6,10 +6,12 @@ export const users = pgTable('users', {
     password: text('password').notNull(),
     fullName: text('full_name').notNull(),
     email: varchar('email', { length: 255 }).unique().notNull(),
-    role: varchar('role', { length: 20 }).notNull().default('client'), // 'admin' | 'client'
+    role: varchar('role', { length: 20 }).notNull().default('client'), // 'admin' | 'team_member' | 'client'
     position: text('position'),
     avatarUrl: text('avatar_url'),
-    clientId: integer('client_id').references(() => clients.id),
+    teamMemberId: integer('team_member_id'), // Foreign key to team_members table (for role='team_member')
+    isActive: boolean('is_active').default(true),
+    lastLoginAt: timestamp('last_login_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -30,6 +32,7 @@ export const clients = pgTable('clients', {
     billingCycle: varchar('billing_cycle', { length: 20 }), // 'monthly' | 'weekly' | 'hourly'
     activeServices: jsonb('active_services'),
     teamSize: integer('team_size').default(0),
+    logoUrl: text('logo_url'), // URL to client logo
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -44,6 +47,7 @@ export const teamMembers = pgTable('team_members', {
     bio: text('bio'),
     hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }), // base rate
     monthlyRate: decimal('monthly_rate', { precision: 10, scale: 2 }),
+    isBillable: boolean('is_billable').notNull().default(true), // true for developers/devops, false for HR/PM/internal
     status: varchar('status', { length: 20 }).notNull().default('active'), // 'bench' | 'active'
     clientId: integer('client_id').references(() => clients.id),
     startDate: date('start_date').notNull(),
@@ -85,6 +89,20 @@ export const documents = pgTable('documents', {
     clientId: integer('client_id').references(() => clients.id),
     lastUpdated: timestamp('last_updated').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+// Client Contacts table
+export const clientContacts = pgTable('client_contacts', {
+    id: serial('id').primaryKey(),
+    clientId: integer('client_id').references(() => clients.id).notNull(),
+    fullName: text('full_name').notNull(),
+    position: text('position'),
+    email: varchar('email', { length: 255 }),
+    phone: varchar('phone', { length: 20 }),
+    notes: text('notes'),
+    isPrimary: boolean('is_primary').default(false),
+    isActive: boolean('is_active').default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 // Time Entries table
 export const timeEntries = pgTable('time_entries', {
@@ -149,6 +167,7 @@ export const employmentCycles = pgTable('employment_cycles', {
     employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
     cycleStart: date('cycle_start').notNull(),
     cycleEnd: date('cycle_end').notNull(),
+    cycleMidpoint: date('cycle_midpoint').notNull(), // For 50/50 vacation split
     isActive: boolean('is_active').default(true),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -199,6 +218,26 @@ export const leaveRequestEvents = pgTable('leave_request_events', {
     note: text('note'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+// Workspace Reimbursement Requests table
+export const reimbursementRequests = pgTable('reimbursement_requests', {
+    id: serial('id').primaryKey(),
+    employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
+    year: integer('year').notNull(), // Calendar year for the request
+    expenseAmount: decimal('expense_amount', { precision: 10, scale: 2 }).notNull(), // Total expense
+    reimbursementAmount: decimal('reimbursement_amount', { precision: 10, scale: 2 }).notNull(), // 50% of expense, capped
+    description: text('description').notNull(), // What was purchased
+    category: varchar('category', { length: 50 }), // e.g., 'laptop', 'desk', 'chair', etc.
+    status: varchar('status', { length: 20 }).notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'confirmed'
+    requestedBy: integer('requested_by').references(() => users.id).notNull(),
+    requestedAt: timestamp('requested_at').defaultNow().notNull(),
+    approvedBy: integer('approved_by').references(() => users.id),
+    approvedAt: timestamp('approved_at'),
+    approvalNote: text('approval_note'),
+    evidenceUrl: text('evidence_url'), // URL to uploaded receipt/product image
+    confirmedAt: timestamp('confirmed_at'), // When employee confirmed with evidence
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 // Developers table
 export const developers = pgTable('developers', {
     id: serial('id').primaryKey(),
@@ -227,19 +266,6 @@ export const clientServiceDevelopers = pgTable('client_service_developers', {
     endDate: date('end_date'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
-// Developer Price History table
-export const developerPriceHistory = pgTable('developer_price_history', {
-    id: serial('id').primaryKey(),
-    clientServiceDeveloperId: integer('client_service_developer_id').references(() => clientServiceDevelopers.id).notNull(),
-    hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
-    fixedPrice: decimal('fixed_price', { precision: 10, scale: 2 }),
-    effectiveDate: date('effective_date').notNull(),
-    endDate: date('end_date'), // null means current/active price
-    notes: text('notes'), // Optional notes about the price change
-    createdBy: integer('created_by').references(() => users.id).notNull(),
-    isActive: boolean('is_active').default(true),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-});
 // Invoices table
 export const invoices = pgTable('invoices', {
     id: serial('id').primaryKey(),
@@ -250,11 +276,53 @@ export const invoices = pgTable('invoices', {
     periodStart: date('period_start').notNull(),
     periodEnd: date('period_end').notNull(),
     description: text('description'),
-    status: varchar('status', { length: 20 }).notNull().default('draft'), // 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
+    status: varchar('status', { length: 20 }).notNull().default('draft'),
     dueDate: date('due_date'),
     paidAt: timestamp('paid_at'),
     notes: text('notes'),
     createdBy: integer('created_by').references(() => users.id).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+// Invoice Services table (what services are included in each invoice)
+export const invoiceServices = pgTable('invoice_services', {
+    id: serial('id').primaryKey(),
+    invoiceId: integer('invoice_id').references(() => invoices.id).notNull(),
+    clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
+    serviceLevelPrice: decimal('service_level_price', { precision: 10, scale: 2 }),
+    calculatedAmount: decimal('calculated_amount', { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+// Invoice Developers table (which developers worked on invoiced services)
+export const invoiceDevelopers = pgTable('invoice_developers', {
+    id: serial('id').primaryKey(),
+    invoiceServiceId: integer('invoice_service_id').references(() => invoiceServices.id).notNull(),
+    clientServiceDeveloperId: integer('client_service_developer_id').references(() => clientServiceDevelopers.id).notNull(),
+    hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
+    fixedPrice: decimal('fixed_price', { precision: 10, scale: 2 }),
+    hoursWorked: decimal('hours_worked', { precision: 8, scale: 2 }),
+    calculatedAmount: decimal('calculated_amount', { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+// Leave Allocation Settings table (cycle-based leave allocations)
+export const leaveAllocationSettings = pgTable('leave_allocation_settings', {
+    id: serial('id').primaryKey(),
+    cycleNumber: integer('cycle_number').notNull(), // 1st cycle, 2nd cycle, 3rd cycle, etc.
+    leaveTypeId: integer('leave_type_id').references(() => leaveTypes.id).notNull(),
+    allocatedDays: decimal('allocated_days', { precision: 5, scale: 1 }).notNull(),
+    isDefault: boolean('is_default').default(false), // marks the default allocation for cycles beyond configured ones
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+// Client Users table (many-to-many relationship between users and clients)
+export const clientUsers = pgTable('client_users', {
+    id: serial('id').primaryKey(),
+    clientId: integer('client_id').references(() => clients.id).notNull(),
+    userId: integer('user_id').references(() => users.id).notNull(),
+    accessLevel: varchar('access_level', { length: 20 }).notNull().default('read'), // 'read' | 'write' | 'admin'
+    isActive: boolean('is_active').default(true),
+    assignedBy: integer('assigned_by').references(() => users.id).notNull(),
+    assignedAt: timestamp('assigned_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

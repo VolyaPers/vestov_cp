@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
-import { eq, desc, and, sql, isNull, gt, asc } from 'drizzle-orm';
+import { eq, desc, and, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { serviceTypes, clientServices, clients, users, developers, clientServiceDevelopers, developerPriceHistory } from '../db/schema.js';
+import { serviceTypes, clientServices, clients, developers, clientServiceDevelopers, clientUsers } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 // Initialize database connection
@@ -269,29 +269,63 @@ router.get('/clients/analytics', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch client analytics' });
     }
 });
+// Rate limiting for infinite loop protection
+const lastRequestTimes = new Map();
 // Get all clients with their service assignments
 router.get('/clients', requireAuth, async (req, res) => {
     try {
-        console.log('Fetching clients for user:', req.user?.username);
-        // Get clients with their basic info
-        const clientsWithServices = await db
-            .select({
-            id: clients.id,
-            name: clients.name,
-            industry: clients.industry,
-            contactEmail: clients.email,
-            contactPhone: clients.phone,
-            address: clients.address,
-            contractType: clients.contractType,
-            contractStartDate: clients.contractStart,
-            contractEndDate: clients.contractEnd,
-            billingCycle: clients.billingCycle,
-            status: clients.status,
-            teamSize: clients.teamSize,
-            createdAt: clients.createdAt,
-        })
-            .from(clients)
-            .orderBy(desc(clients.createdAt));
+        console.log('Fetching clients for user:', req.user?.username, 'role:', req.user?.role);
+        let clientsWithServices;
+        if (req.user?.role === 'admin' || req.user?.role === 'team_member') {
+            // Admin and team members can see all clients
+            clientsWithServices = await db
+                .select({
+                id: clients.id,
+                name: clients.name,
+                industry: clients.industry,
+                contactEmail: clients.email,
+                contactPhone: clients.phone,
+                address: clients.address,
+                contractType: clients.contractType,
+                contractStartDate: clients.contractStart,
+                contractEndDate: clients.contractEnd,
+                billingCycle: clients.billingCycle,
+                status: clients.status,
+                teamSize: clients.teamSize,
+                logoUrl: clients.logoUrl,
+                createdAt: clients.createdAt,
+            })
+                .from(clients)
+                .orderBy(desc(clients.createdAt));
+        }
+        else if (req.user?.role === 'client') {
+            // Client users can only see clients they are assigned to
+            clientsWithServices = await db
+                .select({
+                id: clients.id,
+                name: clients.name,
+                industry: clients.industry,
+                contactEmail: clients.email,
+                contactPhone: clients.phone,
+                address: clients.address,
+                contractType: clients.contractType,
+                contractStartDate: clients.contractStart,
+                contractEndDate: clients.contractEnd,
+                billingCycle: clients.billingCycle,
+                status: clients.status,
+                teamSize: clients.teamSize,
+                logoUrl: clients.logoUrl,
+                createdAt: clients.createdAt,
+            })
+                .from(clients)
+                .innerJoin(clientUsers, eq(clients.id, clientUsers.clientId))
+                .where(and(eq(clientUsers.userId, req.user.id), eq(clientUsers.isActive, true)))
+                .orderBy(desc(clients.createdAt));
+        }
+        else {
+            // Unknown role, no access
+            return res.status(403).json({ error: 'Access denied' });
+        }
         // Get service assignments for each client
         const clientsWithServiceData = await Promise.all(clientsWithServices.map(async (client) => {
             const services = await db
@@ -336,6 +370,18 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
         const clientId = parseInt(id);
         if (isNaN(clientId)) {
             return res.status(400).json({ error: 'Invalid client ID format' });
+        }
+        // Check if user has access to this client
+        if (req.user?.role === 'client') {
+            // Client users can only access clients they are assigned to
+            const clientAccess = await db
+                .select()
+                .from(clientUsers)
+                .where(and(eq(clientUsers.userId, req.user.id), eq(clientUsers.clientId, clientId), eq(clientUsers.isActive, true)))
+                .limit(1);
+            if (clientAccess.length === 0) {
+                return res.status(403).json({ error: 'Access denied to this client' });
+            }
         }
         const [client] = await db
             .select()
@@ -547,7 +593,6 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
             isActive: clientServiceDevelopers.isActive,
             startDate: clientServiceDevelopers.startDate,
             endDate: clientServiceDevelopers.endDate,
-            avatarUrl: developers.avatarUrl,
         })
             .from(clientServiceDevelopers)
             .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
@@ -700,7 +745,7 @@ router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async 
 // Create developer
 router.post('/developers', requireAuth, async (req, res) => {
     try {
-        const { name, email, skills, hourlyRate, experienceLevel, status, bio, location, avatarUrl } = req.body;
+        const { name, email, skills, hourlyRate, experienceLevel, status, bio, location } = req.body;
         console.log('Creating new developer:', name);
         const [newDeveloper] = await db
             .insert(developers)
@@ -713,7 +758,6 @@ router.post('/developers', requireAuth, async (req, res) => {
             status: status || 'available',
             bio,
             location,
-            avatarUrl,
         })
             .returning();
         console.log('Developer created successfully:', newDeveloper.name);
@@ -731,7 +775,7 @@ router.post('/developers', requireAuth, async (req, res) => {
 router.put('/developers/:id', requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, skills, hourlyRate, experienceLevel, status, bio, location, avatarUrl } = req.body;
+        const { name, email, skills, hourlyRate, experienceLevel, status, bio, location } = req.body;
         console.log('Updating developer:', id);
         const [updatedDeveloper] = await db
             .update(developers)
@@ -744,7 +788,6 @@ router.put('/developers/:id', requireAuth, async (req, res) => {
             status,
             bio,
             location,
-            avatarUrl,
             updatedAt: new Date(),
         })
             .where(eq(developers.id, parseInt(id)))
@@ -792,246 +835,6 @@ router.delete('/developers/:id', requireAuth, async (req, res) => {
     catch (error) {
         console.error('Error deleting developer:', error);
         res.status(500).json({ error: 'Failed to delete developer' });
-    }
-});
-// Get developer price history
-router.get('/client-service-developers/:id/price-history', requireAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log('Getting price history for client service developer:', id);
-        const priceHistory = await db
-            .select({
-            id: developerPriceHistory.id,
-            hourlyRate: developerPriceHistory.hourlyRate,
-            fixedPrice: developerPriceHistory.fixedPrice,
-            effectiveDate: developerPriceHistory.effectiveDate,
-            endDate: developerPriceHistory.endDate,
-            notes: developerPriceHistory.notes,
-            isActive: developerPriceHistory.isActive,
-            createdAt: developerPriceHistory.createdAt,
-            createdBy: {
-                id: users.id,
-                fullName: users.fullName,
-                email: users.email,
-            }
-        })
-            .from(developerPriceHistory)
-            .leftJoin(users, eq(developerPriceHistory.createdBy, users.id))
-            .where(eq(developerPriceHistory.clientServiceDeveloperId, parseInt(id)))
-            .orderBy(desc(developerPriceHistory.effectiveDate));
-        res.json(priceHistory);
-    }
-    catch (error) {
-        console.error('Error getting price history:', error);
-        res.status(500).json({ error: 'Failed to get price history' });
-    }
-});
-// Update developer price with history tracking
-router.put('/client-service-developers/:id/price', requireAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { hourlyRate, fixedPrice, effectiveDate, notes } = req.body;
-        const userId = req.user?.id;
-        if (!userId) {
-            return res.status(401).json({ error: 'User not authenticated' });
-        }
-        console.log('Updating developer price for client service developer:', id);
-        await db.transaction(async (tx) => {
-            // Get current price
-            const [currentAssignment] = await tx
-                .select()
-                .from(clientServiceDevelopers)
-                .where(eq(clientServiceDevelopers.id, parseInt(id)));
-            if (!currentAssignment) {
-                throw new Error('Client service developer not found');
-            }
-            const today = new Date().toISOString().split('T')[0];
-            const priceEffectiveDate = effectiveDate || today;
-            // If effective date is today or in the past, update current price immediately
-            if (priceEffectiveDate <= today) {
-                // End current price history entry if it exists
-                await tx
-                    .update(developerPriceHistory)
-                    .set({
-                    endDate: priceEffectiveDate,
-                    isActive: false
-                })
-                    .where(and(eq(developerPriceHistory.clientServiceDeveloperId, parseInt(id)), isNull(developerPriceHistory.endDate)));
-                // Update the current price in the main table
-                await tx
-                    .update(clientServiceDevelopers)
-                    .set({
-                    hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
-                    fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
-                })
-                    .where(eq(clientServiceDevelopers.id, parseInt(id)));
-            }
-            // Create new price history entry
-            await tx
-                .insert(developerPriceHistory)
-                .values({
-                clientServiceDeveloperId: parseInt(id),
-                hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
-                fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
-                effectiveDate: priceEffectiveDate,
-                endDate: priceEffectiveDate > today ? null : null, // null for future prices until they become active
-                notes: notes || null,
-                createdBy: userId,
-                isActive: priceEffectiveDate <= today,
-            });
-        });
-        console.log('Developer price updated successfully');
-        res.json({ message: 'Price updated successfully' });
-    }
-    catch (error) {
-        console.error('Error updating developer price:', error);
-        res.status(500).json({ error: 'Failed to update developer price' });
-    }
-});
-// Get current and future prices for a developer
-router.get('/client-service-developers/:id/current-price', requireAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log('Getting current price for client service developer:', id);
-        const today = new Date().toISOString().split('T')[0];
-        // Get current price from main table
-        const [currentAssignment] = await db
-            .select({
-            id: clientServiceDevelopers.id,
-            hourlyRate: clientServiceDevelopers.hourlyRate,
-            fixedPrice: clientServiceDevelopers.fixedPrice,
-            developerId: clientServiceDevelopers.developerId,
-            employmentType: clientServiceDevelopers.employmentType,
-            developer: {
-                name: developers.name,
-                email: developers.email,
-            }
-        })
-            .from(clientServiceDevelopers)
-            .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
-            .where(eq(clientServiceDevelopers.id, parseInt(id)));
-        if (!currentAssignment) {
-            return res.status(404).json({ error: 'Client service developer not found' });
-        }
-        // Get future price changes
-        const futurePrices = await db
-            .select({
-            id: developerPriceHistory.id,
-            hourlyRate: developerPriceHistory.hourlyRate,
-            fixedPrice: developerPriceHistory.fixedPrice,
-            effectiveDate: developerPriceHistory.effectiveDate,
-            notes: developerPriceHistory.notes,
-        })
-            .from(developerPriceHistory)
-            .where(and(eq(developerPriceHistory.clientServiceDeveloperId, parseInt(id)), gt(developerPriceHistory.effectiveDate, today), eq(developerPriceHistory.isActive, true)))
-            .orderBy(asc(developerPriceHistory.effectiveDate));
-        res.json({
-            current: currentAssignment,
-            futurePrices
-        });
-    }
-    catch (error) {
-        console.error('Error getting current price:', error);
-        res.status(500).json({ error: 'Failed to get current price' });
-    }
-});
-// Update a future price change
-router.put('/price-history/:id', requireAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { hourlyRate, fixedPrice, effectiveDate, notes } = req.body;
-        console.log('Updating price history entry:', id);
-        const today = new Date().toISOString().split('T')[0];
-        // Only allow editing of future price changes
-        const [existingEntry] = await db
-            .select()
-            .from(developerPriceHistory)
-            .where(eq(developerPriceHistory.id, parseInt(id)));
-        if (!existingEntry) {
-            return res.status(404).json({ error: 'Price history entry not found' });
-        }
-        if (existingEntry.effectiveDate <= today) {
-            return res.status(400).json({ error: 'Cannot edit price changes that are already effective' });
-        }
-        // Update the price history entry
-        const [updatedEntry] = await db
-            .update(developerPriceHistory)
-            .set({
-            hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
-            fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
-            effectiveDate: effectiveDate || existingEntry.effectiveDate,
-            notes: notes !== undefined ? notes : existingEntry.notes,
-        })
-            .where(eq(developerPriceHistory.id, parseInt(id)))
-            .returning();
-        console.log('Price history entry updated successfully');
-        res.json({ message: 'Price change updated successfully', entry: updatedEntry });
-    }
-    catch (error) {
-        console.error('Error updating price history entry:', error);
-        res.status(500).json({ error: 'Failed to update price change' });
-    }
-});
-// Delete/cancel a future price change
-router.delete('/price-history/:id', requireAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log('Deleting price history entry:', id);
-        const today = new Date().toISOString().split('T')[0];
-        // Only allow deletion of future price changes
-        const [priceEntry] = await db
-            .select()
-            .from(developerPriceHistory)
-            .where(eq(developerPriceHistory.id, parseInt(id)));
-        if (!priceEntry) {
-            return res.status(404).json({ error: 'Price history entry not found' });
-        }
-        if (priceEntry.effectiveDate <= today) {
-            return res.status(400).json({ error: 'Cannot delete price changes that are already effective' });
-        }
-        await db
-            .delete(developerPriceHistory)
-            .where(eq(developerPriceHistory.id, parseInt(id)));
-        console.log('Price history entry deleted successfully');
-        res.json({ message: 'Price change cancelled successfully' });
-    }
-    catch (error) {
-        console.error('Error deleting price history entry:', error);
-        res.status(500).json({ error: 'Failed to cancel price change' });
-    }
-});
-// Update developer employment type
-router.put('/clients/:clientId/services/:serviceId/developers/:assignmentId/employment', requireAuth, async (req, res) => {
-    try {
-        const { clientId, serviceId, assignmentId } = req.params;
-        const { employmentType } = req.body;
-        console.log(`Updating employment type for assignment ${assignmentId} to ${employmentType}`);
-        if (!employmentType || !['fulltime', 'part_time'].includes(employmentType)) {
-            return res.status(400).json({ error: 'Employment type must be fulltime or part_time' });
-        }
-        // Verify the assignment exists and belongs to the correct client/service
-        const [existingAssignment] = await db
-            .select()
-            .from(clientServiceDevelopers)
-            .leftJoin(clientServices, eq(clientServiceDevelopers.clientServiceId, clientServices.id))
-            .where(and(eq(clientServiceDevelopers.id, parseInt(assignmentId)), eq(clientServices.clientId, parseInt(clientId)), eq(clientServices.id, parseInt(serviceId))));
-        if (!existingAssignment) {
-            return res.status(404).json({ error: 'Developer assignment not found' });
-        }
-        // Update the employment type
-        const [updatedAssignment] = await db
-            .update(clientServiceDevelopers)
-            .set({
-            employmentType: employmentType
-        })
-            .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
-            .returning();
-        console.log('Employment type updated successfully');
-        res.json({ message: 'Employment type updated successfully', assignment: updatedAssignment });
-    }
-    catch (error) {
-        console.error('Error updating employment type:', error);
-        res.status(500).json({ error: 'Failed to update employment type' });
     }
 });
 export { router as servicesRouter };

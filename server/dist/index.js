@@ -11,6 +11,12 @@ import { adminRouter } from './routes/admin.js';
 import { clientRouter } from './routes/client.js';
 import { servicesRouter } from './routes/services.js';
 import { invoiceRouter } from './routes/invoice.js';
+import vacationRouter from './routes/vacation.js';
+import { documentsRouter } from './routes/documents.js';
+import { clientContactsRouter } from './routes/client-contacts.js';
+import usersRouter from './routes/users.js';
+import reimbursementsRouter from './routes/reimbursements.js';
+import roadmapRouter from './routes/roadmap.js';
 import { setupPassport } from './auth/passport.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,7 +39,7 @@ app.use(helmet({
     },
 }));
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:5173',
+    origin: process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173',
     credentials: true,
 }));
 // Rate limiting (disabled in development)
@@ -68,12 +74,26 @@ app.use(session({
 setupPassport(pool);
 app.use(passport.initialize());
 app.use(passport.session());
+// Global request logger to catch ALL incoming requests
+app.use((req, res, next) => {
+    console.log(`[INCOMING REQUEST] ${req.method} ${req.url}`);
+    console.log(`[INCOMING REQUEST] Headers:`, req.headers);
+    next();
+});
 // Routes
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/client', clientRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/invoices', invoiceRouter);
+app.use('/api/vacation', vacationRouter);
+app.use('/api/documents', documentsRouter);
+app.use('/api/client-contacts', clientContactsRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/reimbursements', reimbursementsRouter);
+app.use('/api/roadmap', roadmapRouter);
+// Serve uploaded files (with authentication check)
+app.use('/uploads', express.static('uploads'));
 // Health check
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

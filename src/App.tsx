@@ -1,9 +1,30 @@
 import { useState, useEffect } from 'react'
-import { Router, Route, Switch, Redirect } from 'wouter'
+import { Router, Route, Switch, useLocation } from 'wouter'
 import { LoginPage } from './pages/LoginPage'
 import { AdminLayout } from './components/AdminLayout'
 import { ClientLayout } from './components/ClientLayout'
+import { TeamMemberLayout } from './components/TeamMemberLayout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { api } from './lib/api'
+
+// Helper component for catch-all redirect
+function DefaultRedirect({ user }: { user: any }) {
+  const [, setLocation] = useLocation()
+
+  useEffect(() => {
+    const defaultPath = user.role === 'admin' ? '/admin/dashboard' :
+                        user.role === 'team_member' ? '/employee/dashboard' :
+                        '/client'
+    console.log('DefaultRedirect: user role:', user.role, 'redirecting to', defaultPath)
+    setLocation(defaultPath)
+  }, [user, setLocation])
+
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>
+  )
+}
 
 function App() {
   const [user, setUser] = useState<any>(null)
@@ -14,13 +35,28 @@ function App() {
       try {
         const currentUser = await api.getCurrentUser()
         setUser(currentUser)
+
+        // Redirect to appropriate dashboard based on role if on wrong route
+        if (currentUser) {
+          const path = window.location.pathname
+          if (path.startsWith('/admin') && currentUser.role !== 'admin') {
+            const newPath = currentUser.role === 'team_member' ? '/employee/dashboard' : '/client/dashboard'
+            window.location.href = newPath
+          } else if (path.startsWith('/employee') && currentUser.role !== 'team_member') {
+            const newPath = currentUser.role === 'admin' ? '/admin/dashboard' : '/client/dashboard'
+            window.location.href = newPath
+          } else if (path.startsWith('/client') && currentUser.role !== 'client') {
+            const newPath = currentUser.role === 'admin' ? '/admin/dashboard' : '/employee/dashboard'
+            window.location.href = newPath
+          }
+        }
       } catch (error) {
         setUser(null)
       } finally {
         setIsLoading(false)
       }
     }
-    
+
     checkAuth()
   }, [])
 
@@ -46,27 +82,25 @@ function App() {
     return <LoginPage onLogin={setUser} />
   }
 
-  return (
-    <Router>
-      <Switch>
-        <Route path="/admin/*">
-          {(params) => {
-            console.log('App.tsx - admin route matched with params:', params)
-            return user.role === 'admin' ? <AdminLayout user={user} /> : <div>Access denied</div>
-          }}
-        </Route>
-        <Route path="/client/:path*">
-          {user.role === 'client' ? <ClientLayout user={user} /> : <div>Access denied</div>}
-        </Route>
-        <Route>
-          {() => {
-            console.log('App.tsx - catch-all route triggered, redirecting to dashboard')
-            return <Redirect to={user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard'} />
-          }}
-        </Route>
-      </Switch>
-    </Router>
-  )
+  // Direct rendering based on path - bypassing wouter Router issues
+  if (user.role === 'admin' && window.location.pathname.startsWith('/admin')) {
+    return <AdminLayout user={user} />
+  }
+
+  if (user.role === 'client' && window.location.pathname.startsWith('/client')) {
+    return (
+      <ErrorBoundary>
+        <ClientLayout user={user} />
+      </ErrorBoundary>
+    )
+  }
+
+  if (user.role === 'team_member' && window.location.pathname.startsWith('/employee')) {
+    return <TeamMemberLayout user={user} />
+  }
+
+  // Default redirect based on role
+  return <DefaultRedirect user={user} />
 }
 
 export default App

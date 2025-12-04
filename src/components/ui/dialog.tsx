@@ -3,14 +3,22 @@ import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "./button"
 
-const Dialog = ({ 
-  open, 
-  onOpenChange, 
-  children 
-}: { 
+/**
+ * Dialog component with backdrop click-to-close functionality
+ *
+ * Pattern for all modals in the application:
+ * 1. Backdrop div should have onClick handler to close modal
+ * 2. Content div should have onClick={(e) => e.stopPropagation()} to prevent closing when clicking inside
+ * 3. Escape key should also close the modal
+ */
+const Dialog = ({
+  open,
+  onOpenChange,
+  children
+}: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  children: React.ReactNode 
+  children: React.ReactNode
 }) => {
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -36,11 +44,14 @@ const Dialog = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-50" 
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50"
         onClick={() => onOpenChange(false)}
       />
-      <div className="relative bg-white rounded-lg shadow-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        className="relative stripe-card rounded-lg max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>
@@ -89,7 +100,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
+    className={cn("text-lg font-semibold leading-none tracking-tight text-slate-900", className)}
     {...props}
   />
 ))
@@ -107,6 +118,31 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = "DialogDescription"
 
+const DialogTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    asChild?: boolean
+  }
+>(({ className, children, asChild = false, ...props }, ref) => {
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      ...props,
+      ref,
+    } as any)
+  }
+
+  return (
+    <Button
+      ref={ref}
+      className={className}
+      {...props}
+    >
+      {children}
+    </Button>
+  )
+})
+DialogTrigger.displayName = "DialogTrigger"
+
 export {
   Dialog,
   DialogContent,
@@ -114,4 +150,5 @@ export {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 }

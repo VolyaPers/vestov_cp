@@ -5,9 +5,12 @@ export const requireAuth = (req, res, next) => {
     res.status(401).json({ error: 'Authentication required' });
 };
 export const requireAdmin = (req, res, next) => {
+    console.log('[requireAdmin] URL:', req.url, 'User:', req.user);
     if (req.isAuthenticated() && req.user?.role === 'admin') {
+        console.log('[requireAdmin] Access granted');
         return next();
     }
+    console.log('[requireAdmin] Access denied');
     res.status(403).json({ error: 'Admin access required' });
 };
 export const requireClient = (req, res, next) => {

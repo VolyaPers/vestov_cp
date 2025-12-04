@@ -30,9 +30,12 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
 }
 
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  console.log('[requireAdmin] URL:', req.url, 'User:', req.user)
   if (req.isAuthenticated() && req.user?.role === 'admin') {
+    console.log('[requireAdmin] Access granted')
     return next()
   }
+  console.log('[requireAdmin] Access denied')
   res.status(403).json({ error: 'Admin access required' })
 }
 

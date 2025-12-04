@@ -3,7 +3,7 @@ import { Strategy as LocalStrategy } from 'passport-local';
 import bcrypt from 'bcryptjs';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq } from 'drizzle-orm';
-import { users, clients } from '../db/schema.js';
+import { users, teamMembers } from '../db/schema.js';
 export function setupPassport(pool) {
     const db = drizzle(pool);
     // Local Strategy
@@ -19,7 +19,7 @@ export function setupPassport(pool) {
                 role: users.role,
                 position: users.position,
                 avatarUrl: users.avatarUrl,
-                clientId: users.clientId,
+                isActive: users.isActive,
             })
                 .from(users)
                 .where(eq(users.username, username))
@@ -31,23 +31,13 @@ export function setupPassport(pool) {
             if (!isValidPassword) {
                 return done(null, false, { message: 'Invalid username or password' });
             }
-            // Get client info if user is associated with a client
-            let clientInfo = null;
-            if (user.clientId) {
-                const [client] = await db
-                    .select({
-                    id: clients.id,
-                    name: clients.name,
-                    industry: clients.industry,
-                })
-                    .from(clients)
-                    .where(eq(clients.id, user.clientId))
-                    .limit(1);
-                clientInfo = client;
+            // Check if user is active
+            if (!user.isActive) {
+                return done(null, false, { message: 'Account is deactivated' });
             }
             // Remove password from user object
             const { password: _, ...userWithoutPassword } = user;
-            return done(null, { ...userWithoutPassword, client: clientInfo });
+            return done(null, userWithoutPassword);
         }
         catch (error) {
             return done(error);
@@ -55,11 +45,20 @@ export function setupPassport(pool) {
     }));
     // Serialize user for session
     passport.serializeUser((user, done) => {
-        done(null, user.id);
+        // Store user data including impersonation fields
+        const sessionData = {
+            id: user.id,
+            originalUserId: user.originalUserId,
+            originalUsername: user.originalUsername,
+            originalEmail: user.originalEmail
+        };
+        done(null, sessionData);
     });
     // Deserialize user from session
-    passport.deserializeUser(async (id, done) => {
+    passport.deserializeUser(async (sessionData, done) => {
         try {
+            // If sessionData is just a number (old session format), convert it
+            const userId = typeof sessionData === 'number' ? sessionData : sessionData.id;
             const [user] = await db
                 .select({
                 id: users.id,
@@ -69,29 +68,51 @@ export function setupPassport(pool) {
                 role: users.role,
                 position: users.position,
                 avatarUrl: users.avatarUrl,
-                clientId: users.clientId,
+                teamMemberId: users.teamMemberId,
+                isActive: users.isActive,
             })
                 .from(users)
-                .where(eq(users.id, id))
+                .where(eq(users.id, userId))
                 .limit(1);
-            if (!user) {
+            if (!user || !user.isActive) {
                 return done(null, false);
             }
-            // Get client info if user is associated with a client
-            let clientInfo = null;
-            if (user.clientId) {
-                const [client] = await db
+            // If user is a team member, get avatar and other data from team_members table via foreign key
+            let avatarUrl = user.avatarUrl;
+            let teamMemberData = null;
+            if (user.role === 'team_member' && user.teamMemberId) {
+                const [teamMember] = await db
                     .select({
-                    id: clients.id,
-                    name: clients.name,
-                    industry: clients.industry,
+                    avatarUrl: teamMembers.avatarUrl,
+                    name: teamMembers.name,
+                    role: teamMembers.role,
                 })
-                    .from(clients)
-                    .where(eq(clients.id, user.clientId))
+                    .from(teamMembers)
+                    .where(eq(teamMembers.id, user.teamMemberId))
                     .limit(1);
-                clientInfo = client;
+                if (teamMember) {
+                    avatarUrl = teamMember.avatarUrl || user.avatarUrl;
+                    teamMemberData = teamMember;
+                }
             }
-            done(null, { ...user, client: clientInfo });
+            // Create user object with correct avatar
+            const userWithAvatar = {
+                ...user,
+                avatarUrl
+            };
+            // Restore impersonation fields if they exist
+            if (typeof sessionData === 'object' && sessionData.originalUserId) {
+                const userWithImpersonation = {
+                    ...userWithAvatar,
+                    originalUserId: sessionData.originalUserId,
+                    originalUsername: sessionData.originalUsername,
+                    originalEmail: sessionData.originalEmail
+                };
+                done(null, userWithImpersonation);
+            }
+            else {
+                done(null, userWithAvatar);
+            }
         }
         catch (error) {
             done(error);

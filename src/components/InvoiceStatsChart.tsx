@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -23,8 +23,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DollarSign, TrendingUp, FileText, AlertCircle, Eye, Edit, Save, X, Calculator, Plus, Users, Settings } from 'lucide-react'
+import { DollarSign, TrendingUp, FileText, AlertCircle, Eye, Edit, Save, X, Calculator, Plus, Users, Settings, Trash2, Calendar } from 'lucide-react'
 import { api } from '@/lib/api'
+import { getDatePreset, getPresetLabel, type DatePreset } from '@/lib/datePresets'
 
 interface InvoiceStatsChartProps {
   clientId: number
@@ -146,6 +147,8 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   
   // Form state for editing
   const [editForm, setEditForm] = useState({
@@ -165,6 +168,11 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
   const [developerRates, setDeveloperRates] = useState<{ [key: number]: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } }>({})
   const [serviceLevelPrices, setServiceLevelPrices] = useState<{ [key: number]: number }>({})
   const [calculatedTotal, setCalculatedTotal] = useState(0)
+
+  // Date range filter state
+  const [dateRangeStart, setDateRangeStart] = useState<string>('')
+  const [dateRangeEnd, setDateRangeEnd] = useState<string>('')
+  const [monthlyPaymentData, setMonthlyPaymentData] = useState<Array<{ month: string; paid: number }>>([])
 
   // Fetch client invoice totals
   const { data: invoiceTotals } = useQuery({
@@ -186,18 +194,36 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
   })
 
   useEffect(() => {
-    if (invoiceTotals && invoices) {
-      const totalInvoiced = invoiceTotals.totalInvoiced || 0
-      const totalPaid = invoiceTotals.totalPaid || 0
+    if (invoices) {
+      // Filter invoices by date range
+      let filteredInvoices = invoices
+
+      if (dateRangeStart) {
+        filteredInvoices = filteredInvoices.filter((inv: Invoice) => {
+          const invoiceDate = inv.paidAt || inv.invoiceDate
+          return invoiceDate && new Date(invoiceDate) >= new Date(dateRangeStart)
+        })
+      }
+      if (dateRangeEnd) {
+        filteredInvoices = filteredInvoices.filter((inv: Invoice) => {
+          const invoiceDate = inv.paidAt || inv.invoiceDate
+          return invoiceDate && new Date(invoiceDate) <= new Date(dateRangeEnd)
+        })
+      }
+
+      // Calculate totals from filtered invoices
+      const totalInvoiced = filteredInvoices.reduce((sum: number, inv: Invoice) => sum + parseFloat(inv.amount), 0)
+      const paidInvoices = filteredInvoices.filter((inv: Invoice) => inv.status === 'paid')
+      const totalPaid = paidInvoices.reduce((sum: number, inv: Invoice) => sum + parseFloat(inv.amount), 0)
       const totalOutstanding = totalInvoiced - totalPaid
-      const invoiceCount = invoices.length
-      const paidInvoiceCount = invoices.filter((inv: any) => inv.status === 'paid').length
-      
+      const invoiceCount = filteredInvoices.length
+      const paidInvoiceCount = paidInvoices.length
+
       // Calculate overdue invoices
       const today = new Date()
-      const overdue = invoices
-        .filter((inv: any) => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today)
-        .reduce((sum: number, inv: any) => sum + (inv.amount || 0), 0)
+      const overdue = filteredInvoices
+        .filter((inv: Invoice) => inv.status !== 'paid' && inv.dueDate && new Date(inv.dueDate) < today)
+        .reduce((sum: number, inv: Invoice) => sum + parseFloat(inv.amount), 0)
 
       setStats({
         totalInvoiced,
@@ -208,7 +234,56 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
         overdue
       })
     }
-  }, [invoiceTotals, invoices])
+  }, [invoices, dateRangeStart, dateRangeEnd])
+
+  // Calculate monthly payment data
+  useEffect(() => {
+    if (!invoices || invoices.length === 0) {
+      setMonthlyPaymentData([])
+      return
+    }
+
+    // Filter paid invoices
+    let paidInvoices = invoices.filter((inv: Invoice) => inv.status === 'paid' && inv.paidAt)
+
+    // Apply date range filter if set
+    if (dateRangeStart) {
+      paidInvoices = paidInvoices.filter((inv: Invoice) =>
+        inv.paidAt && new Date(inv.paidAt) >= new Date(dateRangeStart)
+      )
+    }
+    if (dateRangeEnd) {
+      paidInvoices = paidInvoices.filter((inv: Invoice) =>
+        inv.paidAt && new Date(inv.paidAt) <= new Date(dateRangeEnd)
+      )
+    }
+
+    // Group by month
+    const monthlyData: { [key: string]: number } = {}
+    paidInvoices.forEach((inv: Invoice) => {
+      if (inv.paidAt) {
+        const date = new Date(inv.paidAt)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+
+        if (!monthlyData[monthLabel]) {
+          monthlyData[monthLabel] = 0
+        }
+        monthlyData[monthLabel] += parseFloat(inv.amount)
+      }
+    })
+
+    // Convert to array and sort by date
+    const sortedData = Object.entries(monthlyData)
+      .map(([month, paid]) => ({ month, paid }))
+      .sort((a, b) => {
+        const dateA = new Date(a.month)
+        const dateB = new Date(b.month)
+        return dateA.getTime() - dateB.getTime()
+      })
+
+    setMonthlyPaymentData(sortedData)
+  }, [invoices, dateRangeStart, dateRangeEnd])
 
   const pieData = [
     { name: 'Paid', value: stats.totalPaid, color: '#10b981' },
@@ -356,6 +431,27 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
     }
   }
 
+  // Handle invoice deletion
+  const handleDeleteInvoice = async () => {
+    if (!deleteConfirmId) return
+
+    setIsDeleting(true)
+    try {
+      await api.deleteInvoice(deleteConfirmId)
+
+      // Refresh data
+      queryClient.invalidateQueries({ queryKey: ['client-invoice-totals', clientId] })
+      queryClient.invalidateQueries({ queryKey: ['client-invoices', clientId] })
+      
+      // Close dialog
+      setDeleteConfirmId(null)
+      setIsDeleting(false)
+    } catch (error) {
+      console.error('Failed to delete invoice:', error)
+      setIsDeleting(false)
+    }
+  }
+
   // Format date for input fields
   const formatDateForInput = (dateString: string) => {
     return dateString ? new Date(dateString).toISOString().split('T')[0] : ''
@@ -385,6 +481,116 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
               <CardDescription>Financial overview and payment status</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Date Range Filter */}
+              <div className="mb-6 pb-4 border-b">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <h4 className="text-base font-medium text-gray-700">Filter by Date Range</h4>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Date Presets */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {(['thisMonth', 'lastMonth', 'thisYear', 'lastYear', 'allTime'] as DatePreset[]).map((preset) => (
+                        <Button
+                          key={preset}
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => {
+                            const range = getDatePreset(preset)
+                            setDateRangeStart(range.startDate)
+                            setDateRangeEnd(range.endDate)
+                          }}
+                        >
+                          {getPresetLabel(preset)}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-gray-500" />
+                      <Label htmlFor="dateRangeStart" className="text-sm text-gray-600">From:</Label>
+                      <Input
+                        id="dateRangeStart"
+                        type="date"
+                        value={dateRangeStart}
+                        onChange={(e) => setDateRangeStart(e.target.value)}
+                        className="w-40 h-8 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="dateRangeEnd" className="text-sm text-gray-600">To:</Label>
+                      <Input
+                        id="dateRangeEnd"
+                        type="date"
+                        value={dateRangeEnd}
+                        onChange={(e) => setDateRangeEnd(e.target.value)}
+                        className="w-40 h-8 text-sm"
+                      />
+                    </div>
+                    {(dateRangeStart || dateRangeEnd) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setDateRangeStart('')
+                          setDateRangeEnd('')
+                        }}
+                      >
+                        Clear Filter
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Paid Invoices Over Time Chart */}
+              <div className="mb-8">
+                <h4 className="text-lg font-medium flex items-center gap-2 mb-4">
+                  <TrendingUp className="h-5 w-5 text-green-600" />
+                  Paid Invoices Over Time
+                </h4>
+                {monthlyPaymentData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={monthlyPaymentData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="month"
+                        tick={{ fontSize: 12 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                      />
+                      <YAxis
+                        tickFormatter={formatCurrency}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => formatCurrency(value)}
+                        labelFormatter={(label) => `Month: ${label}`}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="paid"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        name="Paid Amount"
+                        dot={{ fill: '#10b981', r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[300px] text-gray-500 border rounded-lg">
+                    <div className="text-center">
+                      <TrendingUp className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+                      <h3 className="text-lg font-medium mb-2">No Payment Data</h3>
+                      <p className="text-sm">No paid invoices found in the selected date range.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Statistics Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="flex items-center p-3 bg-blue-50 rounded-lg">
                   <FileText className="h-8 w-8 text-blue-600 mr-3" />
@@ -556,6 +762,15 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
                           >
                             <Edit className="h-3 w-3 mr-1" />
                             Edit
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-7 text-xs text-red-600 hover:text-red-700"
+                            onClick={() => setDeleteConfirmId(invoice.id)}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Delete
                           </Button>
                         </div>
                       </div>
@@ -947,6 +1162,39 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Confirm Invoice Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this invoice? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex items-center justify-end gap-3 pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setDeleteConfirmId(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleDeleteInvoice}
+              disabled={isDeleting}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {isDeleting ? 'Deleting...' : 'Delete Invoice'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

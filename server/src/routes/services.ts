@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { Pool } from 'pg'
 import { eq, desc, and, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { serviceTypes, clientServices, clients, teamMembers, users, developers, clientServiceDevelopers } from '../db/schema.js'
+import { serviceTypes, clientServices, clients, teamMembers, users, developers, clientServiceDevelopers, clientUsers } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -312,30 +312,72 @@ router.get('/clients/analytics', requireAuth, async (req, res) => {
   }
 })
 
+// Rate limiting for infinite loop protection
+const lastRequestTimes = new Map()
+
 // Get all clients with their service assignments
 router.get('/clients', requireAuth, async (req, res) => {
   try {
-    console.log('Fetching clients for user:', req.user?.username)
-    
-    // Get clients with their basic info
-    const clientsWithServices = await db
-      .select({
-        id: clients.id,
-        name: clients.name,
-        industry: clients.industry,
-        contactEmail: clients.email,
-        contactPhone: clients.phone,
-        address: clients.address,
-        contractType: clients.contractType,
-        contractStartDate: clients.contractStart,
-        contractEndDate: clients.contractEnd,
-        billingCycle: clients.billingCycle,
-        status: clients.status,
-        teamSize: clients.teamSize,
-        createdAt: clients.createdAt,
-      })
-      .from(clients)
-      .orderBy(desc(clients.createdAt))
+    console.log('Fetching clients for user:', req.user?.username, 'role:', req.user?.role)
+
+    let clientsWithServices;
+
+    if (req.user?.role === 'admin' || req.user?.role === 'team_member') {
+      // Admin and team members can see all clients
+      clientsWithServices = await db
+        .select({
+          id: clients.id,
+          name: clients.name,
+          industry: clients.industry,
+          contactEmail: clients.email,
+          contactPhone: clients.phone,
+          address: clients.address,
+          contractType: clients.contractType,
+          contractStartDate: clients.contractStart,
+          contractEndDate: clients.contractEnd,
+          billingCycle: clients.billingCycle,
+          status: clients.status,
+          teamSize: clients.teamSize,
+          logoUrl: clients.logoUrl,
+          createdAt: clients.createdAt,
+        })
+        .from(clients)
+        .orderBy(desc(clients.createdAt))
+    } else if (req.user?.role === 'client') {
+      // Client users can only see clients they are assigned to
+      console.log('[GET /clients] Client user query - userId:', req.user.id, 'email:', req.user.email)
+
+      clientsWithServices = await db
+        .select({
+          id: clients.id,
+          name: clients.name,
+          industry: clients.industry,
+          contactEmail: clients.email,
+          contactPhone: clients.phone,
+          address: clients.address,
+          contractType: clients.contractType,
+          contractStartDate: clients.contractStart,
+          contractEndDate: clients.contractEnd,
+          billingCycle: clients.billingCycle,
+          status: clients.status,
+          teamSize: clients.teamSize,
+          logoUrl: clients.logoUrl,
+          createdAt: clients.createdAt,
+        })
+        .from(clients)
+        .innerJoin(clientUsers, eq(clients.id, clientUsers.clientId))
+        .where(and(
+          eq(clientUsers.userId, req.user.id),
+          eq(clientUsers.isActive, true)
+        ))
+        .orderBy(desc(clients.createdAt))
+
+      console.log('[GET /clients] Found', clientsWithServices.length, 'clients for user:', req.user.email)
+    } else {
+      // Unknown role, no access
+      console.log('[GET /clients] Unknown role or access denied:', req.user?.role)
+      return res.status(403).json({ error: 'Access denied' })
+    }
 
     // Get service assignments for each client
     const clientsWithServiceData = await Promise.all(
@@ -357,8 +399,32 @@ router.get('/clients', requireAuth, async (req, res) => {
           .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
           .where(eq(clientServices.clientId, client.id))
 
+        // Calculate if client is active based on services
+        // Active = has at least one service where endDate is NULL or >= today
+        const today = new Date()
+        today.setHours(0, 0, 0, 0) // Set to start of day for comparison
+
+        const hasActiveService = services.some(service => {
+          if (!service.endDate) {
+            // No end date means ongoing service
+            return true
+          }
+          const endDate = new Date(service.endDate)
+          endDate.setHours(0, 0, 0, 0)
+          // Service is active if end date is today or later
+          return endDate >= today
+        })
+
+        // Determine client status based on services
+        const calculatedStatus = services.length === 0
+          ? 'inactive'  // No services = inactive
+          : hasActiveService
+            ? 'active'    // Has active services = active
+            : 'inactive'  // All services expired = inactive
+
         return {
           ...client,
+          status: calculatedStatus, // Override status with calculated value
           services,
           activeServicesCount: services.filter(s => s.isActive).length,
           totalMonthlyRevenue: services
@@ -388,6 +454,24 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid client ID format' })
     }
     
+    // Check if user has access to this client
+    if (req.user?.role === 'client') {
+      // Client users can only access clients they are assigned to
+      const clientAccess = await db
+        .select()
+        .from(clientUsers)
+        .where(and(
+          eq(clientUsers.userId, req.user.id),
+          eq(clientUsers.clientId, clientId),
+          eq(clientUsers.isActive, true)
+        ))
+        .limit(1)
+
+      if (clientAccess.length === 0) {
+        return res.status(403).json({ error: 'Access denied to this client' })
+      }
+    }
+
     const [client] = await db
       .select()
       .from(clients)
@@ -418,8 +502,28 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
       .where(eq(clientServices.clientId, clientId))
       .orderBy(desc(clientServices.createdAt))
 
+    // Calculate if client is active based on services
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const hasActiveService = services.some(service => {
+      if (!service.endDate) {
+        return true // Ongoing service
+      }
+      const endDate = new Date(service.endDate)
+      endDate.setHours(0, 0, 0, 0)
+      return endDate >= today // Active if end date is today or later
+    })
+
+    const calculatedStatus = services.length === 0
+      ? 'inactive'
+      : hasActiveService
+        ? 'active'
+        : 'inactive'
+
     res.json({
       ...client,
+      status: calculatedStatus, // Override status with calculated value
       services,
     })
   } catch (error) {
@@ -644,6 +748,7 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
         skills: developers.skills,
         hourlyRate: clientServiceDevelopers.hourlyRate,
         fixedPrice: clientServiceDevelopers.fixedPrice,
+        workSchedule: clientServiceDevelopers.workSchedule,
         employmentType: clientServiceDevelopers.employmentType,
         isActive: clientServiceDevelopers.isActive,
         startDate: clientServiceDevelopers.startDate,
@@ -753,6 +858,36 @@ router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId',
   } catch (error) {
     console.error('Error removing developer assignment:', error)
     res.status(500).json({ error: 'Failed to remove developer assignment' })
+  }
+})
+
+// Update developer pricing and schedule for a service assignment
+router.patch('/clients/:clientId/services/:serviceId/developers/:assignmentId', requireAuth, async (req, res) => {
+  try {
+    const { clientId, serviceId, assignmentId } = req.params
+    const { hourlyRate, fixedPrice, workSchedule } = req.body
+    console.log(`Updating developer assignment ${assignmentId}`)
+
+    const updateData: any = {}
+    if (hourlyRate !== undefined) updateData.hourlyRate = hourlyRate ? parseFloat(hourlyRate) : null
+    if (fixedPrice !== undefined) updateData.fixedPrice = fixedPrice ? parseFloat(fixedPrice) : null
+    if (workSchedule !== undefined) updateData.workSchedule = workSchedule
+
+    const [updatedAssignment] = await db
+      .update(clientServiceDevelopers)
+      .set(updateData)
+      .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+      .returning()
+
+    if (!updatedAssignment) {
+      return res.status(404).json({ error: 'Developer assignment not found' })
+    }
+
+    console.log('Developer assignment updated successfully')
+    res.json({ message: 'Developer assignment updated successfully', assignment: updatedAssignment })
+  } catch (error) {
+    console.error('Error updating developer assignment:', error)
+    res.status(500).json({ error: 'Failed to update developer assignment' })
   }
 })
 

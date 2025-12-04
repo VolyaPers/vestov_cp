@@ -1,0 +1,107 @@
+<svg width="1500" height="800" viewBox="0 0 1500 800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Градиенты для фона -->
+    <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF8A65;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#F48FB1;stop-opacity:1" />
+      <stop offset="70%" style="stop-color:#9C27B0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#673AB7;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Фильтры для эффекта матового стекла -->
+    <filter id="frostedGlass1" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3"/>
+      <feColorMatrix type="saturate" values="1.2"/>
+      <feComponentTransfer>
+        <feFuncA type="discrete" tableValues="0.7"/>
+      </feComponentTransfer>
+    </filter>
+
+    <filter id="frostedGlass2" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+      <feColorMatrix type="saturate" values="1.1"/>
+      <feComponentTransfer>
+        <feFuncA type="discrete" tableValues="0.6"/>
+      </feComponentTransfer>
+    </filter>
+
+    <filter id="frostedGlass3" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5"/>
+      <feColorMatrix type="saturate" values="1.3"/>
+      <feComponentTransfer>
+        <feFuncA type="discrete" tableValues="0.5"/>
+      </feComponentTransfer>
+    </filter>
+
+    <!-- Градиенты для волн с эффектом стекла -->
+    <linearGradient id="wave1Gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.3);stop-opacity:1" />
+      <stop offset="50%" style="stop-color:rgba(255,138,101,0.4);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:rgba(244,143,177,0.3);stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="wave2Gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.2);stop-opacity:1" />
+      <stop offset="50%" style="stop-color:rgba(156,39,176,0.4);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:rgba(103,58,183,0.3);stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="wave3Gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(0,188,212,0.5);stop-opacity:1" />
+      <stop offset="50%" style="stop-color:rgba(255,255,255,0.2);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:rgba(63,81,181,0.4);stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Фоновый градиент -->
+  <rect width="100%" height="100%" fill="url(#backgroundGradient)"/>
+
+  <!-- Первая волна (верхняя оранжево-розовая) -->
+  <path d="M0,0 
+           Q200,150 400,120 
+           T800,100 
+           Q1000,80 1200,120 
+           T1500,100 
+           L1500,0 
+           Z" 
+        fill="url(#wave1Gradient)" 
+        filter="url(#frostedGlass1)"
+        opacity="0.8"/>
+
+  <!-- Вторая волна (средняя фиолетовая) -->
+  <path d="M0,300 
+           Q300,200 600,250 
+           T1200,200 
+           Q1350,180 1500,220 
+           L1500,0 
+           L0,0 
+           Z" 
+        fill="url(#wave2Gradient)" 
+        filter="url(#frostedGlass2)"
+        opacity="0.7"/>
+
+  <!-- Третья волна (нижняя голубая) -->
+  <path d="M0,500 
+           Q250,400 500,450 
+           T1000,420 
+           Q1250,400 1500,440 
+           L1500,0 
+           L0,0 
+           Z" 
+        fill="url(#wave3Gradient)" 
+        filter="url(#frostedGlass3)"
+        opacity="0.6"/>
+
+  <!-- Дополнительные элементы для усиления эффекта стекла -->
+  <!-- Блики на волнах -->
+  <ellipse cx="300" cy="80" rx="150" ry="30" fill="rgba(255,255,255,0.3)" filter="url(#frostedGlass1)" opacity="0.6"/>
+  <ellipse cx="800" cy="180" rx="200" ry="40" fill="rgba(255,255,255,0.2)" filter="url(#frostedGlass2)" opacity="0.5"/>
+  <ellipse cx="1200" cy="350" rx="180" ry="35" fill="rgba(255,255,255,0.25)" filter="url(#frostedGlass3)" opacity="0.4"/>
+
+  <!-- Дополнительные мелкие блики -->
+  <circle cx="150" cy="60" r="20" fill="rgba(255,255,255,0.4)" filter="url(#frostedGlass1)"/>
+  <circle cx="650" cy="160" r="25" fill="rgba(255,255,255,0.3)" filter="url(#frostedGlass2)"/>
+  <circle cx="1050" cy="320" r="30" fill="rgba(255,255,255,0.35)" filter="url(#frostedGlass3)"/>
+</svg>
+
+

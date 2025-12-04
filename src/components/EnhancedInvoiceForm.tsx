@@ -167,7 +167,7 @@ export function EnhancedInvoiceForm({
 
   // Create invoice mutation
   const createInvoiceMutation = useMutation({
-    mutationFn: api.createInvoice,
+    mutationFn: (data: any) => api.createInvoice(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices', 'client', clientId] })
       handleClose()

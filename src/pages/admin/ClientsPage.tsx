@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api } from '@/lib/api'
 
 interface Client {
@@ -34,6 +35,7 @@ interface Client {
   contractType?: 'outstaffing' | 'outsourcing' | 'hybrid'
   teamSize?: number
   budget?: number
+  logoUrl?: string
   createdAt: string
   services: Array<{
     id: number
@@ -75,9 +77,11 @@ interface ServiceType {
   baseRate?: number
 }
 
+
 export function ClientsPage() {
   const [, setLocation] = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
+  const [activeTab, setActiveTab] = useState<'active' | 'all'>('active')
   const [clients, setClients] = useState<Client[]>([])
   const [analytics, setAnalytics] = useState<ClientAnalytics | null>(null)
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
@@ -136,24 +140,9 @@ export function ClientsPage() {
             console.log('Fetching invoice totals for client:', client.id)
             const invoiceTotals = await api.getClientInvoiceTotals(client.id)
             console.log('Invoice totals for client', client.id, ':', invoiceTotals)
-            
-            // Get service totals for this client
-            console.log('Fetching service totals for client:', client.id)
-            const serviceTotals = await api.getClientServiceTotals(client.id)
-            console.log('Service totals for client', client.id, ':', serviceTotals)
-            
-            // Map service totals to services
-            const servicesWithTotals = client.services.map(service => {
-              const serviceTotal = serviceTotals.find((st: any) => st.serviceId === service.id)
-              return {
-                ...service,
-                totalAmount: serviceTotal ? serviceTotal.totalAmount : 0
-              }
-            })
-            
+
             return {
               ...client,
-              services: servicesWithTotals,
               invoiceTotals
             }
           } catch (error) {
@@ -220,6 +209,7 @@ export function ClientsPage() {
       console.error('Failed to load service types:', error)
     }
   }
+
 
   const handleRemoveService = async (clientId: number, serviceId: number, permanent: boolean = false) => {
     const message = permanent 
@@ -362,12 +352,18 @@ export function ClientsPage() {
     setEditingServiceData(null)
   }
 
-  const filteredClients = clients.filter(client => 
-    !searchTerm || 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.industry?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.contactEmail?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredClients = clients.filter(client => {
+    // Filter by tab (active/all)
+    const matchesTab = activeTab === 'all' || client.status === 'active'
+
+    // Filter by search term
+    const matchesSearch = !searchTerm ||
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.industry?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.contactEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    return matchesTab && matchesSearch
+  })
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -392,148 +388,222 @@ export function ClientsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Client Management</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage client relationships and service assignments
-          </p>
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Clients
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              Manage client relationships and service assignments
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="stripe-badge-neutral">
+              <Building className="h-4 w-4 mr-2" />
+              {analytics?.activeClients || 0} Active Clients
+            </div>
+            <button
+              onClick={() => setIsClientDialogOpen(true)}
+              className="stripe-btn-primary"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Client
+            </button>
+          </div>
         </div>
-        <Button onClick={() => setIsClientDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Client
-        </Button>
       </div>
 
-      {/* Analytics Cards */}
+      {/* Analytics Cards - Stripe style */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
-            <Building className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{analytics?.totalClients || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              All registered clients
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Clients</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{analytics?.activeClients || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              With active services
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${analytics?.totalRevenue?.toLocaleString() || 0}
+        <div className="stripe-card-hover p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+              <Building className="h-6 w-6 stripe-text-muted" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Monthly recurring revenue
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Revenue/Client</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${analytics?.activeClients 
-                ? Math.round((analytics.totalRevenue || 0) / analytics.activeClients).toLocaleString()
-                : 0}
+            <div className="text-right">
+              <div className="text-3xl font-bold stripe-text-primary">{analytics?.totalClients || 0}</div>
+              <div className="text-sm stripe-text-secondary">Total Clients</div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Per active client
-            </p>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="text-sm stripe-text-muted">All registered clients</div>
+        </div>
+
+        <div className="stripe-card-hover p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+              <Users className="h-6 w-6 stripe-text-muted" />
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold stripe-text-primary">{analytics?.activeClients || 0}</div>
+              <div className="text-sm stripe-text-secondary">Active Clients</div>
+            </div>
+          </div>
+          <div className="text-sm stripe-text-muted">With active services</div>
+        </div>
+
+        <div className="stripe-card-hover p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+              <DollarSign className="h-6 w-6 stripe-text-muted" />
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold stripe-text-primary">
+                ${analytics?.totalRevenue?.toLocaleString() || 0}
+              </div>
+              <div className="text-sm stripe-text-secondary">Total Revenue</div>
+            </div>
+          </div>
+          <div className="text-sm stripe-text-muted">Monthly recurring revenue</div>
+        </div>
+
+        <div className="stripe-card-hover p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+              <TrendingUp className="h-6 w-6 stripe-text-muted" />
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold stripe-text-primary">
+                ${analytics?.activeClients
+                  ? Math.round((analytics.totalRevenue || 0) / analytics.activeClients).toLocaleString()
+                  : 0}
+              </div>
+              <div className="text-sm stripe-text-secondary">Avg Revenue</div>
+            </div>
+          </div>
+          <div className="text-sm stripe-text-muted">Per active client</div>
+        </div>
       </div>
 
-      {/* Search */}
+      {/* Search and Tabs */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 stripe-text-muted h-4 w-4" />
+          <input
             placeholder="Search clients..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+            className="stripe-input pl-10 w-full"
           />
         </div>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'active' | 'all')} className="w-auto">
+          <TabsList className="bg-gradient-to-r from-gray-50 to-gray-100">
+            <TabsTrigger value="active" className="data-[state=active]:bg-white data-[state=active]:shadow-md">
+              Active
+            </TabsTrigger>
+            <TabsTrigger value="all" className="data-[state=active]:bg-white data-[state=active]:shadow-md">
+              All
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Clients Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Client Portfolio</CardTitle>
-          <CardDescription>
-            Overview of all clients and their service assignments
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+      {/* Clients Portfolio */}
+      <div className="stripe-card">
+        <div className="stripe-table-header">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold stripe-text-primary">Client Portfolio</h3>
+              <p className="stripe-text-secondary mt-1">Overview of all clients and their service assignments</p>
+            </div>
+            <div className="flex items-center gap-2 text-sm stripe-text-muted">
+              <Users className="h-4 w-4" />
+              {filteredClients.length} clients
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6">
+          <div className="space-y-6">
             {filteredClients.map((client) => (
-              <div key={client.id} className="border rounded-lg p-4">
-                <div className="flex items-start justify-between mb-3">
+              <div key={client.id} className="group relative stripe-card rounded-lg p-6 hover:shadow-md transition-all duration-150">
+                <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="font-semibold text-lg">{client.name}</h3>
-                      <Badge className={getStatusColor(client.status)}>
-                        {client.status}
-                      </Badge>
-                      {client.contractType && (
-                        <Badge variant="outline" className="capitalize">
-                          {client.contractType}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
-                      {client.industry && <span>Industry: {client.industry}</span>}
-                      {client.contactEmail && <span>Email: {client.contactEmail}</span>}
-                      {client.teamSize && <span>Team Size: {client.teamSize}</span>}
-                      <span>Since: {new Date(client.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    {client.invoiceTotals && (
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-3">
-                        <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded">
-                          <DollarSign className="h-4 w-4 text-blue-600" />
-                          <span className="text-blue-700">
-                            Total Invoiced: <span className="font-semibold">${client.invoiceTotals.totalInvoiced.toLocaleString()}</span>
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-green-50 px-3 py-2 rounded">
-                          <TrendingUp className="h-4 w-4 text-green-600" />
-                          <span className="text-green-700">
-                            Total Paid: <span className="font-semibold">${client.invoiceTotals.totalPaid.toLocaleString()}</span>
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-orange-50 px-3 py-2 rounded">
-                          <Calendar className="h-4 w-4 text-orange-600" />
-                          <span className="text-orange-700">
-                            Outstanding: <span className="font-semibold">${(client.invoiceTotals.totalInvoiced - client.invoiceTotals.totalPaid).toLocaleString()}</span>
-                          </span>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-white text-gray-700 shadow-sm overflow-hidden border border-gray-200">
+                        {client.logoUrl ? (
+                          <img
+                            src={client.logoUrl}
+                            alt={client.name}
+                            className="h-full w-full object-contain p-1"
+                          />
+                        ) : (
+                          <Building className="h-6 w-6" />
+                        )}
+                      </div>
+                      <div>
+                        <h3
+                          className="text-xl font-bold text-gray-900 hover:text-blue-600 cursor-pointer transition-colors duration-200"
+                          onClick={() => setLocation(`/admin/clients/${client.id}`)}
+                        >
+                          {client.name}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className={`${getStatusColor(client.status)} rounded-full px-3 py-1`}>
+                            {client.status}
+                          </Badge>
+                          {client.contractType && (
+                            <Badge variant="outline" className="capitalize rounded-full px-3 py-1 border-gray-300">
+                              {client.contractType}
+                            </Badge>
+                          )}
                         </div>
                       </div>
-                    )}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      {client.industry && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span>Industry: <span className="font-medium">{client.industry}</span></span>
+                        </div>
+                      )}
+                      {client.contactEmail && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>Email: <span className="font-medium">{client.contactEmail}</span></span>
+                        </div>
+                      )}
+                      {(() => {
+                        // Calculate total developers from all active services accounting for workload percentage
+                        const totalDevelopers = client.services
+                          .filter(s => s.isActive)
+                          .reduce((sum, service) => {
+                            const serviceDev = serviceDevelopers[service.id] || []
+                            // Sum up workload percentages (e.g., 2 full-time = 2.0, 1 part-time 50% = 0.5)
+                            const serviceWorkload = serviceDev.reduce((devSum: number, dev: any) => {
+                              const workload = dev.workloadPercentage ? parseFloat(dev.workloadPercentage) / 100 : 1.0
+                              return devSum + workload
+                            }, 0)
+                            return sum + serviceWorkload
+                          }, 0)
+
+                        return totalDevelopers > 0 && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            <span>Team: <span className="font-medium">{totalDevelopers % 1 === 0 ? totalDevelopers : totalDevelopers.toFixed(1)} {totalDevelopers === 1 ? 'developer' : 'developers'}</span></span>
+                          </div>
+                        )
+                      })()}
+                      <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                        <span>Since: <span className="font-medium">{new Date(client.createdAt).toLocaleDateString()}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+                        <DollarSign className="h-4 w-4 text-blue-600" />
+                        <span>Invoiced: <span className="font-bold text-blue-900">${(client.invoiceTotals?.totalInvoiced || 0).toLocaleString()}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                        <TrendingUp className="h-4 w-4 text-green-600" />
+                        <span>Paid: <span className="font-bold text-green-900">${(client.invoiceTotals?.totalPaid || 0).toLocaleString()}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                        <Calendar className="h-4 w-4 text-amber-600" />
+                        <span>Outstanding: <span className="font-bold text-amber-900">${((client.invoiceTotals?.totalInvoiced || 0) - (client.invoiceTotals?.totalPaid || 0)).toLocaleString()}</span></span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                     <Button
                       variant="outline"
                       size="sm"
@@ -541,9 +611,34 @@ export function ClientsPage() {
                         console.log('Navigating to client:', client.id, 'URL:', `/admin/clients/${client.id}`)
                         setLocation(`/admin/clients/${client.id}`)
                       }}
+                      className="rounded-xl border-gray-300 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
                     >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Details
+                      <Eye className="h-4 w-4 mr-2" />
+                      View Details
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to delete ${client.name}?\n\nThis action cannot be undone and will also delete:\n- All service assignments\n- All invoices\n- All documents\n- All related data\n\nType the client name to confirm.`)) {
+                          const confirmation = window.prompt(`Type "${client.name}" to confirm deletion:`)
+                          if (confirmation === client.name) {
+                            try {
+                              await api.request(`/admin/clients/${client.id}`, { method: 'DELETE' })
+                              // Refresh the clients list
+                              loadClients()
+                            } catch (error: any) {
+                              alert(error.message || 'Failed to delete client')
+                            }
+                          } else if (confirmation !== null) {
+                            alert('Client name did not match. Deletion cancelled.')
+                          }
+                        }
+                      }}
+                      className="rounded-xl border-red-300 text-red-600 hover:border-red-400 hover:bg-red-50 transition-all duration-200"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
                     </Button>
                   </div>
                 </div>
@@ -683,8 +778,8 @@ export function ClientsPage() {
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Add Service Dialog */}
       <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
@@ -741,8 +836,8 @@ export function ClientsPage() {
           </div>
           
           <DialogFooter>
-            <Button
-              variant="outline"
+            <button
+              className="stripe-btn-secondary"
               onClick={() => {
                 setIsServiceDialogOpen(false)
                 setSelectedClient(null)
@@ -750,10 +845,10 @@ export function ClientsPage() {
               }}
             >
               Cancel
-            </Button>
-            <Button onClick={handleAddService}>
+            </button>
+            <button className="stripe-btn-primary" onClick={handleAddService}>
               Add Service
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -902,18 +997,18 @@ export function ClientsPage() {
           </div>
           
           <DialogFooter>
-            <Button
-              variant="outline"
+            <button
+              className="stripe-btn-secondary"
               onClick={() => {
                 setIsClientDialogOpen(false)
                 resetClientForm()
               }}
             >
               Cancel
-            </Button>
-            <Button onClick={handleCreateClient}>
+            </button>
+            <button className="stripe-btn-primary" onClick={handleCreateClient}>
               Create Client
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1011,18 +1106,18 @@ export function ClientsPage() {
           )}
           
           <DialogFooter>
-            <Button
-              variant="outline"
+            <button
+              className="stripe-btn-secondary"
               onClick={() => {
                 setIsEditServiceDialogOpen(false)
                 resetEditServiceForm()
               }}
             >
               Cancel
-            </Button>
-            <Button onClick={handleUpdateService}>
+            </button>
+            <button className="stripe-btn-primary" onClick={handleUpdateService}>
               Update Service
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

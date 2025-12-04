@@ -2,7 +2,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { db } from './db/index.js';
 async function main() {
     console.log('Running migrations...');
-    await migrate(db, { migrationsFolder: './drizzle' });
+    await migrate(db, { migrationsFolder: './server/drizzle' });
     console.log('Migrations completed!');
     process.exit(0);
 }
