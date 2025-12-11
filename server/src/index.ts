@@ -45,10 +45,13 @@ app.use(helmet({
 }))
 
 // CORS configuration
-const corsOrigin = process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
+const corsOrigin = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Type'],
 }))
 
 // Rate limiting (disabled in development)

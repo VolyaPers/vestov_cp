@@ -1,5 +1,9 @@
 // Use environment variable in production, fallback to /api for development
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+// Ensure API_BASE ends with /api when using external URL
+const envApiUrl = import.meta.env.VITE_API_URL
+const API_BASE = envApiUrl 
+  ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
+  : '/api'
 
 class ApiClient {
   request = async (endpoint: string, options: RequestInit = {}) => {
