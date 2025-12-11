@@ -1,4 +1,5 @@
-const API_BASE = '/api'
+// Use environment variable in production, fallback to /api for development
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 class ApiClient {
   private request = async (endpoint: string, options: RequestInit = {}) => {

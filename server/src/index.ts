@@ -44,8 +44,10 @@ app.use(helmet({
   },
 }))
 
+// CORS configuration
+const corsOrigin = process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173',
+  origin: corsOrigin,
   credentials: true,
 }))
 
@@ -73,10 +75,10 @@ app.use(session({
   saveUninitialized: false,
   name: 'vestov.sid',
   cookie: {
-    secure: false, // Set to false for development
+    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-site in production
   },
 }))
 
