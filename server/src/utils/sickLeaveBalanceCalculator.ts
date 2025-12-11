@@ -1,5 +1,5 @@
-import { db } from '../db'
-import { employmentCycles, leaveBalances, leaveRequests, leaveTypes } from '../db/schema'
+import { db } from '../db/index.js'
+import { employmentCycles, leaveBalances, leaveRequests, leaveTypes } from '../db/schema.js'
 import { eq, and, gte, lte, sql } from 'drizzle-orm'
 
 export interface SickLeaveBalance {

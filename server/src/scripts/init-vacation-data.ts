@@ -1,5 +1,5 @@
-import { db } from '../db'
-import { leaveTypes, employmentCycles, leaveBalances, teamMembers } from '../db/schema'
+import { db } from '../db/index.js'
+import { leaveTypes, employmentCycles, leaveBalances, teamMembers } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 
 async function initVacationData() {

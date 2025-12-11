@@ -1,5 +1,5 @@
-import { db } from '../db'
-import { employmentCycles } from '../db/schema'
+import { db } from '../db/index.js'
+import { employmentCycles } from '../db/schema.js'
 import { eq, isNull } from 'drizzle-orm'
 
 /**

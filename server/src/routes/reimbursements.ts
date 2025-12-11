@@ -1,6 +1,6 @@
 import express from 'express'
-import { db } from '../db'
-import { reimbursementRequests, teamMembers, users } from '../db/schema'
+import { db } from '../db/index.js'
+import { reimbursementRequests, teamMembers, users } from '../db/schema.js'
 import { eq, and, sql, desc } from 'drizzle-orm'
 import multer from 'multer'
 import path from 'path'

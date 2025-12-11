@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { eq, and, or, between, gte, lte, sql, desc, asc, ne, inArray } from 'drizzle-orm'
-import { db } from '../db'
+import { db } from '../db/index.js'
 import {
   employmentCycles,
   leaveTypes,
@@ -15,10 +15,10 @@ import {
   serviceTypes,
   developers,
   clientServiceDevelopers,
-} from '../db/schema'
-import { requireAuth as auth } from '../middleware/auth'
-import { calculateVacationBalance, validateVacationRequest } from '../utils/vacationBalanceCalculator'
-import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator'
+} from '../db/schema.js'
+import { requireAuth as auth } from '../middleware/auth.js'
+import { calculateVacationBalance, validateVacationRequest } from '../utils/vacationBalanceCalculator.js'
+import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator.js'
 
 const router = Router()
 
