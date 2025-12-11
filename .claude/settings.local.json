@@ -54,7 +54,8 @@
       "Bash(cd /Users/volodymyrshapovalov/Projects/Vestov\\ CP && PGPASSWORD='' psql:*)",
       "Read(//tmp/**)",
       "Read(//Users/volodymyrshapovalov/Projects/**)",
-      "Bash(timeout 60 npx cypress run:*)"
+      "Bash(timeout 60 npx cypress run:*)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": []
