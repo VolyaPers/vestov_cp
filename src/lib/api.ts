@@ -2,7 +2,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 class ApiClient {
-  private request = async (endpoint: string, options: RequestInit = {}) => {
+  request = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${API_BASE}${endpoint}`
     const config: RequestInit = {
       ...options,
