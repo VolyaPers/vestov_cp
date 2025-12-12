@@ -62,6 +62,39 @@ router.post('/register', async (req, res) => {
       })
       .returning()
 
+    let teamMemberId: number | null = null
+    if (role === 'team_member') {
+      const [existingMember] = await db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(eq(teamMembers.email, normalizedEmail))
+        .limit(1)
+
+      if (existingMember) {
+        teamMemberId = existingMember.id
+      } else {
+        const [createdMember] = await db
+          .insert(teamMembers)
+          .values({
+            name: fullName,
+            role: 'team_member',
+            email: normalizedEmail,
+            startDate: new Date(),
+            status: 'active',
+            isBillable: true,
+          })
+          .returning({ id: teamMembers.id })
+        teamMemberId = createdMember.id
+      }
+
+      if (teamMemberId) {
+        await db
+          .update(users)
+          .set({ teamMemberId })
+          .where(eq(users.id, newUser.id))
+      }
+    }
+
     const userResponse = {
       id: newUser.id,
       username: newUser.username,
@@ -71,6 +104,7 @@ router.post('/register', async (req, res) => {
       position: newUser.position,
       avatarUrl: newUser.avatarUrl,
       isActive: newUser.isActive,
+      teamMemberId: teamMemberId ?? newUser.teamMemberId ?? null,
     }
 
     // Auto-login after registration
