@@ -24,7 +24,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
-import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn } from './utils/migrations.js'
+import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns } from './utils/migrations.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -89,7 +89,7 @@ async function runMigrations() {
       })
     }
     
-    await ensureIsActiveColumn(pool)
+    await ensureUserColumns(pool)
     const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
     if (columnExistsAfter) {
       console.log('[MIGRATIONS] ✓ Column is_active verified - exists in database')
@@ -110,8 +110,8 @@ async function runMigrations() {
     console.error('========================================')
     
     try {
-      await ensureIsActiveColumn(pool)
-      console.log('[MIGRATIONS] ✓ Added is_active column as fallback')
+      await ensureUserColumns(pool)
+      console.log('[MIGRATIONS] ✓ Added missing user columns as fallback')
     } catch (fallbackError) {
       console.error('[MIGRATIONS] Fallback failed:', fallbackError)
     }

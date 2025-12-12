@@ -40,3 +40,20 @@ export async function ensureIsActiveColumn(pool: Pool): Promise<void> {
   }
 }
 
+export async function ensureUserColumns(pool: Pool): Promise<void> {
+  // team_member_id
+  const hasTeamMemberId = await checkColumnExists(pool, 'users', 'team_member_id')
+  if (!hasTeamMemberId) {
+    await pool.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "team_member_id" integer;')
+  }
+
+  // last_login_at
+  const hasLastLoginAt = await checkColumnExists(pool, 'users', 'last_login_at')
+  if (!hasLastLoginAt) {
+    await pool.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_login_at" timestamp;')
+  }
+
+  // is_active
+  await ensureIsActiveColumn(pool)
+}
+
