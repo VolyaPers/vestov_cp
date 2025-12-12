@@ -68,6 +68,7 @@ app.use(helmet({
 
 // CORS configuration
 const corsOrigin = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
+console.log('[SERVER INIT] CORS Origin:', corsOrigin)
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
@@ -87,6 +88,20 @@ app.use(limiter)
 // Body parsing
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+
+// Global request logger - MUST be early to catch ALL requests
+app.use((req, res, next) => {
+  try {
+    console.log(`[${new Date().toISOString()}] [INCOMING REQUEST] ${req.method} ${req.url}`)
+    console.log(`[INCOMING REQUEST] Headers:`, JSON.stringify(req.headers, null, 2))
+    if (req.body && Object.keys(req.body).length > 0) {
+      console.log(`[INCOMING REQUEST] Body:`, JSON.stringify(req.body, null, 2))
+    }
+  } catch (err) {
+    console.error('[LOGGER ERROR]', err)
+  }
+  next()
+})
 
 // Session configuration
 app.use(session({
@@ -111,13 +126,6 @@ app.use(session({
 setupPassport(pool)
 app.use(passport.initialize())
 app.use(passport.session())
-
-// Global request logger to catch ALL incoming requests
-app.use((req, res, next) => {
-  console.log(`[INCOMING REQUEST] ${req.method} ${req.url}`)
-  console.log(`[INCOMING REQUEST] Headers:`, req.headers)
-  next()
-})
 
 // Routes
 app.use('/api', authRouter)
@@ -157,10 +165,21 @@ app.use('*', (req, res) => {
 // Start server after migrations
 runMigrations().then(() => {
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+    console.log(`[SERVER START] Server running on port ${PORT}`)
+    console.log(`[SERVER START] Environment: ${process.env.NODE_ENV || 'development'}`)
+    console.log(`[SERVER START] CORS Origin: ${corsOrigin}`)
+    console.log(`[SERVER START] Database URL: ${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`)
   })
 }).catch((err) => {
-  console.error('Failed to start server:', err)
+  console.error('[SERVER START] Failed to start server:', err)
   process.exit(1)
+})
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION]', reason)
 })

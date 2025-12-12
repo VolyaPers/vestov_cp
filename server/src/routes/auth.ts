@@ -19,7 +19,8 @@ const loginLimiter = rateLimit({
 
 // Login route
 router.post('/login', loginLimiter, (req, res, next) => {
-  console.log('Login attempt:', req.body.username)
+  console.log(`[${new Date().toISOString()}] [LOGIN ROUTE] Login attempt for:`, req.body.username)
+  console.log('[LOGIN ROUTE] Request body:', JSON.stringify(req.body, null, 2))
   passport.authenticate('local', (err: any, user: any, info: any) => {
     if (err) {
       console.error('Login error:', err)
