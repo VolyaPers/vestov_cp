@@ -19,6 +19,13 @@ import reimbursementsRouter from './routes/reimbursements.js'
 import roadmapRouter from './routes/roadmap.js'
 import shiftsRouter from './routes/shifts.js'
 import { setupPassport } from './auth/passport.js'
+import { migrate } from 'drizzle-orm/node-postgres/migrator'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -28,6 +35,21 @@ const { Pool } = pg
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
 })
+
+// Run migrations on startup
+async function runMigrations() {
+  try {
+    console.log('Running database migrations...')
+    const db = drizzle(pool, { schema: {} })
+    const migrationsPath = path.join(__dirname, '../drizzle')
+    console.log('Migrations folder:', migrationsPath)
+    await migrate(db, { migrationsFolder: migrationsPath })
+    console.log('Migrations completed successfully!')
+  } catch (error) {
+    console.error('Migration error (non-fatal):', error)
+    // Continue even if migrations fail - they might already be applied
+  }
+}
 
 // Session store
 const PgSession = connectPgSimple(session)
@@ -132,7 +154,13 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+// Start server after migrations
+runMigrations().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+  })
+}).catch((err) => {
+  console.error('Failed to start server:', err)
+  process.exit(1)
 })
