@@ -209,6 +209,20 @@ export function UsersPage() {
     }
   }
 
+  const handleDeleteUser = async (user: User) => {
+    const confirmed = window.confirm(`Delete user "${user.fullName}" and all associated records? This cannot be undone.`)
+    if (!confirmed) return
+    try {
+      await api.deleteUserHard(user.id)
+      await loadUsers()
+      await loadAvailableTeamMembers()
+      alert('User deleted successfully')
+    } catch (error: any) {
+      console.error('Failed to delete user:', error)
+      alert(error.message || 'Failed to delete user')
+    }
+  }
+
   const resetUserForm = () => {
     setUserFormData({
       username: '',
@@ -395,7 +409,7 @@ export function UsersPage() {
           {filteredUsers.length > 0 ? (
             <div className="space-y-4">
               {filteredUsers.map((user) => (
-                <div key={user.id} className="p-4 border rounded-lg hover:bg-gray-50">
+                <div key={user.id ?? `${user.username}-${user.email}`} className="p-4 border rounded-lg hover:bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
@@ -453,6 +467,15 @@ export function UsersPage() {
                       >
                         {user.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteUser(user)}
+                        className="text-red-600 hover:text-red-700"
+                        title="Delete user permanently"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
 
@@ -468,7 +491,10 @@ export function UsersPage() {
                       {user.clientAssignments && user.clientAssignments.length > 0 ? (
                         <div className="space-y-2">
                           {user.clientAssignments.map((assignment) => (
-                            <div key={assignment.assignmentId} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                            <div
+                              key={assignment.assignmentId ?? `${assignment.clientId}-${assignment.assignedAt ?? assignment.clientName}`}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                            >
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium text-sm">{assignment.clientName}</span>
@@ -780,7 +806,7 @@ export function UsersPage() {
                 <p><strong>Current Assignments:</strong></p>
                 <ul className="list-disc list-inside mt-1">
                   {selectedUserForAssignment.clientAssignments.map((assignment) => (
-                    <li key={assignment.assignmentId}>
+                    <li key={assignment.assignmentId ?? `${assignment.clientId}-${assignment.accessLevel}`}>
                       {assignment.clientName} ({assignment.accessLevel})
                     </li>
                   ))}

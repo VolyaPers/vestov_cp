@@ -63,9 +63,6 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [location] = useLocation()
 
-  console.log('AdminLayout RENDERING - current location:', location)
-  console.log('AdminLayout - user:', user)
-
   const handleLogout = async () => {
     try {
       await api.logout()

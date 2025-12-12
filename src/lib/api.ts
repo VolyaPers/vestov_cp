@@ -461,6 +461,12 @@ class ApiClient {
     })
   }
 
+  async deleteUserHard(id: number) {
+    return this.request(`/users/${id}/hard`, {
+      method: 'DELETE',
+    })
+  }
+
   // Logo upload
   async uploadClientLogo(clientId: number, file: File) {
     const formData = new FormData()

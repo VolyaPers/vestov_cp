@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import { db } from '../db/index.js'
-import { users, clientUsers, clients, teamMembers } from '../db/schema.js'
-import { eq, and, sql } from 'drizzle-orm'
+import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, shiftSchedules, shifts, shiftBreaks } from '../db/schema.js'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import bcrypt from 'bcrypt'
+import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -493,6 +494,92 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deactivating user:', error)
     res.status(500).json({ error: 'Failed to deactivate user' })
+  }
+})
+
+// Hard delete user and related records (admin only)
+router.delete('/:id/hard', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params
+    const authUser: any = (req as any).user
+
+    if (!authUser || authUser.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' })
+    }
+
+    const userId = Number(id)
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    await db.transaction(async (tx) => {
+      // Delete client assignments
+      await tx.delete(clientUsers).where(eq(clientUsers.userId, userId))
+
+      // Delete messages (sender or receiver)
+      await tx.delete(messages).where(
+        sql`${messages.senderId} = ${userId} OR ${messages.receiverId} = ${userId}`
+      )
+
+      // Delete service requests
+      await tx.delete(serviceRequests).where(eq(serviceRequests.userId, userId))
+
+      // Delete financial data rows tied to user
+      await tx.delete(financialData).where(eq(financialData.userId, userId))
+
+      // Delete feedback linked to user
+      await tx
+        .delete(feedback)
+        .where(sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1}`)
+
+      // Delete time entries by user or team member
+      await tx
+        .delete(timeEntries)
+        .where(
+          sql`${timeEntries.userId} = ${userId} OR ${
+            user.teamMemberId ? sql`${timeEntries.teamMemberId} = ${user.teamMemberId}` : sql`false`
+          }`
+        )
+
+      // If linked team member, delete related employment/leave/shift records
+      if (user.teamMemberId) {
+        const tmId = user.teamMemberId
+
+        // Delete leave balances/requests and employment cycles
+        await tx.delete(leaveBalances).where(eq(leaveBalances.employeeId, tmId))
+        await tx.delete(leaveRequests).where(eq(leaveRequests.employeeId, tmId))
+        await tx.delete(employmentCycles).where(eq(employmentCycles.employeeId, tmId))
+
+        // Delete shift schedules
+        await tx.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, tmId))
+
+        // Delete shifts and break records
+        const shiftIds = await tx
+          .select({ id: shifts.id })
+          .from(shifts)
+          .where(eq(shifts.employeeId, tmId))
+
+        if (shiftIds.length > 0) {
+          const ids = shiftIds.map((s) => s.id)
+          await tx.delete(shiftBreaks).where(inArray(shiftBreaks.shiftId, ids))
+          await tx.delete(shifts).where(inArray(shifts.id, ids))
+        } else {
+          await tx.delete(shifts).where(eq(shifts.employeeId, tmId))
+        }
+
+        // Delete team member record
+        await tx.delete(teamMembers).where(eq(teamMembers.id, tmId))
+      }
+
+      // Delete user
+      await tx.delete(users).where(eq(users.id, userId))
+    })
+
+    res.json({ message: 'User and related data deleted successfully' })
+  } catch (error) {
+    console.error('Error hard-deleting user:', error)
+    res.status(500).json({ error: 'Failed to delete user' })
   }
 })
 
