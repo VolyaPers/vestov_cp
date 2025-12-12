@@ -10,10 +10,25 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<'admin' | 'client' | 'team_member'>('client')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  const redirectByRole = (userRole?: string) => {
+    const target =
+      userRole === 'admin'
+        ? '/admin/dashboard'
+        : userRole === 'team_member'
+          ? '/employee/dashboard'
+          : '/client'
+    window.location.href = target
+  }
 
   const handleLogin = async () => {
     setIsLoading(true)
@@ -25,12 +40,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       window.dispatchEvent(new CustomEvent('user-login', { detail: response.user }))
 
       // Redirect immediately based on role to avoid stuck loading
-      const role = response.user?.role
-      const target =
-        role === 'admin' ? '/admin/dashboard' :
-        role === 'team_member' ? '/employee/dashboard' :
-        '/client'
-      window.location.href = target
+      redirectByRole(response.user?.role)
     } catch (error: any) {
       setError(error.message || 'Login failed')
     } finally {
@@ -38,9 +48,35 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   }
 
+  const handleRegister = async () => {
+    setIsLoading(true)
+    setError('')
+
+    try {
+      const response = await api.register({
+        firstName,
+        lastName,
+        email,
+        password,
+        role,
+      })
+      onLogin(response.user)
+      window.dispatchEvent(new CustomEvent('user-login', { detail: response.user }))
+      redirectByRole(response.user?.role)
+    } catch (error: any) {
+      setError(error.message || 'Registration failed')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    handleLogin()
+    if (mode === 'login') {
+      handleLogin()
+    } else {
+      handleRegister()
+    }
   }
 
   return (
@@ -54,30 +90,124 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="Enter your username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={mode === 'login' ? 'default' : 'outline'}
+                className="w-1/2"
+                onClick={() => setMode('login')}
                 disabled={isLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+              >
+                Sign In
+              </Button>
+              <Button
+                type="button"
+                variant={mode === 'register' ? 'default' : 'outline'}
+                className="w-1/2"
+                onClick={() => setMode('register')}
                 disabled={isLoading}
-              />
+              >
+                Create Account
+              </Button>
             </div>
+
+            {mode === 'login' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username or Email</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="Enter your username or email"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+              </>
+            )}
+
+            {mode === 'register' && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder="John"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder="Doe"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">Password</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    placeholder="Create a password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <select
+                    id="role"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as 'admin' | 'client' | 'team_member')}
+                    disabled={isLoading}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="team_member">Team Member</option>
+                    <option value="client">Client</option>
+                  </select>
+                </div>
+              </>
+            )}
             {error && (
               <div className="text-red-600 text-sm text-center">{error}</div>
             )}
@@ -86,7 +216,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? (mode === 'login' ? 'Signing in...' : 'Creating account...') : (mode === 'login' ? 'Sign In' : 'Create Account')}
             </Button>
           </form>
           <div className="mt-6 text-sm text-gray-600">

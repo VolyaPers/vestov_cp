@@ -41,6 +41,19 @@ class ApiClient {
     })
   }
 
+  register = async (data: {
+    firstName: string
+    lastName: string
+    email: string
+    password: string
+    role: 'admin' | 'client' | 'team_member'
+  }) => {
+    return this.request('/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
   logout = async () => {
     return this.request('/logout', { method: 'POST' })
   }

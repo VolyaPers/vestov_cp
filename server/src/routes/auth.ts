@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import passport from 'passport'
 import rateLimit from 'express-rate-limit'
+import bcrypt from 'bcryptjs'
 import { requireAuth } from '../middleware/auth.js'
 import { db } from '../db/index.js'
 import { users, teamMembers } from '../db/schema.js'
@@ -15,6 +16,77 @@ const loginLimiter = rateLimit({
   message: 'Too many login attempts, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+})
+
+const ALLOWED_ROLES = ['admin', 'client', 'team_member']
+
+// Register route (simple self-service signup)
+router.post('/register', async (req, res) => {
+  try {
+    const { firstName, lastName, email, password, role } = req.body || {}
+
+    if (!firstName || !lastName || !email || !password || !role) {
+      return res.status(400).json({ error: 'Missing required fields' })
+    }
+
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role selected' })
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase()
+    const username = normalizedEmail // Keep username == email for login
+    const fullName = `${firstName} ${lastName}`.trim()
+
+    // Ensure email/username uniqueness
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username))
+
+    if (existingUser) {
+      return res.status(409).json({ error: 'User already exists' })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12)
+
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        username,
+        password: hashedPassword,
+        fullName,
+        email: normalizedEmail,
+        role,
+        position: role === 'admin' ? 'Administrator' : role === 'team_member' ? 'Team Member' : 'Client',
+        isActive: true,
+      })
+      .returning()
+
+    const userResponse = {
+      id: newUser.id,
+      username: newUser.username,
+      fullName: newUser.fullName,
+      email: newUser.email,
+      role: newUser.role,
+      position: newUser.position,
+      avatarUrl: newUser.avatarUrl,
+      isActive: newUser.isActive,
+    }
+
+    // Auto-login after registration
+    req.logIn(userResponse, (err) => {
+      if (err) {
+        console.error('Session login error after register:', err)
+        return res.status(500).json({ error: 'Registration succeeded but login failed' })
+      }
+
+      console.log('New user registered:', userResponse.email)
+      return res.status(201).json({ user: userResponse })
+    })
+  } catch (error) {
+    console.error('Registration error:', error)
+    return res.status(500).json({ error: 'Failed to register user' })
+  }
 })
 
 // Login route
@@ -98,14 +170,14 @@ router.get('/user', (req, res) => {
   }
 })
 
-// Impersonate user (super admin only - v@vestov)
+// Impersonate user (admin-level accounts)
 router.post('/impersonate/:userId', requireAuth, async (req, res) => {
   try {
     const currentUser: any = req.user
 
-    // Only allow v@vestov to impersonate
-    if (currentUser.email !== 'v@vestov.com') {
-      return res.status(403).json({ error: 'Only super admin can impersonate users' })
+    // Only allow admins to impersonate
+    if (currentUser.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can impersonate users' })
     }
 
     // Don't allow impersonating while already impersonating

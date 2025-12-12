@@ -113,8 +113,12 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
     }
   }
 
-  // Only show for v@vestov.com
-  if (currentUser?.originalUser?.email !== 'v@vestov.com' && currentUser?.email !== 'v@vestov.com') {
+  // Only show for admins (either currently admin or impersonating from an admin)
+  const isAdminContext =
+    currentUser?.role === 'admin' ||
+    !!currentUser?.originalUser
+
+  if (!isAdminContext) {
     return null
   }
 
