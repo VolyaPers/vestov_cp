@@ -2,6 +2,7 @@ import express from 'express'
 import { db } from '../db/index.js'
 import { reimbursementRequests, teamMembers, users } from '../db/schema.js'
 import { eq, and, sql, desc } from 'drizzle-orm'
+import { calculateEmploymentMetrics } from '../utils/employment.js'
 import multer from 'multer'
 import path from 'path'
 
@@ -34,15 +35,6 @@ const upload = multer({
   }
 })
 
-// Helper function to calculate years at company (completed years)
-function calculateYearsAtCompany(startDate: string | Date): number {
-  const start = new Date(startDate)
-  const now = new Date()
-  const years = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  // Return completed years (floor), minimum 1
-  return Math.max(1, Math.floor(years))
-}
-
 // Helper function to get yearly limit based on years at company
 function getYearlyLimit(yearsAtCompany: number): number {
   if (yearsAtCompany >= 5) return 700
@@ -74,7 +66,7 @@ router.get('/limits/:year', async (req, res) => {
     }
 
     // Calculate years at company and limit
-    const yearsAtCompany = calculateYearsAtCompany(member.startDate)
+    const yearsAtCompany = calculateEmploymentMetrics(member.startDate).careerYear
     const yearlyLimit = getYearlyLimit(yearsAtCompany)
 
     // Calculate total used in the specified year

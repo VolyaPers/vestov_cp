@@ -1718,7 +1718,8 @@ router.get('/admin/cycles/employee/:employeeId', auth, async (req, res) => {
 
       const startDate = new Date(firstCycle.cycleStart)
       const endDate = new Date(lastCycle.cycleEnd)
-      const totalYears = Math.floor((endDate.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+      const MS_PER_DAY = 1000 * 60 * 60 * 24
+      const totalYears = Math.floor((endDate.getTime() - startDate.getTime()) / (365 * MS_PER_DAY))
 
       res.json({
         cycles,

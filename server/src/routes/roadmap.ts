@@ -2,22 +2,15 @@ import { Router } from 'express'
 import { db } from '../db/index.js'
 import { teamMembers } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
+import { calculateEmploymentMetrics } from '../utils/employment.js'
 
 const router = Router()
-
-// Helper function to calculate years at company (completed years)
-function calculateYearsAtCompany(startDate: string | Date): number {
-  const start = new Date(startDate)
-  const now = new Date()
-  const years = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  return Math.max(1, Math.floor(years))
-}
 
 // Helper function to get vacation days based on years
 function getVacationDays(yearsAtCompany: number): number {
   if (yearsAtCompany >= 3) return 24
   if (yearsAtCompany >= 2) return 20
-  return 16 // 1 year
+  return 16 // Year 1
 }
 
 // Helper function to get reimbursement limit based on years
@@ -27,40 +20,6 @@ function getReimbursementLimit(yearsAtCompany: number): number {
   if (yearsAtCompany >= 3) return 500
   if (yearsAtCompany >= 2) return 400
   return 300 // 1 year
-}
-
-// Helper function to calculate next milestone date
-function getNextMilestoneInfo(startDate: string | Date) {
-  const start = new Date(startDate)
-  const now = new Date()
-
-  // Calculate current completed years
-  const years = (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  const completedYears = Math.max(1, Math.floor(years))
-
-  // The next milestone is the next completed year
-  // e.g., if you've completed 4 years, your next milestone is Year 5
-  const nextMilestoneYear = completedYears + 1
-
-  // Find the next anniversary date (when they'll reach the next milestone)
-  let nextAnniversary = new Date(start)
-  nextAnniversary.setFullYear(now.getFullYear())
-
-  // If this year's anniversary has passed, use next year's
-  if (nextAnniversary <= now) {
-    nextAnniversary.setFullYear(now.getFullYear() + 1)
-  }
-
-  // Calculate days until next milestone
-  const daysUntilMilestone = Math.ceil(
-    (nextAnniversary.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-  )
-
-  return {
-    nextMilestoneDate: nextAnniversary.toISOString().split('T')[0],
-    daysUntilNextMilestone: daysUntilMilestone,
-    nextMilestoneYear: nextMilestoneYear
-  }
 }
 
 // GET /api/roadmap - Get employee roadmap data
@@ -82,10 +41,11 @@ router.get('/', async (req, res) => {
       return res.status(404).json({ error: 'Team member not found' })
     }
 
-    const yearsAtCompany = calculateYearsAtCompany(member.startDate)
+    const employment = calculateEmploymentMetrics(member.startDate)
+
+    const yearsAtCompany = employment.careerYear
     const currentVacationDays = getVacationDays(yearsAtCompany)
     const currentReimbursementLimit = getReimbursementLimit(yearsAtCompany)
-    const milestoneInfo = getNextMilestoneInfo(member.startDate)
 
     res.json({
       currentYear: new Date().getFullYear(),
@@ -93,7 +53,9 @@ router.get('/', async (req, res) => {
       yearsAtCompany,
       currentVacationDays,
       currentReimbursementLimit,
-      ...milestoneInfo
+      nextMilestoneYear: employment.nextMilestoneYear,
+      daysUntilNextMilestone: employment.daysUntilNextMilestone,
+      nextMilestoneDate: employment.nextMilestoneDate
     })
   } catch (error) {
     console.error('Error fetching roadmap data:', error)
