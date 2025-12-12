@@ -1,5 +1,3 @@
-// Use environment variable in production, fallback to /api for development
-// Ensure API_BASE ends with /api when using external URL
 const envApiUrl = import.meta.env.VITE_API_URL
 const API_BASE = envApiUrl 
   ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
@@ -26,8 +24,8 @@ class ApiClient {
         if (errorData.error) {
           errorMessage = errorData.error
         }
-      } catch (e) {
-        // If we can't parse the error response, use the default message
+      } catch {
+        // Use default error message if parsing fails
       }
       throw new Error(errorMessage)
     }
@@ -49,10 +47,10 @@ class ApiClient {
 
   getCurrentUser = async () => {
     try {
-      const result = await this.request('/user')
-      return result
-    } catch (error: any) {
-      if (error.message.includes('401')) {
+      return await this.request('/user')
+    } catch (error) {
+      const err = error as Error
+      if (err.message.includes('401')) {
         return null
       }
       throw error
@@ -455,7 +453,7 @@ class ApiClient {
     const formData = new FormData()
     formData.append('logo', file)
 
-    const url = `${'/api'}/admin/clients/${clientId}/logo`
+    const url = `${API_BASE}/admin/clients/${clientId}/logo`
     const response = await fetch(url, {
       method: 'POST',
       credentials: 'include',
@@ -469,7 +467,7 @@ class ApiClient {
         if (errorData.error) {
           errorMessage = errorData.error
         }
-      } catch (e) {
+      } catch {
         // Use default error message
       }
       throw new Error(errorMessage)

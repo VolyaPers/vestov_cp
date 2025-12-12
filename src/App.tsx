@@ -9,15 +9,19 @@ import { api } from './lib/api'
 
 // Helper component for catch-all redirect
 function DefaultRedirect({ user }: { user: any }) {
-  const [, setLocation] = useLocation()
-
   useEffect(() => {
-    const defaultPath = user.role === 'admin' ? '/admin/dashboard' :
-                        user.role === 'team_member' ? '/employee/dashboard' :
-                        '/client'
-    console.log('DefaultRedirect: user role:', user.role, 'redirecting to', defaultPath)
-    setLocation(defaultPath)
-  }, [user, setLocation])
+    const defaultPath = user.role === 'admin'
+      ? '/admin/dashboard'
+      : user.role === 'team_member'
+        ? '/employee/dashboard'
+        : '/client'
+
+    const current = window.location.pathname
+    if (!current.startsWith(defaultPath.split('/').slice(0, 2).join('/'))) {
+      console.log('DefaultRedirect: user role:', user.role, 'redirecting to', defaultPath)
+      window.location.replace(defaultPath)
+    }
+  }, [user])
 
   return (
     <div className="flex items-center justify-center min-h-screen">

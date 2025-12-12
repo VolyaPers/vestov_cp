@@ -4,7 +4,8 @@ import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { eq } from 'drizzle-orm'
-import { users, clients, teamMembers } from '../db/schema.js'
+import { users, teamMembers } from '../db/schema.js'
+import type { UserWithPassword, UserWithoutPassword, SessionData, UserWithImpersonation } from '../types/passport.js'
 
 export function setupPassport(pool: Pool) {
   const db = drizzle(pool)
@@ -13,21 +14,40 @@ export function setupPassport(pool: Pool) {
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
-        const [user] = await db
-          .select({
-            id: users.id,
-            username: users.username,
-            password: users.password,
-            fullName: users.fullName,
-            email: users.email,
-            role: users.role,
-            position: users.position,
-            avatarUrl: users.avatarUrl,
-            isActive: users.isActive,
-          })
-          .from(users)
-          .where(eq(users.username, username))
-          .limit(1)
+        let user: UserWithPassword | null = null
+        
+        try {
+          const [selectedUser] = await db
+            .select({
+              id: users.id,
+              username: users.username,
+              password: users.password,
+              fullName: users.fullName,
+              email: users.email,
+              role: users.role,
+              position: users.position,
+              avatarUrl: users.avatarUrl,
+              isActive: users.isActive,
+            })
+            .from(users)
+            .where(eq(users.username, username))
+            .limit(1)
+          user = selectedUser || null
+        } catch (selectError) {
+          const err = selectError as Error
+          if (err.message && err.message.includes('is_active')) {
+            console.log('[PASSPORT] is_active column not found, using raw SQL fallback')
+            const result = await pool.query<UserWithPassword>(`
+              SELECT id, username, password, full_name as "fullName", email, role, position, avatar_url as "avatarUrl", true as "isActive"
+              FROM users
+              WHERE username = $1
+              LIMIT 1
+            `, [username])
+            user = result.rows[0] || null
+          } else {
+            throw selectError
+          }
+        }
 
         if (!user) {
           return done(null, false, { message: 'Invalid username or password' })
@@ -38,38 +58,33 @@ export function setupPassport(pool: Pool) {
           return done(null, false, { message: 'Invalid username or password' })
         }
 
-        // Check if user is active
-        if (!user.isActive) {
+        if (user.isActive === false) {
           return done(null, false, { message: 'Account is deactivated' })
         }
 
-        // Remove password from user object
         const { password: _, ...userWithoutPassword } = user
-
-        return done(null, userWithoutPassword)
+        return done(null, userWithoutPassword as UserWithoutPassword)
       } catch (error) {
         return done(error)
       }
     })
   )
 
-  // Serialize user for session
-  passport.serializeUser((user: any, done) => {
-    // Store user data including impersonation fields
-    const sessionData = {
-      id: user.id,
-      originalUserId: user.originalUserId,
-      originalUsername: user.originalUsername,
-      originalEmail: user.originalEmail
+  passport.serializeUser((user, done) => {
+    const userData = user as UserWithoutPassword & Partial<UserWithImpersonation>
+    const sessionData: SessionData = {
+      id: userData.id,
+      originalUserId: userData.originalUserId,
+      originalUsername: userData.originalUsername,
+      originalEmail: userData.originalEmail
     }
     done(null, sessionData)
   })
 
-  // Deserialize user from session
-  passport.deserializeUser(async (sessionData: any, done) => {
+  passport.deserializeUser(async (sessionData, done) => {
     try {
-      // If sessionData is just a number (old session format), convert it
-      const userId = typeof sessionData === 'number' ? sessionData : sessionData.id
+      const data = sessionData as SessionData | number
+      const userId = typeof data === 'number' ? data : data.id
 
       const [user] = await db
         .select({
@@ -91,9 +106,7 @@ export function setupPassport(pool: Pool) {
         return done(null, false)
       }
 
-      // If user is a team member, get avatar and other data from team_members table via foreign key
       let avatarUrl = user.avatarUrl
-      let teamMemberData = null
       if (user.role === 'team_member' && user.teamMemberId) {
         const [teamMember] = await db
           .select({
@@ -107,25 +120,22 @@ export function setupPassport(pool: Pool) {
 
         if (teamMember) {
           avatarUrl = teamMember.avatarUrl || user.avatarUrl
-          teamMemberData = teamMember
         }
       }
 
-      // Create user object with correct avatar
-      const userWithAvatar = {
+      const userWithAvatar: UserWithoutPassword = {
         ...user,
         avatarUrl
       }
 
-      // Restore impersonation fields if they exist
-      if (typeof sessionData === 'object' && sessionData.originalUserId) {
+      if (typeof data === 'object' && data.originalUserId) {
         const userWithImpersonation = {
           ...userWithAvatar,
-          originalUserId: sessionData.originalUserId,
-          originalUsername: sessionData.originalUsername,
-          originalEmail: sessionData.originalEmail
+          originalUserId: data.originalUserId,
+          originalUsername: data.originalUsername,
+          originalEmail: data.originalEmail
         }
-        done(null, userWithImpersonation)
+        done(null, userWithImpersonation as UserWithImpersonation)
       } else {
         done(null, userWithAvatar)
       }

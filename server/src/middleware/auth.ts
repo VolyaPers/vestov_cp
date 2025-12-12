@@ -5,20 +5,16 @@ export interface AuthenticatedUser {
   username: string
   fullName: string
   email: string
-  role: 'admin' | 'client'
+  role: 'admin' | 'client' | 'team_member'
   position?: string
   avatarUrl?: string
   clientId?: number
+  teamMemberId?: number
+  isActive?: boolean
   client?: {
     id: number
     name: string
     industry?: string
-  }
-}
-
-declare global {
-  namespace Express {
-    interface User extends AuthenticatedUser {}
   }
 }
 

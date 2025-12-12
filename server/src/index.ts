@@ -23,6 +23,8 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import fs from 'fs'
+import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn } from './utils/migrations.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -30,34 +32,94 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Database connection
+const trustProxy = process.env.NODE_ENV === 'production'
+app.set('trust proxy', trustProxy ? 1 : false)
+
 const { Pool } = pg
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
 })
 
-// Run migrations on startup
 async function runMigrations() {
   try {
+    console.log('========================================')
     console.log('[MIGRATIONS] Starting database migrations...')
+    console.log('========================================')
+    
     const db = drizzle(pool, { schema: {} })
     const migrationsPath = path.join(__dirname, '../drizzle')
     console.log('[MIGRATIONS] Migrations folder:', migrationsPath)
     console.log('[MIGRATIONS] Database URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET')
     
+    try {
+      const migrationFiles = fs.readdirSync(migrationsPath)
+        .filter(f => f.endsWith('.sql') && !f.startsWith('.'))
+        .sort()
+      console.log(`[MIGRATIONS] Available migration files: ${migrationFiles.length}`)
+      migrationFiles.forEach(f => {
+        console.log(`[MIGRATIONS]   - ${f}`)
+      })
+    } catch (fsError) {
+      console.error('[MIGRATIONS] Could not read migrations folder:', fsError)
+    }
+    
+    const appliedMigrations = await getAppliedMigrations(pool)
+    console.log(`[MIGRATIONS] Already applied: ${appliedMigrations.length} migrations`)
+    if (appliedMigrations.length > 0) {
+      appliedMigrations.forEach(m => {
+        console.log(`[MIGRATIONS]   ✓ ${m.name} (applied at ${m.created_at})`)
+      })
+    } else {
+      console.log('[MIGRATIONS]   No migrations applied yet')
+    }
+    
+    const columnExists = await checkColumnExists(pool, 'users', 'is_active')
+    console.log('[MIGRATIONS] Column is_active exists before migration:', columnExists)
+    
+    console.log('[MIGRATIONS] Running Drizzle migrations...')
     await migrate(db, { migrationsFolder: migrationsPath })
-    console.log('[MIGRATIONS] ✓ Migrations completed successfully!')
+    console.log('[MIGRATIONS] ✓ Drizzle migrations completed')
+    
+    const afterMigrations = await getAppliedMigrations(pool)
+    console.log(`[MIGRATIONS] Total migrations in database: ${afterMigrations.length}`)
+    if (afterMigrations.length > 0) {
+      console.log('[MIGRATIONS] Most recent migrations:')
+      afterMigrations.slice(0, 5).forEach(m => {
+        console.log(`[MIGRATIONS]   ✓ ${m.name} (${m.created_at})`)
+      })
+    }
+    
+    await ensureIsActiveColumn(pool)
+    const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
+    if (columnExistsAfter) {
+      console.log('[MIGRATIONS] ✓ Column is_active verified - exists in database')
+    }
+    
+    console.log('========================================')
+    console.log('[MIGRATIONS] ✓ All migrations completed successfully!')
+    console.log('========================================')
   } catch (error) {
-    console.error('[MIGRATIONS] ✗ Migration error:', error)
-    console.error('[MIGRATIONS] Server will continue, but migrations may need to be run manually')
-    console.error('[MIGRATIONS] To run manually: cd server && npm run migrate')
+    const err = error as Error & { code?: string; detail?: string }
+    console.error('========================================')
+    console.error('[MIGRATIONS] ✗ Migration error occurred!')
+    console.error('========================================')
+    console.error('[MIGRATIONS] Error message:', err.message)
+    console.error('[MIGRATIONS] Error code:', err.code)
+    console.error('[MIGRATIONS] Error detail:', err.detail)
+    console.error('[MIGRATIONS] Full error:', error)
+    console.error('========================================')
+    
+    try {
+      await ensureIsActiveColumn(pool)
+      console.log('[MIGRATIONS] ✓ Added is_active column as fallback')
+    } catch (fallbackError) {
+      console.error('[MIGRATIONS] Fallback failed:', fallbackError)
+    }
   }
 }
 
-// Session store
 const PgSession = connectPgSimple(session)
 
-// Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -69,7 +131,6 @@ app.use(helmet({
   },
 }))
 
-// CORS configuration
 const corsOrigin = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
 console.log('[SERVER INIT] CORS Origin:', corsOrigin)
 app.use(cors({
@@ -80,19 +141,19 @@ app.use(cors({
   exposedHeaders: ['Content-Type'],
 }))
 
-// Rate limiting (disabled in development)
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 10000, // Much higher limit for dev
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'production' ? 100 : 10000,
   message: 'Too many requests from this IP',
+  standardHeaders: true,
+  legacyHeaders: false,
+  trustProxy,
 })
 app.use(limiter)
 
-// Body parsing
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// Global request logger - MUST be early to catch ALL requests
 app.use((req, res, next) => {
   try {
     console.log(`[${new Date().toISOString()}] [INCOMING REQUEST] ${req.method} ${req.url}`)
@@ -106,7 +167,6 @@ app.use((req, res, next) => {
   next()
 })
 
-// Session configuration
 app.use(session({
   store: new PgSession({
     pool,
@@ -118,19 +178,16 @@ app.use(session({
   saveUninitialized: false,
   name: 'vestov.sid',
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-site in production
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   },
 }))
 
-// Passport setup
 setupPassport(pool)
 app.use(passport.initialize())
 app.use(passport.session())
-
-// Routes
 app.use('/api', authRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/client', clientRouter)
@@ -144,28 +201,24 @@ app.use('/api/reimbursements', reimbursementsRouter)
 app.use('/api/roadmap', roadmapRouter)
 app.use('/api/shifts', shiftsRouter)
 
-// Serve uploaded files (with authentication check)
 app.use('/uploads', express.static('uploads'))
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Error handling
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err)
+app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const error = err as Error
+  console.error('Error:', error)
   res.status(500).json({ 
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message 
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message 
   })
 })
 
-// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-// Start server after migrations
 runMigrations().then(() => {
   app.listen(PORT, () => {
     console.log(`[SERVER START] Server running on port ${PORT}`)
@@ -178,11 +231,10 @@ runMigrations().then(() => {
   process.exit(1)
 })
 
-// Handle uncaught errors
 process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err)
 })
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED REJECTION]', reason)
 })

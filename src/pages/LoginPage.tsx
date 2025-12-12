@@ -22,8 +22,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     try {
       const response = await api.login(username, password)
       onLogin(response.user)
-      // Dispatch custom event for any listeners
       window.dispatchEvent(new CustomEvent('user-login', { detail: response.user }))
+
+      // Redirect immediately based on role to avoid stuck loading
+      const role = response.user?.role
+      const target =
+        role === 'admin' ? '/admin/dashboard' :
+        role === 'team_member' ? '/employee/dashboard' :
+        '/client'
+      window.location.href = target
     } catch (error: any) {
       setError(error.message || 'Login failed')
     } finally {

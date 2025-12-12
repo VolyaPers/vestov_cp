@@ -1,6 +1,6 @@
 -- Add user management fields to users table
-ALTER TABLE "users" ADD COLUMN "is_active" boolean DEFAULT true;
-ALTER TABLE "users" ADD COLUMN "last_login_at" timestamp;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "is_active" boolean DEFAULT true;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_login_at" timestamp;
 ALTER TABLE "users" DROP COLUMN IF EXISTS "client_id";
 
 -- Create client_users table for many-to-many relationship
