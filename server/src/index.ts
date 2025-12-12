@@ -1,3 +1,4 @@
+import './env.js'
 import express from 'express'
 import session from 'express-session'
 import passport from 'passport'
@@ -147,7 +148,6 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP',
   standardHeaders: true,
   legacyHeaders: false,
-  trustProxy,
 })
 app.use(limiter)
 

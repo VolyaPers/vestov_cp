@@ -506,9 +506,10 @@ class ApiClient {
     })
   }
 
-  async startBreak() {
+  async startBreak(data?: { description?: string }) {
     return this.request('/shifts/break/start', {
       method: 'POST',
+      body: JSON.stringify(data || {}),
     })
   }
 

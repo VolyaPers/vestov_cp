@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { db } from '../db/index.js'
 import { shifts, shiftBreaks, shiftSchedules, teamMembers, clientUsers, clientServices, serviceTypes } from '../db/schema.js'
 import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm'
+import { notifyShiftEvent } from '../utils/slack.js'
 
 const router = Router()
 
@@ -160,7 +161,16 @@ router.post('/start', async (req, res) => {
       })
       .returning()
 
-    res.json({ shift: newShifts[0], message: 'Shift started successfully' })
+    const createdShift = newShifts[0]
+    notifyShiftEvent({
+      event: 'shift_started',
+      employeeName: employee.name || (employee as any).fullName || null,
+      employeeEmail: employee.email,
+      shiftId: createdShift.id,
+      timestamp: now
+    }).catch((err) => console.error('[SLACK] shift start notify failed:', err))
+
+    res.json({ shift: createdShift, message: 'Shift started successfully' })
   } catch (error) {
     console.error('Error starting shift:', error)
     res.status(500).json({ error: 'Failed to start shift' })
@@ -219,7 +229,16 @@ router.post('/end', async (req, res) => {
       .where(eq(shifts.id, activeShift.id))
       .returning()
 
-    res.json({ shift: updatedShifts[0], message: 'Shift ended successfully' })
+    const endedShift = updatedShifts[0]
+    notifyShiftEvent({
+      event: 'shift_ended',
+      employeeName: employee.name || (employee as any).fullName || null,
+      employeeEmail: employee.email,
+      shiftId: endedShift.id,
+      timestamp: now
+    }).catch((err) => console.error('[SLACK] shift end notify failed:', err))
+
+    res.json({ shift: endedShift, message: 'Shift ended successfully' })
   } catch (error) {
     console.error('Error ending shift:', error)
     res.status(500).json({ error: 'Failed to end shift' })
@@ -286,7 +305,27 @@ router.post('/break/start', async (req, res) => {
       .set({ status: 'on_break', updatedAt: new Date() })
       .where(eq(shifts.id, activeShift.id))
 
-    res.json({ break: newBreaks[0], message: 'Break started successfully' })
+    const createdBreak = newBreaks[0]
+    const rawDescriptionCandidates = [
+      req.body?.description,
+      req.body?.note,
+      req.body?.breakNote,
+      req.body?.break_description
+    ]
+    const pickedRaw = rawDescriptionCandidates.find((v) => typeof v === 'string')
+    const breakNote = pickedRaw ? pickedRaw.trim() : undefined
+
+    notifyShiftEvent({
+      event: 'break_started',
+      employeeName: employee.name || (employee as any).fullName || null,
+      employeeEmail: employee.email,
+      shiftId: activeShift.id,
+      breakType: req.body.breakType || 'regular',
+      breakNote: breakNote || undefined,
+      timestamp: createdBreak.startTime
+    }).catch((err) => console.error('[SLACK] break start notify failed:', err))
+
+    res.json({ break: createdBreak, message: 'Break started successfully' })
   } catch (error) {
     console.error('Error starting break:', error)
     res.status(500).json({ error: 'Failed to start break' })
@@ -350,7 +389,16 @@ router.post('/break/end', async (req, res) => {
       .set({ status: 'active', updatedAt: new Date() })
       .where(eq(shifts.id, activeShift.id))
 
-    res.json({ break: updatedBreaks[0], message: 'Break ended successfully' })
+    const endedBreak = updatedBreaks[0]
+    notifyShiftEvent({
+      event: 'break_ended',
+      employeeName: employee.name || (employee as any).fullName || null,
+      employeeEmail: employee.email,
+      shiftId: activeShift.id,
+      timestamp: endedBreak.endTime || new Date()
+    }).catch((err) => console.error('[SLACK] break end notify failed:', err))
+
+    res.json({ break: endedBreak, message: 'Break ended successfully' })
   } catch (error) {
     console.error('Error ending break:', error)
     res.status(500).json({ error: 'Failed to end break' })
@@ -371,21 +419,20 @@ router.get('/history', async (req, res) => {
 
     const { startDate, endDate, limit = 50 } = req.query
 
-    let query = db
+    const conditions = [eq(shifts.employeeId, employee.id)]
+    if (startDate) {
+      conditions.push(gte(shifts.startTime, new Date(startDate as string)))
+    }
+    if (endDate) {
+      conditions.push(lte(shifts.startTime, new Date(endDate as string)))
+    }
+
+    const history = await db
       .select()
       .from(shifts)
-      .where(eq(shifts.employeeId, employee.id))
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
       .orderBy(desc(shifts.startTime))
-
-    if (startDate) {
-      query = query.where(gte(shifts.startTime, new Date(startDate as string)))
-    }
-
-    if (endDate) {
-      query = query.where(lte(shifts.startTime, new Date(endDate as string)))
-    }
-
-    const history = await query.limit(Number(limit))
+      .limit(Number(limit))
 
     res.json({ shifts: history })
   } catch (error) {
