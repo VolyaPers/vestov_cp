@@ -39,15 +39,18 @@ const pool = new Pool({
 // Run migrations on startup
 async function runMigrations() {
   try {
-    console.log('Running database migrations...')
+    console.log('[MIGRATIONS] Starting database migrations...')
     const db = drizzle(pool, { schema: {} })
     const migrationsPath = path.join(__dirname, '../drizzle')
-    console.log('Migrations folder:', migrationsPath)
+    console.log('[MIGRATIONS] Migrations folder:', migrationsPath)
+    console.log('[MIGRATIONS] Database URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET')
+    
     await migrate(db, { migrationsFolder: migrationsPath })
-    console.log('Migrations completed successfully!')
+    console.log('[MIGRATIONS] ✓ Migrations completed successfully!')
   } catch (error) {
-    console.error('Migration error (non-fatal):', error)
-    // Continue even if migrations fail - they might already be applied
+    console.error('[MIGRATIONS] ✗ Migration error:', error)
+    console.error('[MIGRATIONS] Server will continue, but migrations may need to be run manually')
+    console.error('[MIGRATIONS] To run manually: cd server && npm run migrate')
   }
 }
 
