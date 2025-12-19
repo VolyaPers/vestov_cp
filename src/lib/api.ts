@@ -389,7 +389,7 @@ class ApiClient {
 
   async createUser(data: {
     username: string
-    password: string
+    password?: string
     fullName: string
     email: string
     role: 'admin' | 'team_member' | 'client'

@@ -3,6 +3,7 @@ import { Strategy as LocalStrategy } from 'passport-local'
 import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
+import { sql } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
 import { users, teamMembers } from '../db/schema.js'
 import type { UserWithPassword, UserWithoutPassword, SessionData, UserWithImpersonation } from '../types/passport.js'
@@ -30,7 +31,9 @@ export function setupPassport(pool: Pool) {
               isActive: users.isActive,
             })
             .from(users)
-            .where(eq(users.username, username))
+            .where(
+              sql`${users.username} = ${username} OR ${users.email} = ${username}`
+            )
             .limit(1)
           user = selectedUser || null
         } catch (selectError) {
@@ -40,7 +43,7 @@ export function setupPassport(pool: Pool) {
             const result = await pool.query<UserWithPassword>(`
               SELECT id, username, password, full_name as "fullName", email, role, position, avatar_url as "avatarUrl", true as "isActive"
               FROM users
-              WHERE username = $1
+              WHERE username = $1 OR email = $1
               LIMIT 1
             `, [username])
             user = result.rows[0] || null

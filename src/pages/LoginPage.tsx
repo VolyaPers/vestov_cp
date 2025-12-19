@@ -5,8 +5,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 
+interface User {
+  id: number
+  username: string
+  fullName: string
+  email: string
+  role: string
+}
+
 interface LoginPageProps {
-  onLogin: (user: any) => void
+  onLogin: (user: User) => void
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -41,8 +49,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
       // Redirect immediately based on role to avoid stuck loading
       redirectByRole(response.user?.role)
-    } catch (error: any) {
-      setError(error.message || 'Login failed')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Login failed')
     } finally {
       setIsLoading(false)
     }
@@ -53,18 +61,21 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError('')
 
     try {
-      const response = await api.register({
-        firstName,
-        lastName,
-        email,
-        password,
-        role,
+      const response = await api.request('/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email,
+          password,
+          role,
+        }),
       })
       onLogin(response.user)
       window.dispatchEvent(new CustomEvent('user-login', { detail: response.user }))
       redirectByRole(response.user?.role)
-    } catch (error: any) {
-      setError(error.message || 'Registration failed')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Registration failed')
     } finally {
       setIsLoading(false)
     }
@@ -90,11 +101,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
                 variant={mode === 'login' ? 'default' : 'outline'}
-                className="w-1/2"
+                className="w-full"
                 onClick={() => setMode('login')}
                 disabled={isLoading}
               >
@@ -103,7 +114,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               <Button
                 type="button"
                 variant={mode === 'register' ? 'default' : 'outline'}
-                className="w-1/2"
+                className="w-full"
                 onClick={() => setMode('register')}
                 disabled={isLoading}
               >
@@ -208,6 +219,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 </div>
               </>
             )}
+
             {error && (
               <div className="text-red-600 text-sm text-center">{error}</div>
             )}

@@ -15,6 +15,7 @@ interface User {
   fullName: string
   email: string
   role: string
+  isActive?: boolean
 }
 
 interface UserImpersonationProps {
@@ -29,8 +30,10 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   const [showDropdown, setShowDropdown] = useState(false)
 
   useEffect(() => {
-    loadUsers()
-  }, [])
+    if (showDropdown) {
+      loadUsers()
+    }
+  }, [showDropdown, currentUser?.id])
 
   const loadUsers = async () => {
     try {
@@ -38,12 +41,14 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
         credentials: 'include'
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        // API returns { users: [...], pagination: {...} }
-        const allUsers = data.users || data
-        setUsers(allUsers.filter((u: User) => u.id !== currentUser?.id))
-      }
+      if (!response.ok) return
+      const data = await response.json()
+      const allUsers = data.users || data
+      setUsers(
+        allUsers
+          .filter((u: User) => u.id !== currentUser?.id)
+          .filter((u: User) => u.isActive !== false)
+      )
     } catch (error) {
       console.error('Error loading users:', error)
     }

@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import { db } from '../db/index.js'
-import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, shiftSchedules, shifts, shiftBreaks } from '../db/schema.js'
+import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks } from '../db/schema.js'
 import { eq, and, sql, inArray } from 'drizzle-orm'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { requireAuth } from '../middleware/auth.js'
+import { createUserAccount, deactivateUserAndMemberships } from '../services/userService.js'
 
 const router = Router()
 
@@ -174,75 +175,45 @@ router.get('/:id', async (req, res) => {
 // Create new user
 router.post('/', async (req, res) => {
   try {
-    const { username, password, fullName, email, role, position, avatarUrl, teamMemberId } = req.body
+    const { username, password, fullName, email, role, position, avatarUrl, teamMemberId } = req.body || {}
 
-    if (!username || !password || !fullName || !email || !role) {
+    if (!fullName || !email || !role) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
-    // If role is team_member, teamMemberId is required
+    const allowedRoles = ['admin', 'team_member', 'client']
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' })
+    }
+
     if (role === 'team_member' && !teamMemberId) {
       return res.status(400).json({ error: 'Team member must be selected for team_member role' })
     }
 
-    // Validate team member exists if provided
-    if (teamMemberId) {
-      const [teamMember] = await db
-        .select()
-        .from(teamMembers)
-        .where(eq(teamMembers.id, Number(teamMemberId)))
-        .limit(1)
+    const createdBy = (req as any)?.user?.id ?? null
 
-      if (!teamMember) {
-        return res.status(404).json({ error: 'Selected team member not found' })
-      }
+    const { user } = await createUserAccount({
+      username,
+      password,
+      fullName,
+      email,
+      role,
+      position,
+      avatarUrl,
+      teamMemberId: teamMemberId ? Number(teamMemberId) : undefined,
+      createdBy,
+      source: 'admin_create'
+    })
 
-      // Check if team member already has a user account
-      const existingTeamMemberUser = await db
-        .select()
-        .from(users)
-        .where(eq(users.teamMemberId, Number(teamMemberId)))
-        .limit(1)
-
-      if (existingTeamMemberUser.length > 0) {
-        return res.status(409).json({ error: 'This team member already has a user account' })
-      }
-    }
-
-    // Check if username or email already exists
-    const existingUser = await db
-      .select()
-      .from(users)
-      .where(sql`${users.username} = ${username} OR ${users.email} = ${email}`)
-      .limit(1)
-
-    if (existingUser.length > 0) {
-      return res.status(409).json({ error: 'Username or email already exists' })
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10)
-
-    const newUser = await db
-      .insert(users)
-      .values({
-        username,
-        password: hashedPassword,
-        fullName,
-        email,
-        role: role as 'admin' | 'team_member' | 'client',
-        position,
-        avatarUrl,
-        teamMemberId: teamMemberId ? Number(teamMemberId) : null,
-        isActive: true,
-      })
-      .returning()
-
-    const { password: _, ...userWithoutPassword } = newUser[0]
-    res.status(201).json(userWithoutPassword)
+    const { password: _, ...userWithoutPassword } = user
+    res.status(201).json({
+      user: userWithoutPassword,
+    })
   } catch (error) {
     console.error('Error creating user:', error)
-    res.status(500).json({ error: 'Failed to create user' })
+    const message = error instanceof Error ? error.message : 'Failed to create user'
+    const status = message.includes('exists') || message.includes('already') ? 409 : 500
+    res.status(status).json({ error: message })
   }
 })
 
@@ -252,7 +223,16 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params
     const { username, fullName, email, role, position, avatarUrl, isActive } = req.body
 
-    const updateData: any = {}
+    const updateData: {
+      username?: string
+      fullName?: string
+      email?: string
+      role?: string
+      position?: string | null
+      avatarUrl?: string | null
+      isActive?: boolean
+      updatedAt: Date
+    } = { updatedAt: new Date() }
     if (username !== undefined) updateData.username = username
     if (fullName !== undefined) updateData.fullName = fullName
     if (email !== undefined) updateData.email = email
@@ -260,7 +240,6 @@ router.put('/:id', async (req, res) => {
     if (position !== undefined) updateData.position = position
     if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl
     if (isActive !== undefined) updateData.isActive = isActive
-    updateData.updatedAt = new Date()
 
     const updatedUser = await db
       .update(users)
@@ -389,10 +368,13 @@ router.put('/:userId/clients/:clientId', async (req, res) => {
     const { userId, clientId } = req.params
     const { accessLevel, isActive } = req.body
 
-    const updateData: any = {}
+    const updateData: {
+      accessLevel?: 'read' | 'write' | 'admin'
+      isActive?: boolean
+      updatedAt: Date
+    } = { updatedAt: new Date() }
     if (accessLevel !== undefined) updateData.accessLevel = accessLevel
     if (isActive !== undefined) updateData.isActive = isActive
-    updateData.updatedAt = new Date()
 
     const updatedAssignment = await db
       .update(clientUsers)
@@ -477,20 +459,14 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params
 
-    const updatedUser = await db
-      .update(users)
-      .set({
-        isActive: false,
-        updatedAt: new Date()
-      })
-      .where(eq(users.id, Number(id)))
-      .returning()
-
-    if (updatedUser.length === 0) {
+    const [user] = await db.select().from(users).where(eq(users.id, Number(id))).limit(1)
+    if (!user) {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    res.json({ message: 'User deactivated successfully' })
+    await deactivateUserAndMemberships(Number(id))
+
+    res.json({ message: 'User deactivated and memberships revoked' })
   } catch (error) {
     console.error('Error deactivating user:', error)
     res.status(500).json({ error: 'Failed to deactivate user' })
@@ -501,7 +477,10 @@ router.delete('/:id', async (req, res) => {
 router.delete('/:id/hard', requireAuth, async (req, res) => {
   try {
     const { id } = req.params
-    const authUser: any = (req as any).user
+    interface AuthenticatedRequest extends Express.Request {
+      user?: { id: number; role: string }
+    }
+    const authUser = (req as AuthenticatedRequest).user
 
     if (!authUser || authUser.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' })
@@ -514,8 +493,11 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
     }
 
     await db.transaction(async (tx) => {
+      console.log(`[HARD DELETE] Starting deletion of user ${userId} (${user.email})`)
+
       // Delete client assignments
-      await tx.delete(clientUsers).where(eq(clientUsers.userId, userId))
+      const deletedAssignments = await tx.delete(clientUsers).where(eq(clientUsers.userId, userId))
+      console.log(`[HARD DELETE] Deleted client assignments`)
 
       // Delete messages (sender or receiver)
       await tx.delete(messages).where(
@@ -548,6 +530,17 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
 
         // Delete leave balances/requests and employment cycles
         await tx.delete(leaveBalances).where(eq(leaveBalances.employeeId, tmId))
+        await tx
+          .delete(leaveRequestEvents)
+          .where(
+            inArray(
+              leaveRequestEvents.leaveRequestId,
+              tx
+                .select({ id: leaveRequests.id })
+                .from(leaveRequests)
+                .where(eq(leaveRequests.employeeId, tmId))
+            )
+          )
         await tx.delete(leaveRequests).where(eq(leaveRequests.employeeId, tmId))
         await tx.delete(employmentCycles).where(eq(employmentCycles.employeeId, tmId))
 
@@ -570,12 +563,34 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
 
         // Delete team member record
         await tx.delete(teamMembers).where(eq(teamMembers.id, tmId))
+        console.log(`[HARD DELETE] Deleted team member ${tmId}`)
       }
 
-      // Delete user
-      await tx.delete(users).where(eq(users.id, userId))
+      // Delete user - THIS MUST BE LAST to avoid foreign key issues
+      const deletedUsers = await tx.delete(users).where(eq(users.id, userId))
+      console.log(`[HARD DELETE] Deleted user ${userId} (${user.email})`)
     })
 
+    // Verify deletion - check by ID and email/username to be thorough
+    const [verifyById] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+    const [verifyByEmail] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, user.email))
+      .limit(1)
+    const [verifyByUsername] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, user.username))
+      .limit(1)
+
+    if (verifyById || verifyByEmail || verifyByUsername) {
+      console.error(`[HARD DELETE] WARNING: User ${userId} (${user.email}) still exists after deletion!`)
+      console.error(`[HARD DELETE] Found by ID: ${!!verifyById}, by email: ${!!verifyByEmail}, by username: ${!!verifyByUsername}`)
+      return res.status(500).json({ error: 'User deletion failed - user still exists in database' })
+    }
+
+    console.log(`[HARD DELETE] Successfully deleted user ${userId} (${user.email}) and all related data`)
     res.json({ message: 'User and related data deleted successfully' })
   } catch (error) {
     console.error('Error hard-deleting user:', error)

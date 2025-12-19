@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'wouter'
-import { Plus, Edit, Trash2, User, Mail, UserCheck, UserX, Users, Shield, Briefcase, Search, Building, X, Settings } from 'lucide-react'
+import { Plus, Edit, Trash2, User, UserCheck, UserX, Users, Shield, Briefcase, Search, Building, X, Settings, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -105,7 +104,11 @@ export function UsersPage() {
   const loadAvailableClients = async () => {
     try {
       const response = await api.getClients()
-      setAvailableClients(response.map((client: any) => ({ id: client.id, name: client.name })))
+      setAvailableClients(
+        Array.isArray(response)
+          ? response.map((client: { id: number; name: string }) => ({ id: client.id, name: client.name }))
+          : []
+      )
     } catch (error) {
       console.error('Failed to load clients:', error)
     }
@@ -125,7 +128,7 @@ export function UsersPage() {
   }
 
   const handleCreateUser = async () => {
-    if (!userFormData.username || !userFormData.password || !userFormData.fullName || !userFormData.email) {
+    if (!userFormData.username || !userFormData.fullName || !userFormData.email) {
       alert('Please fill in all required fields')
       return
     }
@@ -136,7 +139,22 @@ export function UsersPage() {
     }
 
     try {
-      const payload: any = { ...userFormData }
+      const payload: {
+        username: string
+        password?: string
+        fullName: string
+        email: string
+        role: 'admin' | 'team_member' | 'client'
+        position?: string
+        teamMemberId?: number
+      } = {
+        username: userFormData.username,
+        fullName: userFormData.fullName,
+        email: userFormData.email,
+        role: userFormData.role,
+      }
+      if (userFormData.password) payload.password = userFormData.password
+      if (userFormData.position) payload.position = userFormData.position
       if (userFormData.teamMemberId) {
         payload.teamMemberId = parseInt(userFormData.teamMemberId)
       }
@@ -145,10 +163,10 @@ export function UsersPage() {
       await loadAvailableTeamMembers() // Refresh available team members
       setIsUserDialogOpen(false)
       resetUserForm()
-      alert('User created successfully!')
-    } catch (error: any) {
+      alert('User created successfully.')
+    } catch (error) {
       console.error('Failed to create user:', error)
-      alert(error.message || 'Failed to create user')
+      alert(error instanceof Error ? error.message : 'Failed to create user')
     }
   }
 
@@ -172,29 +190,30 @@ export function UsersPage() {
     }
 
     try {
-      const updateData: any = {
+      const updateData: {
+        username: string
+        fullName: string
+        email: string
+        role: 'admin' | 'team_member' | 'client'
+        position?: string
+      } = {
         username: userFormData.username,
         fullName: userFormData.fullName,
         email: userFormData.email,
         role: userFormData.role,
-        position: userFormData.position || undefined,
       }
+      if (userFormData.position) updateData.position = userFormData.position
 
       await api.updateUser(isEditingUser.id, updateData)
 
-      // Update password separately if provided
-      if (userFormData.password) {
-        // Note: This would require a different API call in a real app
-        // For now, we'll skip password update in edit mode
-      }
 
       await loadUsers()
       setIsUserDialogOpen(false)
       resetUserForm()
       alert('User updated successfully!')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to update user:', error)
-      alert(error.message || 'Failed to update user')
+      alert(error instanceof Error ? error.message : 'Failed to update user')
     }
   }
 
@@ -203,9 +222,9 @@ export function UsersPage() {
       await api.updateUser(user.id, { isActive: !user.isActive })
       await loadUsers()
       alert(`User ${user.isActive ? 'deactivated' : 'activated'} successfully!`)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to toggle user status:', error)
-      alert(error.message || 'Failed to update user status')
+      alert(error instanceof Error ? error.message : 'Failed to update user status')
     }
   }
 
@@ -217,9 +236,9 @@ export function UsersPage() {
       await loadUsers()
       await loadAvailableTeamMembers()
       alert('User deleted successfully')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to delete user:', error)
-      alert(error.message || 'Failed to delete user')
+      alert(error instanceof Error ? error.message : 'Failed to delete user')
     }
   }
 
@@ -257,7 +276,7 @@ export function UsersPage() {
         Number(assignmentFormData.clientId),
         {
           accessLevel: assignmentFormData.accessLevel,
-          assignedBy: 1 // TODO: Get current user ID
+          assignedBy: 1
         }
       )
 
@@ -265,9 +284,9 @@ export function UsersPage() {
       setIsClientAssignmentDialogOpen(false)
       setSelectedUserForAssignment(null)
       alert('User assigned to client successfully!')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to assign user to client:', error)
-      alert(error.message || 'Failed to assign user to client')
+      alert(error instanceof Error ? error.message : 'Failed to assign user to client')
     }
   }
 
@@ -280,9 +299,9 @@ export function UsersPage() {
       await api.removeUserFromClient(userId, clientId)
       await loadUsers()
       alert('User removed from client successfully!')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to remove user from client:', error)
-      alert(error.message || 'Failed to remove user from client')
+      alert(error instanceof Error ? error.message : 'Failed to remove user from client')
     }
   }
 
@@ -291,9 +310,9 @@ export function UsersPage() {
       await api.updateClientAssignment(userId, clientId, { accessLevel: newAccessLevel })
       await loadUsers()
       alert('Access level updated successfully!')
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to update access level:', error)
-      alert(error.message || 'Failed to update access level')
+      alert(error instanceof Error ? error.message : 'Failed to update access level')
     }
   }
 
@@ -443,7 +462,7 @@ export function UsersPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleManageClientAssignment(user)}
-                          className="text-purple-600 hover:text-purple-700"
+                          className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 hover:border-purple-300 transition-colors duration-200"
                           title="Manage client assignments"
                         >
                           <Settings className="h-4 w-4" />
@@ -453,7 +472,7 @@ export function UsersPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleEditUser(user)}
-                        className="text-blue-600 hover:text-blue-700"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-300 transition-colors duration-200"
                         title="Edit user"
                       >
                         <Edit className="h-4 w-4" />
@@ -462,7 +481,9 @@ export function UsersPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleToggleUserStatus(user)}
-                        className={user.isActive ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                        className={user.isActive 
+                          ? "text-orange-600 hover:text-orange-700 hover:bg-orange-50 hover:border-orange-300 transition-colors duration-200" 
+                          : "text-green-600 hover:text-green-700 hover:bg-green-50 hover:border-green-300 transition-colors duration-200"}
                         title={user.isActive ? "Deactivate user" : "Activate user"}
                       >
                         {user.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
@@ -471,7 +492,7 @@ export function UsersPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleDeleteUser(user)}
-                        className="text-red-600 hover:text-red-700"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors duration-200"
                         title="Delete user permanently"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -606,7 +627,7 @@ export function UsersPage() {
               </div>
               <div>
                 <Label htmlFor="userPassword">
-                  Password {isEditingUser ? '(leave empty to keep current)' : '*'}
+                  Password (optional)
                 </Label>
                 <Input
                   id="userPassword"

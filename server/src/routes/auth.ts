@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js'
 import { db } from '../db/index.js'
 import { users, teamMembers } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
+import { createUserAccount } from '../services/userService.js'
 
 const router = Router()
 
@@ -20,7 +21,7 @@ const loginLimiter = rateLimit({
 
 const ALLOWED_ROLES = ['admin', 'client', 'team_member']
 
-// Register route (simple self-service signup)
+// Register route (self-service signup or claim existing admin-created user)
 router.post('/register', async (req, res) => {
   try {
     const { firstName, lastName, email, password, role } = req.body || {}
@@ -34,78 +35,120 @@ router.post('/register', async (req, res) => {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase()
-    const username = normalizedEmail // Keep username == email for login
+    const username = normalizedEmail // login uses email/username
     const fullName = `${firstName} ${lastName}`.trim()
 
-    // Ensure email/username uniqueness
-    const [existingUser] = await db
+    // If a user already exists with this email/username, let them claim the account by setting a password.
+    const [existing] = await db
       .select()
       .from(users)
-      .where(eq(users.username, username))
+      .where(eq(users.email, normalizedEmail))
+      .limit(1)
 
-    if (existingUser) {
-      return res.status(409).json({ error: 'User already exists' })
+    interface UserResponse {
+      id: number
+      username: string
+      fullName: string
+      email: string
+      role: string
+      position: string | null
+      avatarUrl: string | null
+      isActive: boolean
+      teamMemberId: number | null
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12)
+    let userResponse: UserResponse
 
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        username,
-        password: hashedPassword,
-        fullName,
+    if (existing) {
+      if (!existing.isActive) {
+        return res.status(400).json({ error: 'Account is inactive. Please contact an administrator.' })
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12)
+      const [updated] = await db
+        .update(users)
+        .set({
+          // Admin data wins: preserve admin-set username, role, position, team link.
+          password: hashedPassword,
+          fullName: existing.fullName && existing.fullName.trim().length > 0 ? existing.fullName : fullName,
+          username: existing.username,
+          role: existing.role,
+          position: existing.position,
+          teamMemberId: existing.teamMemberId,
+          updatedAt: new Date(),
+          isActive: true,
+        })
+        .where(eq(users.id, existing.id))
+        .returning()
+
+      userResponse = {
+        id: updated.id,
+        username: updated.username,
+        fullName: updated.fullName,
+        email: updated.email,
+        role: updated.role,
+        position: updated.position,
+        avatarUrl: updated.avatarUrl,
+        isActive: updated.isActive,
+        teamMemberId: updated.teamMemberId ?? null,
+      }
+    } else {
+      const position =
+        role === 'admin'
+          ? 'Administrator'
+          : role === 'team_member'
+            ? 'Team Member'
+            : 'Client'
+
+      let teamMemberId: number | null = null
+      if (role === 'team_member') {
+        const [existingMember] = await db
+          .select({ id: teamMembers.id })
+          .from(teamMembers)
+          .where(eq(teamMembers.email, normalizedEmail))
+          .limit(1)
+
+        if (existingMember) {
+          teamMemberId = existingMember.id
+        } else {
+          const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD for date column
+          const [createdMember] = await db
+            .insert(teamMembers)
+            .values({
+              name: fullName,
+              role: 'team_member',
+              email: normalizedEmail,
+              startDate: today,
+              status: 'active',
+              isBillable: true,
+            })
+            .returning({ id: teamMembers.id })
+          teamMemberId = createdMember.id
+        }
+      }
+
+      const { user: newUser } = await createUserAccount({
         email: normalizedEmail,
+        fullName,
         role,
-        position: role === 'admin' ? 'Administrator' : role === 'team_member' ? 'Team Member' : 'Client',
-        isActive: true,
+        username,
+        password,
+        position,
+        teamMemberId: teamMemberId ?? undefined,
+        source: 'self_register',
       })
-      .returning()
 
-    let teamMemberId: number | null = null
-    if (role === 'team_member') {
-      const [existingMember] = await db
-        .select({ id: teamMembers.id })
-        .from(teamMembers)
-        .where(eq(teamMembers.email, normalizedEmail))
-        .limit(1)
-
-      if (existingMember) {
-        teamMemberId = existingMember.id
-      } else {
-        const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD for date column
-        const [createdMember] = await db
-          .insert(teamMembers)
-          .values({
-            name: fullName,
-            role: 'team_member',
-            email: normalizedEmail,
-            startDate: today,
-            status: 'active',
-            isBillable: true,
-          })
-          .returning({ id: teamMembers.id })
-        teamMemberId = createdMember.id
+      userResponse = {
+        id: newUser.id,
+        username: newUser.username,
+        fullName: newUser.fullName,
+        email: newUser.email,
+        role: newUser.role,
+        position: newUser.position,
+        avatarUrl: newUser.avatarUrl,
+        isActive: newUser.isActive,
+        teamMemberId: teamMemberId ?? newUser.teamMemberId ?? null,
       }
-
-      if (teamMemberId) {
-        await db
-          .update(users)
-          .set({ teamMemberId })
-          .where(eq(users.id, newUser.id))
-      }
-    }
-
-    const userResponse = {
-      id: newUser.id,
-      username: newUser.username,
-      fullName: newUser.fullName,
-      email: newUser.email,
-      role: newUser.role,
-      position: newUser.position,
-      avatarUrl: newUser.avatarUrl,
-      isActive: newUser.isActive,
-      teamMemberId: teamMemberId ?? newUser.teamMemberId ?? null,
     }
 
     // Auto-login after registration
@@ -120,7 +163,9 @@ router.post('/register', async (req, res) => {
     })
   } catch (error) {
     console.error('Registration error:', error)
-    return res.status(500).json({ error: 'Failed to register user' })
+    const message =
+      (error as Error)?.message || 'Failed to register user'
+    return res.status(500).json({ error: message })
   }
 })
 
@@ -128,7 +173,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', loginLimiter, (req, res, next) => {
   console.log(`[${new Date().toISOString()}] [LOGIN ROUTE] Login attempt for:`, req.body.username)
   console.log('[LOGIN ROUTE] Request body:', JSON.stringify(req.body, null, 2))
-  passport.authenticate('local', (err: any, user: any, info: any) => {
+  passport.authenticate('local', (err: unknown, user: Express.User | false, info: { message?: string } | undefined) => {
     if (err) {
       console.error('Login error:', err)
       return res.status(500).json({ error: 'Internal server error' })
@@ -175,7 +220,7 @@ router.post('/logout', requireAuth, (req, res) => {
 // Get current user
 router.get('/user', (req, res) => {
   if (req.isAuthenticated() && req.user) {
-    const user: any = req.user
+    const user = req.user
     console.log('[GET /user] Session user object:', {
       id: user.id,
       email: user.email,
@@ -208,7 +253,7 @@ router.get('/user', (req, res) => {
 // Impersonate user (admin-level accounts)
 router.post('/impersonate/:userId', requireAuth, async (req, res) => {
   try {
-    const currentUser: any = req.user
+    const currentUser = req.user
 
     // Only allow admins to impersonate
     if (currentUser.role !== 'admin') {
@@ -294,7 +339,7 @@ router.post('/impersonate/:userId', requireAuth, async (req, res) => {
 // Stop impersonation and return to original user
 router.post('/stop-impersonation', requireAuth, async (req, res) => {
   try {
-    const currentUser: any = req.user
+    const currentUser = req.user
 
     if (!currentUser.originalUserId) {
       return res.status(400).json({ error: 'Not currently impersonating' })
