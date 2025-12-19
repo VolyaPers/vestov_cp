@@ -172,6 +172,10 @@ app.use((req, res, next) => {
   next()
 })
 
+const isProduction = process.env.NODE_ENV === 'production'
+const isStaging = process.env.NODE_ENV === 'staging'
+const isHttps = isProduction || isStaging || process.env.FORCE_HTTPS === 'true'
+
 app.use(session({
   store: new PgSession({
     pool,
@@ -183,10 +187,11 @@ app.use(session({
   saveUninitialized: false,
   name: 'vestov.sid',
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttps,
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    sameSite: isHttps ? 'none' : 'lax',
+    domain: process.env.COOKIE_DOMAIN || undefined,
   },
 }))
 

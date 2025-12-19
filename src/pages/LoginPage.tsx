@@ -248,7 +248,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               variant="outline"
               className="w-full mt-4"
               onClick={() => {
-                const backendUrl = import.meta.env.DEV ? 'http://localhost:3001' : ''
+                const backendUrl = import.meta.env.DEV 
+                  ? 'http://localhost:3001' 
+                  : (import.meta.env.VITE_API_URL || '')
                 window.location.href = `${backendUrl}/api/google`
               }}
               disabled={isLoading}
