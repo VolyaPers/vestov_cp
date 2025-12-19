@@ -251,11 +251,17 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 if (import.meta.env.DEV) {
                   window.location.href = 'http://localhost:3001/api/google'
                 } else {
-                  const googleOAuthUrl = import.meta.env.VITE_GOOGLE_OAUTH_URL || import.meta.env.VITE_API_URL
+                  const googleOAuthUrl = import.meta.env.VITE_GOOGLE_OAUTH_URL
                   if (googleOAuthUrl) {
                     window.location.href = googleOAuthUrl
                   } else {
-                    window.location.href = '/api/google'
+                    const apiUrl = import.meta.env.VITE_API_URL
+                    if (apiUrl) {
+                      const baseUrl = apiUrl.endsWith('/api') ? apiUrl : `${apiUrl.replace(/\/$/, '')}/api`
+                      window.location.href = `${baseUrl}/google`
+                    } else {
+                      window.location.href = '/api/google'
+                    }
                   }
                 }
               }}
