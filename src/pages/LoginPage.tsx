@@ -31,15 +31,21 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const errorParam = urlParams.get('error')
+    const errorMessage = urlParams.get('message')
     
     if (errorParam) {
-      const errorMessages: Record<string, string> = {
+      const defaultErrorMessages: Record<string, string> = {
         google_auth_error: 'Google authentication failed. Please try again or use email/password login.',
         google_auth_failed: 'Google authentication was unsuccessful. Please try again.',
+        google_auth_inactive: 'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.',
         google_auth_session_failed: 'Login session could not be established. Please try again.',
       }
       
-      setError(errorMessages[errorParam] || 'An error occurred during authentication. Please try again.')
+      const displayMessage = errorMessage 
+        ? decodeURIComponent(errorMessage)
+        : defaultErrorMessages[errorParam] || 'An error occurred during authentication. Please try again.'
+      
+      setError(displayMessage)
       
       const cleanUrl = window.location.pathname
       window.history.replaceState({}, '', cleanUrl)

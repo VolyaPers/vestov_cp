@@ -68,7 +68,7 @@ export function setupPassport(pool: Pool) {
         }
 
         if (user.isActive === false) {
-          return done(null, false, { message: 'Account is deactivated' })
+          return done(null, false, { message: 'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.' })
         }
 
         const { password: _, ...userWithoutPassword } = user
@@ -115,7 +115,7 @@ export function setupPassport(pool: Pool) {
             })
 
             if (!linkedUser.isActive) {
-              return done(null, false, { message: 'Account is inactive. Please contact an administrator.' })
+              return done(null, false, { message: 'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.' })
             }
 
             const { password: _, ...userWithoutPassword } = linkedUser

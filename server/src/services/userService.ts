@@ -170,14 +170,23 @@ export async function linkOrCreateUserAccount(
 
     if (existingUser) {
       if (!existingUser.isActive) {
-        throw new Error('Account is inactive. Please contact an administrator.')
+        throw new Error('Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.')
       }
 
       if (existingUser.googleId) {
         if (existingUser.googleId !== googleId) {
           throw new Error('This email is already linked to a different Google account.')
         }
-        return { user: existingUser, wasLinked: true }
+        
+        const [updated] = await tx
+          .update(users)
+          .set({
+            lastLoginAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existingUser.id))
+          .returning()
+        return { user: updated, wasLinked: true }
       }
 
       const updateData: {
@@ -185,11 +194,13 @@ export async function linkOrCreateUserAccount(
         authProvider: string
         fullName?: string
         avatarUrl?: string | null
+        lastLoginAt?: Date
         updatedAt: Date
       } = {
         googleId,
         authProvider: existingUser.authProvider === 'local' ? 'local' : 'google',
         updatedAt: new Date(),
+        lastLoginAt: new Date(),
       }
 
       if (!existingUser.fullName || existingUser.fullName.trim().length === 0) {
@@ -205,7 +216,6 @@ export async function linkOrCreateUserAccount(
         .set(updateData)
         .where(eq(users.id, existingUser.id))
         .returning()
-
 
       return { user: updated, wasLinked: true }
     }
@@ -263,6 +273,7 @@ export async function linkOrCreateUserAccount(
         googleId,
         authProvider: 'google',
         isActive: true,
+        lastLoginAt: new Date(),
       })
       .returning()
 

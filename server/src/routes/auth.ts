@@ -61,7 +61,7 @@ router.post('/register', async (req, res) => {
 
     if (existing) {
       if (!existing.isActive) {
-        return res.status(400).json({ error: 'Account is inactive. Please contact an administrator.' })
+        return res.status(400).json({ error: 'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.' })
       }
 
       const hashedPassword = await bcrypt.hash(password, 12)
@@ -397,7 +397,9 @@ router.post('/stop-impersonation', requireAuth, async (req, res) => {
 })
 
 function getFrontendUrl(): string {
-  return process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
+  const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
+  console.log('[GOOGLE OAUTH] Frontend URL:', frontendUrl)
+  return frontendUrl
 }
 
 function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) {
@@ -422,20 +424,38 @@ router.get('/google/callback', (req, res, next) => {
   passport.authenticate('google', {
     failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
     session: true
-  }, (err: unknown, user: Express.User | false) => {
+  }, (err: unknown, user: Express.User | false, info?: { message?: string }) => {
     if (err) {
-      console.error('[GOOGLE OAUTH] Authentication error:', err)
-      return res.redirect(`${frontendUrl}/?error=google_auth_error`)
+      const error = err as Error
+      console.error('[GOOGLE OAUTH] Authentication error:', error.message)
+      console.error('[GOOGLE OAUTH] Error stack:', error.stack)
+      
+      const errorMessage = error.message || 'Authentication failed'
+      const errorParam = error.message.includes('inactive') 
+        ? 'google_auth_inactive' 
+        : 'google_auth_error'
+      const errorUrl = `${frontendUrl}/?error=${errorParam}&message=${encodeURIComponent(errorMessage)}`
+      console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
+      return res.redirect(errorUrl)
     }
 
     if (!user) {
-      return res.redirect(`${frontendUrl}/?error=google_auth_failed`)
+      const errorMessage = info?.message || 'Authentication failed'
+      console.error('[GOOGLE OAUTH] No user returned:', errorMessage)
+      const errorParam = errorMessage.includes('inactive')
+        ? 'google_auth_inactive'
+        : 'google_auth_failed'
+      const errorUrl = `${frontendUrl}/?error=${errorParam}&message=${encodeURIComponent(errorMessage)}`
+      console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
+      return res.redirect(errorUrl)
     }
 
     req.logIn(user, (loginErr) => {
       if (loginErr) {
         console.error('[GOOGLE OAUTH] Session login error:', loginErr)
-        return res.redirect(`${frontendUrl}/?error=google_auth_session_failed`)
+        const errorUrl = `${frontendUrl}/?error=google_auth_session_failed`
+        console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
+        return res.redirect(errorUrl)
       }
 
       const redirectPath = user.role === 'admin'
@@ -446,7 +466,7 @@ router.get('/google/callback', (req, res, next) => {
 
       const fullRedirectUrl = `${frontendUrl}${redirectPath}`
 
-      console.log(`[GOOGLE OAUTH] Successful login for ${user.email}, redirecting to ${fullRedirectUrl}`)
+      console.log(`[GOOGLE OAUTH] Successful login for ${user.email} (role: ${user.role}), redirecting to ${fullRedirectUrl}`)
       res.redirect(fullRedirectUrl)
     })
   })(req, res, next)
