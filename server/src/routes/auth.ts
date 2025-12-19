@@ -73,13 +73,14 @@ router.post('/register', async (req, res) => {
       if (existingMember) {
         teamMemberId = existingMember.id
       } else {
+        const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD for date column
         const [createdMember] = await db
           .insert(teamMembers)
           .values({
             name: fullName,
             role: 'team_member',
             email: normalizedEmail,
-            startDate: new Date(),
+            startDate: today,
             status: 'active',
             isBillable: true,
           })

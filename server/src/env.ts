@@ -33,3 +33,5 @@ function loadEnvFile(filePath: string) {
 loadEnvFile(path.join(__dirname, '../.env'))
 loadEnvFile(path.join(__dirname, '../../.env'))
 
+
+

@@ -40,3 +40,5 @@ export function calculateEmploymentMetrics(startDate: string | Date) {
   }
 }
 
+
+
