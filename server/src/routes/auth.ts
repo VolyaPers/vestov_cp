@@ -398,8 +398,15 @@ router.post('/stop-impersonation', requireAuth, async (req, res) => {
 
 function getFrontendUrl(): string {
   const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
-  console.log('[GOOGLE OAUTH] Frontend URL:', frontendUrl)
-  return frontendUrl
+  const normalizedUrl = frontendUrl.endsWith('/') ? frontendUrl.slice(0, -1) : frontendUrl
+  console.log('[GOOGLE OAUTH] Frontend URL (raw):', frontendUrl)
+  console.log('[GOOGLE OAUTH] Frontend URL (normalized):', normalizedUrl)
+  console.log('[GOOGLE OAUTH] Environment variables:', {
+    FRONTEND_URL: process.env.FRONTEND_URL,
+    PUBLIC_APP_URL: process.env.PUBLIC_APP_URL,
+    NODE_ENV: process.env.NODE_ENV,
+  })
+  return normalizedUrl
 }
 
 function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) {
@@ -421,6 +428,10 @@ router.get('/auth/google', handleGoogleOAuthInit)
 router.get('/google/callback', (req, res, next) => {
   const frontendUrl = getFrontendUrl()
   
+  if (!frontendUrl || frontendUrl === 'http://localhost:5173') {
+    console.error('[GOOGLE OAUTH] WARNING: Frontend URL not properly configured! Using fallback.')
+  }
+  
   passport.authenticate('google', {
     failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
     session: true
@@ -436,6 +447,11 @@ router.get('/google/callback', (req, res, next) => {
         : 'google_auth_error'
       const errorUrl = `${frontendUrl}/?error=${errorParam}&message=${encodeURIComponent(errorMessage)}`
       console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
+      console.log('[GOOGLE OAUTH] Frontend URL validation:', {
+        url: frontendUrl,
+        isValid: frontendUrl.startsWith('http://') || frontendUrl.startsWith('https://'),
+        isLocalhost: frontendUrl.includes('localhost'),
+      })
       return res.redirect(errorUrl)
     }
 
@@ -447,6 +463,11 @@ router.get('/google/callback', (req, res, next) => {
         : 'google_auth_failed'
       const errorUrl = `${frontendUrl}/?error=${errorParam}&message=${encodeURIComponent(errorMessage)}`
       console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
+      console.log('[GOOGLE OAUTH] Frontend URL validation:', {
+        url: frontendUrl,
+        isValid: frontendUrl.startsWith('http://') || frontendUrl.startsWith('https://'),
+        isLocalhost: frontendUrl.includes('localhost'),
+      })
       return res.redirect(errorUrl)
     }
 
