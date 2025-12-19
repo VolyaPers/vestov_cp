@@ -15,7 +15,7 @@ import {
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   username: varchar('username', { length: 50 }).unique().notNull(),
-  password: text('password').notNull(),
+  password: text('password'), // Nullable for OAuth-only users
   fullName: text('full_name').notNull(),
   email: varchar('email', { length: 255 }).unique().notNull(),
   role: varchar('role', { length: 20 }).notNull().default('client'), // 'admin' | 'team_member' | 'client'
@@ -24,6 +24,8 @@ export const users = pgTable('users', {
   teamMemberId: integer('team_member_id'), // Foreign key to team_members table (for role='team_member')
   isActive: boolean('is_active').default(true),
   lastLoginAt: timestamp('last_login_at'),
+  googleId: varchar('google_id', { length: 255 }).unique(),
+  authProvider: varchar('auth_provider', { length: 50 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

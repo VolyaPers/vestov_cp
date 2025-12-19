@@ -1,11 +1,13 @@
 import passport from 'passport'
 import { Strategy as LocalStrategy } from 'passport-local'
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20'
 import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { sql } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
 import { users, teamMembers } from '../db/schema.js'
+import { linkOrCreateUserAccount } from '../services/userService.js'
 import type { UserWithPassword, UserWithoutPassword, SessionData, UserWithImpersonation } from '../types/passport.js'
 
 export function setupPassport(pool: Pool) {
@@ -56,6 +58,10 @@ export function setupPassport(pool: Pool) {
           return done(null, false, { message: 'Invalid username or password' })
         }
 
+        if (!user.password) {
+          return done(null, false, { message: 'This account uses Google sign-in. Please sign in with Google.' })
+        }
+
         const isValidPassword = await bcrypt.compare(password, user.password)
         if (!isValidPassword) {
           return done(null, false, { message: 'Invalid username or password' })
@@ -72,6 +78,58 @@ export function setupPassport(pool: Pool) {
       }
     })
   )
+
+  const googleClientId = process.env.GOOGLE_CLIENT_ID
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
+  const backendURL = process.env.BACKEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:3001'
+  const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL || `${backendURL}/api/google/callback`
+  
+  if (googleClientId && googleClientSecret) {
+    console.log('[PASSPORT] Google OAuth configured with callback:', googleCallbackURL)
+  }
+
+  if (googleClientId && googleClientSecret) {
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: googleClientId,
+          clientSecret: googleClientSecret,
+          callbackURL: googleCallbackURL,
+        },
+        async (accessToken, refreshToken, profile, done) => {
+          try {
+            if (!profile.emails || profile.emails.length === 0) {
+              return done(new Error('Google account does not have an email address'))
+            }
+
+            const email = profile.emails[0].value
+            const fullName = profile.displayName || `${profile.name?.givenName || ''} ${profile.name?.familyName || ''}`.trim() || email
+            const googleId = profile.id
+            const avatarUrl = profile.photos && profile.photos.length > 0 ? profile.photos[0].value : null
+
+            const { user: linkedUser } = await linkOrCreateUserAccount({
+              email,
+              fullName,
+              googleId,
+              avatarUrl,
+            })
+
+            if (!linkedUser.isActive) {
+              return done(null, false, { message: 'Account is inactive. Please contact an administrator.' })
+            }
+
+            const { password: _, ...userWithoutPassword } = linkedUser
+            return done(null, userWithoutPassword as UserWithoutPassword)
+          } catch (error) {
+            console.error('[GOOGLE OAUTH] Error during authentication:', error)
+            return done(error)
+          }
+        }
+      )
+    )
+  } else {
+    console.warn('[PASSPORT] Google OAuth credentials not configured. Google sign-in will be disabled.')
+  }
 
   passport.serializeUser((user, done) => {
     const userData = user as UserWithoutPassword & Partial<UserWithImpersonation>

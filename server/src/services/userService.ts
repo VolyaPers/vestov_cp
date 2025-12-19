@@ -105,6 +105,7 @@ export async function createUserAccount(
         avatarUrl,
         teamMemberId: teamMemberId ?? null,
         isActive,
+        authProvider: 'local',
       })
       .returning()
 
@@ -124,6 +125,148 @@ export async function deactivateUserAndMemberships(userId: number) {
       .update(clientUsers)
       .set({ isActive: false, updatedAt: now })
       .where(eq(clientUsers.userId, userId))
+  })
+}
+
+interface LinkOrCreateUserOptions {
+  email: string
+  fullName: string
+  googleId: string
+  avatarUrl?: string | null
+  role?: UserRole
+  username?: string
+  position?: string
+  teamMemberId?: number
+}
+
+interface LinkOrCreateUserResult {
+  user: typeof users.$inferSelect
+  wasLinked: boolean
+}
+
+export async function linkOrCreateUserAccount(
+  options: LinkOrCreateUserOptions
+): Promise<LinkOrCreateUserResult> {
+  const {
+    email,
+    fullName,
+    googleId,
+    avatarUrl,
+    role = 'client',
+    username,
+    position,
+    teamMemberId,
+  } = options
+
+  const normalizedEmail = normalizeEmail(email)
+  const normalizedUsername = normalizeUsername(username || normalizedEmail)
+
+  return db.transaction(async (tx) => {
+    const [existingUser] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1)
+
+    if (existingUser) {
+      if (!existingUser.isActive) {
+        throw new Error('Account is inactive. Please contact an administrator.')
+      }
+
+      if (existingUser.googleId) {
+        if (existingUser.googleId !== googleId) {
+          throw new Error('This email is already linked to a different Google account.')
+        }
+        return { user: existingUser, wasLinked: true }
+      }
+
+      const updateData: {
+        googleId: string
+        authProvider: string
+        fullName?: string
+        avatarUrl?: string | null
+        updatedAt: Date
+      } = {
+        googleId,
+        authProvider: existingUser.authProvider === 'local' ? 'local' : 'google',
+        updatedAt: new Date(),
+      }
+
+      if (!existingUser.fullName || existingUser.fullName.trim().length === 0) {
+        updateData.fullName = fullName
+      }
+
+      if (!existingUser.avatarUrl && avatarUrl) {
+        updateData.avatarUrl = avatarUrl
+      }
+
+      const [updated] = await tx
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, existingUser.id))
+        .returning()
+
+
+      return { user: updated, wasLinked: true }
+    }
+
+    let finalRole = role
+    let finalPosition = position
+    let finalTeamMemberId = teamMemberId
+
+    if (finalRole === 'team_member') {
+      const [existingMember] = await tx
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(eq(teamMembers.email, normalizedEmail))
+        .limit(1)
+
+      if (existingMember) {
+        finalTeamMemberId = existingMember.id
+      } else {
+        const today = new Date().toISOString().slice(0, 10)
+        const [createdMember] = await tx
+          .insert(teamMembers)
+          .values({
+            name: fullName,
+            role: 'team_member',
+            email: normalizedEmail,
+            startDate: today,
+            status: 'active',
+            isBillable: true,
+          })
+          .returning({ id: teamMembers.id })
+        finalTeamMemberId = createdMember.id
+      }
+    }
+
+    if (!finalPosition) {
+      finalPosition =
+        finalRole === 'admin'
+          ? 'Administrator'
+          : finalRole === 'team_member'
+            ? 'Team Member'
+            : 'Client'
+    }
+
+    const [newUser] = await tx
+      .insert(users)
+      .values({
+        username: normalizedUsername,
+        password: null,
+        fullName,
+        email: normalizedEmail,
+        role: finalRole,
+        position: finalPosition,
+        avatarUrl: avatarUrl ?? null,
+        teamMemberId: finalTeamMemberId ?? null,
+        googleId,
+        authProvider: 'google',
+        isActive: true,
+      })
+      .returning()
+
+    return { user: newUser, wasLinked: false }
   })
 }
 

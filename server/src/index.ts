@@ -157,6 +157,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 app.use((req, res, next) => {
   try {
     console.log(`[${new Date().toISOString()}] [INCOMING REQUEST] ${req.method} ${req.url}`)
+    if (req.url?.includes('/google')) {
+      console.log(`[GOOGLE OAUTH DEBUG] Request received for: ${req.url}`)
+      console.log(`[GOOGLE OAUTH DEBUG] Full path: ${req.path}`)
+      console.log(`[GOOGLE OAUTH DEBUG] Original URL: ${req.originalUrl}`)
+    }
     console.log(`[INCOMING REQUEST] Headers:`, JSON.stringify(req.headers, null, 2))
     if (req.body && Object.keys(req.body).length > 0) {
       console.log(`[INCOMING REQUEST] Body:`, JSON.stringify(req.body, null, 2))
@@ -188,6 +193,20 @@ app.use(session({
 setupPassport(pool)
 app.use(passport.initialize())
 app.use(passport.session())
+
+// Debug middleware for Google OAuth routes
+app.use('/api', (req, res, next) => {
+  if (req.path === '/google' || req.path === '/auth/google' || req.url?.includes('google')) {
+    console.log('========================================')
+    console.log('[ROUTE DEBUG] Request path:', req.path)
+    console.log('[ROUTE DEBUG] Request URL:', req.url)
+    console.log('[ROUTE DEBUG] Original URL:', req.originalUrl)
+    console.log('[ROUTE DEBUG] Method:', req.method)
+    console.log('========================================')
+  }
+  next()
+})
+
 app.use('/api', authRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/client', clientRouter)

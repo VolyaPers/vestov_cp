@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Request, type Response, type NextFunction } from 'express'
 import passport from 'passport'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
@@ -45,7 +45,7 @@ router.post('/register', async (req, res) => {
       .where(eq(users.email, normalizedEmail))
       .limit(1)
 
-    interface UserResponse {
+    type UserResponse = {
       id: number
       username: string
       fullName: string
@@ -65,19 +65,34 @@ router.post('/register', async (req, res) => {
       }
 
       const hashedPassword = await bcrypt.hash(password, 12)
+      const updateData: {
+        password: string
+        fullName?: string
+        username: string
+        role: string
+        position: string | null
+        teamMemberId: number | null
+        authProvider?: string
+        updatedAt: Date
+        isActive: boolean
+      } = {
+        password: hashedPassword,
+        fullName: existing.fullName && existing.fullName.trim().length > 0 ? existing.fullName : fullName,
+        username: existing.username,
+        role: existing.role,
+        position: existing.position,
+        teamMemberId: existing.teamMemberId,
+        updatedAt: new Date(),
+        isActive: true,
+      }
+
+      if (existing.authProvider === 'google') {
+        updateData.authProvider = 'local'
+      }
+
       const [updated] = await db
         .update(users)
-        .set({
-          // Admin data wins: preserve admin-set username, role, position, team link.
-          password: hashedPassword,
-          fullName: existing.fullName && existing.fullName.trim().length > 0 ? existing.fullName : fullName,
-          username: existing.username,
-          role: existing.role,
-          position: existing.position,
-          teamMemberId: existing.teamMemberId,
-          updatedAt: new Date(),
-          isActive: true,
-        })
+        .set(updateData)
         .where(eq(users.id, existing.id))
         .returning()
 
@@ -379,6 +394,62 @@ router.post('/stop-impersonation', requireAuth, async (req, res) => {
     console.error('Error stopping impersonation:', error)
     res.status(500).json({ error: 'Failed to stop impersonation' })
   }
+})
+
+function getFrontendUrl(): string {
+  return process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
+}
+
+function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
+
+  if (!googleClientId || !googleClientSecret) {
+    return res.status(503).json({ error: 'Google OAuth is not configured' })
+  }
+
+  passport.authenticate('google', {
+    scope: ['profile', 'email']
+  })(req, res, next)
+}
+
+router.get('/google', handleGoogleOAuthInit)
+router.get('/auth/google', handleGoogleOAuthInit)
+
+router.get('/google/callback', (req, res, next) => {
+  const frontendUrl = getFrontendUrl()
+  
+  passport.authenticate('google', {
+    failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
+    session: true
+  }, (err: unknown, user: Express.User | false) => {
+    if (err) {
+      console.error('[GOOGLE OAUTH] Authentication error:', err)
+      return res.redirect(`${frontendUrl}/?error=google_auth_error`)
+    }
+
+    if (!user) {
+      return res.redirect(`${frontendUrl}/?error=google_auth_failed`)
+    }
+
+    req.logIn(user, (loginErr) => {
+      if (loginErr) {
+        console.error('[GOOGLE OAUTH] Session login error:', loginErr)
+        return res.redirect(`${frontendUrl}/?error=google_auth_session_failed`)
+      }
+
+      const redirectPath = user.role === 'admin'
+        ? '/admin/dashboard'
+        : user.role === 'team_member'
+          ? '/employee/dashboard'
+          : '/client'
+
+      const fullRedirectUrl = `${frontendUrl}${redirectPath}`
+
+      console.log(`[GOOGLE OAUTH] Successful login for ${user.email}, redirecting to ${fullRedirectUrl}`)
+      res.redirect(fullRedirectUrl)
+    })
+  })(req, res, next)
 })
 
 export { router as authRouter }
