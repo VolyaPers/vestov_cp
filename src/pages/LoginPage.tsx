@@ -248,10 +248,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               variant="outline"
               className="w-full mt-4"
               onClick={() => {
-                const backendUrl = import.meta.env.DEV 
-                  ? 'http://localhost:3001' 
-                  : (import.meta.env.VITE_API_URL || '')
-                window.location.href = `${backendUrl}/api/google`
+                if (import.meta.env.DEV) {
+                  window.location.href = 'http://localhost:3001/api/google'
+                } else {
+                  const googleOAuthUrl = import.meta.env.VITE_GOOGLE_OAUTH_URL || import.meta.env.VITE_API_URL
+                  if (googleOAuthUrl) {
+                    window.location.href = googleOAuthUrl
+                  } else {
+                    window.location.href = '/api/google'
+                  }
+                }
               }}
               disabled={isLoading}
               aria-label="Sign in with Google"
