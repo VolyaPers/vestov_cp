@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [role, setRole] = useState<'admin' | 'client' | 'team_member'>('client')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const errorParam = urlParams.get('error')
+    
+    if (errorParam) {
+      const errorMessages: Record<string, string> = {
+        google_auth_error: 'Google authentication failed. Please try again or use email/password login.',
+        google_auth_failed: 'Google authentication was unsuccessful. Please try again.',
+        google_auth_session_failed: 'Login session could not be established. Please try again.',
+      }
+      
+      setError(errorMessages[errorParam] || 'An error occurred during authentication. Please try again.')
+      
+      const cleanUrl = window.location.pathname
+      window.history.replaceState({}, '', cleanUrl)
+    }
+  }, [])
 
   const redirectByRole = (userRole?: string) => {
     const target =
