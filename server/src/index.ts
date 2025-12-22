@@ -48,7 +48,10 @@ async function runMigrations() {
     console.log('========================================')
     
     const db = drizzle(pool, { schema: {} })
-    const migrationsPath = path.join(__dirname, '../drizzle')
+    // Try dist/drizzle first (for production builds), then fall back to ../drizzle (for development)
+    const migrationsPathInDist = path.join(__dirname, 'drizzle')
+    const migrationsPathInParent = path.join(__dirname, '../drizzle')
+    const migrationsPath = fs.existsSync(migrationsPathInDist) ? migrationsPathInDist : migrationsPathInParent
     console.log('[MIGRATIONS] Migrations folder:', migrationsPath)
     console.log('[MIGRATIONS] Database URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET')
     
