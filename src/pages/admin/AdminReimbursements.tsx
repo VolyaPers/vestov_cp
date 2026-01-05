@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { api } from '@/lib/api'
 
 const getEvidenceUrl = (evidencePath: string | null) => {
   if (!evidencePath) return null
@@ -71,14 +72,8 @@ export function AdminReimbursements() {
   const loadRequests = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/reimbursements', {
-        credentials: 'include'
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setRequests(data)
-      }
+      const data = await api.request('/reimbursements')
+      setRequests(data)
     } catch (error) {
       console.error('Error loading reimbursement requests:', error)
     } finally {
@@ -137,16 +132,10 @@ export function AdminReimbursements() {
     try {
       setProcessing(dialogRequest.id)
       const endpoint = dialogAction === 'approve' ? 'approve' : 'reject'
-      const response = await fetch(`/api/reimbursements/${dialogRequest.id}/${endpoint}`, {
+      await api.request(`/reimbursements/${dialogRequest.id}/${endpoint}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ note: dialogNote.trim() || undefined })
       })
-
-      if (!response.ok) {
-        throw new Error(`Failed to ${dialogAction} request`)
-      }
 
       // Close dialog and reload
       setShowDialog(false)
@@ -156,6 +145,7 @@ export function AdminReimbursements() {
       alert(`Request ${dialogAction === 'approve' ? 'approved' : 'rejected'} successfully!`)
     } catch (error: any) {
       console.error(`Error ${dialogAction}ing request:`, error)
+      alert(error.message || `Failed to ${dialogAction} request. Please try again.`)
       alert(error.message || `Failed to ${dialogAction} request`)
     } finally {
       setProcessing(null)
