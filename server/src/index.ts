@@ -229,7 +229,7 @@ app.use('/api/reimbursements', reimbursementsRouter)
 app.use('/api/roadmap', roadmapRouter)
 app.use('/api/shifts', shiftsRouter)
 
-app.use('/uploads', express.static('uploads'))
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
