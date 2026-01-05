@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { User } from '@/types/common'
+import { api } from '@/lib/api'
 
 interface UserImpersonationProps {
   currentUser: User | null
@@ -29,18 +30,25 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
 
   const loadUsers = async () => {
     try {
-      const response = await fetch('/api/users?limit=1000', {
-        credentials: 'include'
+      const response = await api.getUsers({ limit: 1000 })
+      const allUsers = (response.users || response) as User[]
+      
+      // Filter users: exclude current user and only include active users
+      // isActive can be true, null, or undefined (all treated as active)
+      // Only explicitly false values are excluded
+      const filteredUsers = allUsers
+        .filter((u) => u.id !== currentUser?.id)
+        .filter((u) => u.isActive !== false)
+      
+      console.log('[UserImpersonation] Loaded users:', {
+        total: allUsers.length,
+        currentUserId: currentUser?.id,
+        afterExcludingSelf: allUsers.filter((u) => u.id !== currentUser?.id).length,
+        filtered: filteredUsers.length,
+        users: filteredUsers.map(u => ({ id: u.id, name: u.fullName, email: u.email, isActive: u.isActive }))
       })
-
-      if (!response.ok) return
-      const data = await response.json()
-      const allUsers = (data.users || data) as User[]
-      setUsers(
-        allUsers
-          .filter((u) => u.id !== currentUser?.id)
-          .filter((u) => u.isActive !== false)
-      )
+      
+      setUsers(filteredUsers)
     } catch (error) {
       console.error('Error loading users:', error)
     }
