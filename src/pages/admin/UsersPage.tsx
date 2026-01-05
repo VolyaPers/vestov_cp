@@ -188,6 +188,7 @@ export function UsersPage() {
       email: user.email,
       role: user.role,
       position: user.position || '',
+      teamMemberId: '',
     })
     setIsUserDialogOpen(true)
   }

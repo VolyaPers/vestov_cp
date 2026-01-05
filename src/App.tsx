@@ -84,7 +84,7 @@ function App() {
   }
 
   if (!user) {
-    return <LoginPage onLogin={setUser} />
+    return <LoginPage onLogin={(user) => setUser(user)} />
   }
 
   // Direct rendering based on path - bypassing wouter Router issues

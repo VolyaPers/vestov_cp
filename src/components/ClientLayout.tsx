@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useLocation, Route, Switch } from 'wouter'
-import { Building, FileText, DollarSign, User, LogOut, Menu, X, Users } from 'lucide-react'
+import { Building, FileText, DollarSign, User as UserIcon, LogOut, Menu, X, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ClientPortal } from '@/pages/client/ClientPortal'
 import { ClientTeamStatus } from '@/pages/client/ClientTeamStatus'
@@ -99,7 +99,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
     {
       name: 'Profile',
       href: '/client/profile',
-      icon: User,
+      icon: UserIcon,
       current: location === '/client/profile'
     }
   ] : []
@@ -234,7 +234,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
               <li className="-mx-6 mt-auto">
                 <div className="flex items-center gap-x-4 px-6 py-3 text-sm font-semibold leading-6 text-gray-900 border-t border-gray-200">
                   <div className="h-8 w-8 bg-primary/10 rounded-full flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
+                    <UserIcon className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-medium">{user?.fullName || 'Client User'}</p>
@@ -303,8 +303,17 @@ export function ClientLayout({ user }: ClientLayoutProps) {
               <Route path="/client/profile" component={ClientProfile} />
               <Route path="/client/portal/:id" component={ClientPortal} />
               <Route path="/client/*">
-                {currentClient ? (
-                  <ClientPortal params={{ id: currentClient.id.toString() }} />
+                {currentClient && location.startsWith('/client/portal/') ? (
+                  <ClientPortal />
+                ) : currentClient ? (
+                  (() => {
+                    setLocation(`/client/portal/${currentClient.id}`)
+                    return (
+                      <div className="text-center py-12">
+                        <h2 className="text-2xl font-bold text-gray-900">Redirecting...</h2>
+                      </div>
+                    )
+                  })()
                 ) : (
                   <div className="text-center py-12">
                     <h2 className="text-2xl font-bold text-gray-900">Loading...</h2>
