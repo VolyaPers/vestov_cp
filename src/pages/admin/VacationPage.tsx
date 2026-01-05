@@ -173,6 +173,10 @@ export function VacationPage() {
         reason: '',
       })
     },
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create leave request'
+      alert(errorMessage)
+    },
   })
 
   // Create leave request mutation (for admin request form)
@@ -207,6 +211,10 @@ export function VacationPage() {
         reason: '',
         autoApprove: false,
       })
+    },
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create leave request'
+      alert(errorMessage)
     },
   })
 

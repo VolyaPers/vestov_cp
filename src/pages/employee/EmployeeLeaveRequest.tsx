@@ -128,7 +128,8 @@ export function EmployeeLeaveRequest() {
       alert('Leave request submitted successfully!')
     } catch (error) {
       console.error('Error submitting leave request:', error)
-      alert('Failed to submit leave request. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.'
+      alert(errorMessage)
     } finally {
       setSubmitting(false)
     }
