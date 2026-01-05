@@ -10,21 +10,17 @@ import { ClientProfile } from '@/pages/client/ClientProfile'
 import { UserImpersonation } from '@/components/UserImpersonation'
 import { api } from '@/lib/api'
 import vestovLogo from '@/assets/vestov-logo.png'
+import type { User, Client } from '@/types/common'
 
 interface ClientLayoutProps {
-  user: any
-}
-
-interface ClientInfo {
-  id: number
-  name: string
+  user: User
 }
 
 export function ClientLayout({ user }: ClientLayoutProps) {
   const [location, setLocation] = useLocation()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [assignedClients, setAssignedClients] = useState<ClientInfo[]>([])
-  const [currentClient, setCurrentClient] = useState<ClientInfo | null>(null)
+  const [assignedClients, setAssignedClients] = useState<Client[]>([])
+  const [currentClient, setCurrentClient] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -35,7 +31,6 @@ export function ClientLayout({ user }: ClientLayoutProps) {
         const clients = await api.getClients()
         if (!isMounted) return
 
-        console.log('[ClientLayout] Fetched clients:', clients)
         setAssignedClients(clients)
 
         // If user has assigned clients, set the first one as current
@@ -44,11 +39,8 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
           // Redirect to the client portal if on paths without client ID
           if (location === '/client' || location === '/client/' || location === '/client/portal') {
-            console.log('[ClientLayout] Redirecting from', location, 'to /client/portal/' + clients[0].id)
             setLocation(`/client/portal/${clients[0].id}`)
           }
-        } else {
-          console.warn('[ClientLayout] No clients found for user:', user?.email)
         }
       } catch (error) {
         console.error('[ClientLayout] Failed to load assigned clients:', error)
@@ -68,18 +60,14 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   }, [location, setLocation])
 
   const handleLogout = async () => {
-    console.log('Logout button clicked')
     try {
       // Try to logout - don't check current user first since that might fail if session expired
       await api.logout()
-      console.log('Logout API call successful')
     } catch (error) {
-      console.log('Logout API failed (probably already logged out):', error)
       // This is fine - session might already be expired
     }
 
     // Always navigate to login and force page reload to clear all state
-    console.log('Navigating to login...')
     window.location.href = '/login'
   }
 
@@ -298,10 +286,6 @@ export function ClientLayout({ user }: ClientLayoutProps) {
       {/* Main content */}
       <main className="lg:pl-72">
         <div className="px-4 py-6 sm:px-6 lg:px-8">
-          {(() => {
-            console.log('[ClientLayout] Render - location:', location, 'isLoading:', isLoading, 'clients:', assignedClients.length, 'currentClient:', currentClient?.id)
-            return null
-          })()}
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

@@ -51,3 +51,4 @@ if (result.valid) {
   console.error('\n📖 See MIGRATION_SOLUTION.md for details')
   process.exit(1)
 }
+

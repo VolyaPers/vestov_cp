@@ -55,8 +55,10 @@ const navigation = [
   { name: 'Feedback', href: '/admin/feedback', icon: Star },
 ]
 
+import type { User } from '@/types/common'
+
 interface AdminLayoutProps {
-  user?: any
+  user?: User
 }
 
 export function AdminLayout({ user }: AdminLayoutProps = {}) {
@@ -130,19 +132,13 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 <Route path="/admin/dashboard" component={AdminDashboard} />
                 <Route path="/admin/services" component={ServicesPage} />
                 <Route path="/admin/clients/:id">
-                  {(params) => {
-                    console.log('ClientDetailsPage route matched with params:', params)
-                    return <ClientDetailsPage />
-                  }}
+                  {() => <ClientDetailsPage />}
                 </Route>
                 <Route path="/admin/clients" component={ClientsPage} />
                 <Route path="/admin/invoices" component={InvoicesPage} />
                 <Route path="/admin/users" component={UsersPage} />
                 <Route path="/admin/team-detail/:id">
-                  {(params) => {
-                    console.log('TeamMemberDetails route matched with params:', params)
-                    return <TeamMemberDetails />
-                  }}
+                  {() => <TeamMemberDetails />}
                 </Route>
                 <Route path="/admin/team" component={TeamOverview} />
                 <Route path="/admin/employees/:id" component={EmployeeDetailsPage} />
@@ -151,9 +147,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 <Route path="/admin/shifts" component={AdminShifts} />
                 <Route path="/admin" component={AdminDashboard} />
                 <Route path="*">
-                  {() => {
-                    console.log('No route matched, current location:', location)
-                    return (
+                  {() => (
                       <div className="flex items-center justify-center min-h-[60vh]">
                         <div className="text-center stripe-card p-12">
                           <div className="w-16 h-16 mx-auto mb-6 rounded-lg flex items-center justify-center stripe-surface">
@@ -168,8 +162,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                           </Link>
                         </div>
                       </div>
-                    )
-                  }}
+                    )}
                 </Route>
               </Switch>
             </div>
@@ -180,7 +173,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
   )
 }
 
-function Sidebar({ user, onLogout }: { user: any; onLogout: () => void }) {
+function Sidebar({ user, onLogout }: { user?: User; onLogout: () => void }) {
   const [location] = useLocation()
   
   // Check if CRM submenu should be open

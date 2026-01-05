@@ -3,3 +3,4 @@
 
 # Validate migrations before commit
 npm run db:validate
+

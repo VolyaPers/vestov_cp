@@ -14,3 +14,4 @@ CREATE TABLE IF NOT EXISTS "user_invites" (
 CREATE INDEX IF NOT EXISTS "user_invites_user_id_idx" ON "user_invites" ("user_id");
 CREATE INDEX IF NOT EXISTS "user_invites_email_idx" ON "user_invites" ("email");
 
+

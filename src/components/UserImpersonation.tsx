@@ -8,18 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-interface User {
-  id: number
-  username: string
-  fullName: string
-  email: string
-  role: string
-  isActive?: boolean
-}
+import type { User } from '@/types/common'
 
 interface UserImpersonationProps {
-  currentUser: any
+  currentUser: User | null
   onImpersonate: (userId: number) => void
   onStopImpersonation: () => void
 }
@@ -43,11 +35,11 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
 
       if (!response.ok) return
       const data = await response.json()
-      const allUsers = data.users || data
+      const allUsers = (data.users || data) as User[]
       setUsers(
         allUsers
-          .filter((u: User) => u.id !== currentUser?.id)
-          .filter((u: User) => u.isActive !== false)
+          .filter((u) => u.id !== currentUser?.id)
+          .filter((u) => u.isActive !== false)
       )
     } catch (error) {
       console.error('Error loading users:', error)
@@ -77,11 +69,11 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
                           targetRole === 'team_member' ? '/employee/dashboard' :
                           '/client/portal'
 
-      console.log('Impersonation successful, redirecting to:', redirectPath)
       window.location.href = redirectPath
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to impersonate user'
       console.error('Error impersonating user:', error)
-      alert(error.message || 'Failed to impersonate user')
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -108,7 +100,6 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
                           targetRole === 'team_member' ? '/employee/dashboard' :
                           '/client/portal'
 
-      console.log('Stop impersonation successful, redirecting to:', redirectPath)
       window.location.href = redirectPath
     } catch (error) {
       console.error('Error stopping impersonation:', error)

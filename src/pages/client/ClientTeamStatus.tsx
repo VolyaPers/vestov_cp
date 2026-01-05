@@ -99,10 +99,6 @@ export function ClientTeamStatus() {
         api.getClientTeamSchedules()
       ])
 
-      console.log('[ClientTeamStatus] Received shifts response:', shiftsRes)
-      console.log('[ClientTeamStatus] Shifts array:', shiftsRes.shifts)
-      console.log('[ClientTeamStatus] Shifts count:', shiftsRes.shifts?.length || 0)
-      console.log('[ClientTeamStatus] Team schedules:', schedulesRes)
 
       setActiveShifts(shiftsRes.shifts || [])
       setVacations(vacationsRes.vacations || [])

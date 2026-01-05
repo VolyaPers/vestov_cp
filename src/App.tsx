@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Router, Route, Switch, useLocation } from 'wouter'
 import { LoginPage } from './pages/LoginPage'
 import { AdminLayout } from './components/AdminLayout'
@@ -6,9 +6,10 @@ import { ClientLayout } from './components/ClientLayout'
 import { TeamMemberLayout } from './components/TeamMemberLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { api } from './lib/api'
+import type { User } from './types/common'
 
 // Helper component for catch-all redirect
-function DefaultRedirect({ user }: { user: any }) {
+function DefaultRedirect({ user }: { user: User }) {
   useEffect(() => {
     const defaultPath = user.role === 'admin'
       ? '/admin/dashboard'
@@ -18,7 +19,6 @@ function DefaultRedirect({ user }: { user: any }) {
 
     const current = window.location.pathname
     if (!current.startsWith(defaultPath.split('/').slice(0, 2).join('/'))) {
-      console.log('DefaultRedirect: user role:', user.role, 'redirecting to', defaultPath)
       window.location.replace(defaultPath)
     }
   }, [user])
@@ -31,7 +31,7 @@ function DefaultRedirect({ user }: { user: any }) {
 }
 
 function App() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -66,12 +66,13 @@ function App() {
 
   // Listen for login events
   useEffect(() => {
-    const handleLogin = (event: CustomEvent) => {
-      setUser(event.detail)
+    const handleLogin = (event: Event) => {
+      const customEvent = event as CustomEvent<User>
+      setUser(customEvent.detail)
     }
     
-    window.addEventListener('user-login', handleLogin as EventListener)
-    return () => window.removeEventListener('user-login', handleLogin as EventListener)
+    window.addEventListener('user-login', handleLogin)
+    return () => window.removeEventListener('user-login', handleLogin)
   }, [])
 
   if (isLoading) {

@@ -55,8 +55,9 @@ export function ShiftWidget() {
       const response = await api.startShift()
       setCurrentShift(response.shift)
       setConfirmAction(null)
-    } catch (err: any) {
-      alert(err.message || 'Failed to start shift')
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to start shift'
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -72,8 +73,9 @@ export function ShiftWidget() {
       if (currentShift) setCurrentShift({ ...currentShift, status: 'on_break' })
       setBreakNote('')
       setConfirmAction(null)
-    } catch (err: any) {
-      alert(err.message || 'Failed to start break')
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to start break'
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -86,8 +88,9 @@ export function ShiftWidget() {
       setActiveBreak(null)
       if (currentShift) setCurrentShift({ ...currentShift, status: 'active' })
       setConfirmAction(null)
-    } catch (err: any) {
-      alert(err.message || 'Failed to end break')
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to end break'
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -100,8 +103,9 @@ export function ShiftWidget() {
       setCurrentShift(null)
       setActiveBreak(null)
       setConfirmAction(null)
-    } catch (err: any) {
-      alert(err.message || 'Failed to end shift')
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to end shift'
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }

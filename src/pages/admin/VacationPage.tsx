@@ -10,6 +10,7 @@ import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns'
+import type { LeaveRequest, TeamMember, LeaveType, CreateLeaveRequestData } from '@/types/common'
 
 // Public holidays configuration
 const getPublicHolidays = (year: number) => {
@@ -48,8 +49,10 @@ export function VacationPage() {
   const [showRequestModal, setShowRequestModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false)
-  const [selectedVacation, setSelectedVacation] = useState<any>(null)
-  const [selectedDayEvents, setSelectedDayEvents] = useState<any[]>([])
+import type { LeaveRequest, TeamMember, LeaveType } from '@/types/common'
+
+  const [selectedVacation, setSelectedVacation] = useState<LeaveRequest | null>(null)
+  const [selectedDayEvents, setSelectedDayEvents] = useState<LeaveRequest[]>([])
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [calendarFormData, setCalendarFormData] = useState({
     employeeId: '',
@@ -101,8 +104,9 @@ export function VacationPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
     },
-    onError: (error: any) => {
-      alert(`Failed to approve request: ${error.message || 'Unknown error'}`)
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to approve request: ${errorMessage}`)
     },
   })
 
@@ -112,8 +116,9 @@ export function VacationPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
     },
-    onError: (error: any) => {
-      alert(`Failed to deny request: ${error.message || 'Unknown error'}`)
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to deny request: ${errorMessage}`)
     },
   })
 
@@ -123,8 +128,9 @@ export function VacationPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
     },
-    onError: (error: any) => {
-      alert(`Failed to cancel request: ${error.message || 'Unknown error'}`)
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to cancel request: ${errorMessage}`)
     },
   })
 
@@ -133,14 +139,15 @@ export function VacationPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
     },
-    onError: (error: any) => {
-      alert(`Failed to delete request: ${error.message || 'Unknown error'}`)
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to delete request: ${errorMessage}`)
     },
   })
 
   // Create leave request mutation (for calendar)
   const createLeaveMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CreateLeaveRequestData & { autoApprove?: boolean }) => {
       // Use the new admin auto-approve endpoint
       return fetch('/api/vacation/admin/create-and-approve', {
         method: 'POST',
@@ -171,7 +178,7 @@ export function VacationPage() {
 
   // Create leave request mutation (for admin request form)
   const createRequestMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: CreateLeaveRequestData & { autoApprove?: boolean }) => {
       const endpoint = data.autoApprove
         ? '/api/vacation/admin/create-and-approve'
         : '/api/vacation/requests'
@@ -220,8 +227,9 @@ export function VacationPage() {
       setShowEditModal(false)
       setSelectedVacation(null)
     },
-    onError: (error: any) => {
-      alert(`Failed to update request: ${error.message || 'Unknown error'}`)
+    onError: (error: Error) => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to update request: ${errorMessage}`)
     },
   })
 
@@ -288,7 +296,7 @@ export function VacationPage() {
     }
   }
 
-  const handleVacationClick = (item: any) => {
+  const handleVacationClick = (item: LeaveRequest) => {
     const request = item.request || item
     const employee = item.employee
     const leaveType = item.leaveType
@@ -325,7 +333,7 @@ export function VacationPage() {
     })
   }
 
-  const filteredRequests = leaveRequests?.filter((item: any) => {
+  const filteredRequests = leaveRequests?.filter((item: LeaveRequest) => {
     const request = item.request || item
     const employee = item.employee
     const leaveType = item.leaveType
@@ -341,13 +349,13 @@ export function VacationPage() {
   }) || []
 
   // Count pending requests
-  const pendingCount = leaveRequests?.filter((item: any) => {
+  const pendingCount = leaveRequests?.filter((item: LeaveRequest) => {
     const request = item.request || item
     return request?.status === 'pending'
   }).length || 0
 
   // Filter requests for calendar display (approved and pending)
-  const calendarRequests = leaveRequests.filter((item: any) => {
+  const calendarRequests = leaveRequests.filter((item: LeaveRequest) => {
     const request = item.request || item
     return request?.status === 'approved' || request?.status === 'pending'
   })
@@ -356,14 +364,14 @@ export function VacationPage() {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const futureApprovedRequests = leaveRequests.filter((item: any) => {
+  const futureApprovedRequests = leaveRequests.filter((item: LeaveRequest) => {
     const request = item.request || item
     const endDate = new Date(request.endDate)
     return request?.status === 'approved' && endDate >= today
   })
 
   const summaryStats = futureApprovedRequests.reduce(
-    (acc: any, item: any) => {
+    (acc: Record<string, LeaveRequest[]>, item: LeaveRequest) => {
       const leaveType = item.leaveType
       const request = item.request || item
       const days = parseFloat(request.daysCount || 0)
@@ -384,7 +392,7 @@ export function VacationPage() {
   // Get calendar day events
   const getCalendarDayEvents = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
-    return calendarRequests.filter((item: any) => {
+    return calendarRequests.filter((item: LeaveRequest) => {
       const request = item.request || item
       if (!request.startDate || !request.endDate) return false
 
@@ -516,7 +524,7 @@ export function VacationPage() {
 
           {/* Requests List */}
           <div className="space-y-4">
-            {filteredRequests.map((item: any) => {
+            {filteredRequests.map((item: LeaveRequest) => {
               const request = item.request || item
               const employee = item.employee
               const leaveType = item.leaveType
@@ -882,7 +890,7 @@ export function VacationPage() {
                           {/* Working Team Members */}
                           {workingMembers.length > 0 && (
                             <div className="space-y-1 mt-2">
-                              {workingMembers.slice(0, 2).map((member: any) => {
+                              {workingMembers.slice(0, 2).map((member: TeamMember) => {
                                 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
                                 const dayName = dayNames[date.getDay()]
                                 const isHalfDay = member.workSchedule?.[dayName] === 'half'
@@ -1404,7 +1412,7 @@ export function VacationPage() {
             </CardHeader>
             <CardContent className="overflow-y-auto max-h-[60vh]">
               <div className="space-y-3">
-                {selectedDayEvents.map((item: any, index: number) => {
+                {selectedDayEvents.map((item: LeaveRequest, index: number) => {
                   const employee = item.employee
                   const leaveType = item.leaveType
                   const request = item.request || item

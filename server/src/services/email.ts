@@ -56,3 +56,4 @@ export function buildInviteEmail(token: string, email: string) {
   return { inviteUrl, subject, html, text, to: email }
 }
 
+

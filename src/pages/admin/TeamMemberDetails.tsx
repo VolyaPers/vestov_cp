@@ -110,12 +110,10 @@ export function TeamMemberDetails() {
   })
 
   // Log for debugging
-  console.log('TeamMemberDetails - match:', match, 'params:', params)
 
   const memberId = params?.id
 
   // Log for debugging
-  console.log('TeamMemberDetails - memberId:', memberId)
 
   // Fetch 50/50 vacation balance for this employee
   const { data: vacationBalance50, isLoading: isLoadingBalance, error: balanceError } = useQuery({
@@ -139,10 +137,8 @@ export function TeamMemberDetails() {
       })
       if (response.ok) {
         const data = await response.json()
-        console.log('Loaded team member:', data)
         setMember(data)
       } else if (response.status === 404) {
-        console.log('Team member not found:', memberId)
         setMember(null)
       } else {
         console.error('Failed to load team member, status:', response.status)

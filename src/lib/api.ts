@@ -1,3 +1,20 @@
+import type {
+  User,
+  Client,
+  TeamMember,
+  LeaveRequest,
+  CreateClientData,
+  UpdateClientData,
+  CreateTeamMemberData,
+  UpdateTeamMemberData,
+  CreateLeaveRequestData,
+  UpdateLeaveRequestData,
+  CreateInvoiceData,
+  UpdateInvoiceData,
+  CreateUserData,
+  UpdateUserData,
+} from '../types/common'
+
 const envApiUrl = import.meta.env.VITE_API_URL
 const API_BASE = envApiUrl 
   ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
@@ -58,11 +75,11 @@ class ApiClient {
     return this.request('/logout', { method: 'POST' })
   }
 
-  getCurrentUser = async () => {
+  getCurrentUser = async (): Promise<User | null> => {
     try {
-      return await this.request('/user')
+      return await this.request('/user') as User
     } catch (error) {
-      const err = error as Error
+      const err = error instanceof Error ? error : new Error(String(error))
       if (err.message.includes('401')) {
         return null
       }
@@ -71,49 +88,49 @@ class ApiClient {
   }
 
   // Clients
-  async getClients() {
-    return this.request('/services/clients')
+  async getClients(): Promise<Client[]> {
+    return this.request('/services/clients') as Promise<Client[]>
   }
 
-  async getClient(id: string) {
-    return this.request(`/services/clients/${id}`)
+  async getClient(id: string): Promise<Client> {
+    return this.request(`/services/clients/${id}`) as Promise<Client>
   }
 
-  async createClient(data: any) {
+  async createClient(data: CreateClientData): Promise<Client> {
     return this.request('/admin/clients', {
       method: 'POST',
       body: JSON.stringify(data),
-    })
+    }) as Promise<Client>
   }
 
-  async updateClient(id: string, data: any) {
+  async updateClient(id: string, data: UpdateClientData): Promise<Client> {
     return this.request(`/services/clients/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    })
+    }) as Promise<Client>
   }
 
   // Team Members
-  async getTeamMembers() {
-    return this.request('/admin/team-members')
+  async getTeamMembers(): Promise<TeamMember[]> {
+    return this.request('/admin/team-members') as Promise<TeamMember[]>
   }
 
-  async getTeamMember(id: string) {
-    return this.request(`/admin/team-members/${id}`)
+  async getTeamMember(id: string): Promise<TeamMember> {
+    return this.request(`/admin/team-members/${id}`) as Promise<TeamMember>
   }
 
-  async createTeamMember(data: any) {
+  async createTeamMember(data: CreateTeamMemberData): Promise<TeamMember> {
     return this.request('/admin/team-members', {
       method: 'POST',
       body: JSON.stringify(data),
-    })
+    }) as Promise<TeamMember>
   }
 
-  async updateTeamMember(id: string, data: any) {
+  async updateTeamMember(id: string, data: UpdateTeamMemberData): Promise<TeamMember> {
     return this.request(`/admin/team-members/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    })
+    }) as Promise<TeamMember>
   }
 
   async deleteTeamMember(id: string) {
@@ -123,22 +140,22 @@ class ApiClient {
   }
 
   // Leave Requests
-  getLeaveRequests = async () => {
-    return this.request('/vacation/requests')
+  getLeaveRequests = async (): Promise<LeaveRequest[]> => {
+    return this.request('/vacation/requests') as Promise<LeaveRequest[]>
   }
 
-  createLeaveRequest = async (data: any) => {
+  createLeaveRequest = async (data: CreateLeaveRequestData): Promise<LeaveRequest> => {
     return this.request('/vacation/requests', {
       method: 'POST',
       body: JSON.stringify(data),
-    })
+    }) as Promise<LeaveRequest>
   }
 
-  updateLeaveRequest = async (id: string, data: any) => {
+  updateLeaveRequest = async (id: string, data: UpdateLeaveRequestData): Promise<LeaveRequest> => {
     return this.request(`/vacation/requests/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    })
+    }) as Promise<LeaveRequest>
   }
 
   approveLeaveRequest = async (id: string, reason?: string) => {
@@ -319,7 +336,7 @@ class ApiClient {
     return this.request(`/invoices/client/${clientId}`)
   }
 
-  async createInvoice(data: any) {
+  async createInvoice(data: CreateInvoiceData) {
     return this.request('/invoices', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -353,7 +370,7 @@ class ApiClient {
     })
   }
 
-  async updateInvoice(invoiceId: number, data: any) {
+  async updateInvoice(invoiceId: number, data: UpdateInvoiceData) {
     return this.request(`/invoices/${invoiceId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -387,35 +404,18 @@ class ApiClient {
     return this.request('/users/available-team-members')
   }
 
-  async createUser(data: {
-    username: string
-    password?: string
-    fullName: string
-    email: string
-    role: 'admin' | 'team_member' | 'client'
-    position?: string
-    avatarUrl?: string
-    teamMemberId?: number
-  }) {
+  async createUser(data: CreateUserData): Promise<User> {
     return this.request('/users', {
       method: 'POST',
       body: JSON.stringify(data),
-    })
+    }) as Promise<User>
   }
 
-  async updateUser(id: number, data: {
-    username?: string
-    fullName?: string
-    email?: string
-    role?: 'admin' | 'team_member' | 'client'
-    position?: string
-    avatarUrl?: string
-    isActive?: boolean
-  }) {
+  async updateUser(id: number, data: UpdateUserData): Promise<User> {
     return this.request(`/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    })
+    }) as Promise<User>
   }
 
   async updateUserPassword(id: number, data: { currentPassword: string; newPassword: string }) {
