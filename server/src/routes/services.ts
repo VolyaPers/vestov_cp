@@ -3,6 +3,7 @@ import { Pool } from 'pg'
 import { eq, desc, and, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { serviceTypes, clientServices, clients, teamMembers, users, developers, clientServiceDevelopers, clientUsers } from '../db/schema.js'
+import * as schema from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -11,7 +12,7 @@ const router = Router()
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
 })
-const db = drizzle(pool)
+const db = drizzle(pool, { schema })
 
 // Get all service types
 router.get('/service-types', requireAuth, async (req, res) => {

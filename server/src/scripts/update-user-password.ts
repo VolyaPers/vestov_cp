@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { users } from '../db/schema.js'
+import * as schema from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 
 async function updateUserPassword() {
@@ -9,7 +10,7 @@ async function updateUserPassword() {
     connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
   })
 
-  const db = drizzle(pool)
+  const db = drizzle(pool, { schema })
 
   try {
     // Hash the new password

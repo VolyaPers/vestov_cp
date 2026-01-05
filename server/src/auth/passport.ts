@@ -7,11 +7,12 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import { sql } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
 import { users, teamMembers } from '../db/schema.js'
+import * as schema from '../db/schema.js'
 import { linkOrCreateUserAccount } from '../services/userService.js'
 import type { UserWithPassword, UserWithoutPassword, SessionData, UserWithImpersonation } from '../types/passport.js'
 
 export function setupPassport(pool: Pool) {
-  const db = drizzle(pool)
+  const db = drizzle(pool, { schema })
 
   // Local Strategy
   passport.use(
