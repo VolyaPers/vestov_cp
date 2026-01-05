@@ -19,33 +19,8 @@ import {
 import { InvoiceStatsChart } from '@/components/InvoiceStatsChart'
 import { EnhancedInvoiceForm } from '@/components/EnhancedInvoiceForm'
 import { api } from '@/lib/api'
-
-interface ClientDetails {
-  id: number
-  name: string
-  industry?: string
-  status: 'active' | 'inactive' | 'prospect'
-  contractType?: 'outstaffing' | 'outsourcing' | 'hybrid'
-  contractStart?: string
-  contractEnd?: string
-  billingCycle?: string
-  teamSize?: number
-  logoUrl?: string
-  createdAt: string
-  services: Array<{
-    id: number
-    serviceTypeName: string
-    serviceDescription?: string
-    serviceCategory: string
-    billingModel: string
-    rate?: number
-    serviceLevelPrice?: number
-    startDate: string
-    endDate?: string
-    isActive: boolean
-    createdAt: string
-  }>
-}
+import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 
 interface ServiceType {
   id: number
@@ -153,7 +128,10 @@ interface ClientUser {
 
 export function ClientDetailsPage() {
   const [, params] = useRoute('/admin/clients/:id')
-  const clientId = params?.id
+  if (!hasRouteParam(params, 'id')) {
+    return <div>Client ID not found</div>
+  }
+  const clientId = getRouteParam(params, 'id')
   const [client, setClient] = useState<ClientDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
@@ -265,7 +243,7 @@ export function ClientDetailsPage() {
 
       try {
         const response = await api.getClient(clientId)
-        setClient(response)
+        setClient(convertClientToClientDetails(response))
         // Populate edit data
         setEditData({
           name: response.name || '',
@@ -350,7 +328,7 @@ export function ClientDetailsPage() {
       contractType: client.contractType || '',
       contractStart: client.contractStart || '',
       contractEnd: client.contractEnd || '',
-      billingCycle: client.billingCycle || '',
+      billingCycle: (client.billingCycle || '') as '' | 'monthly' | 'weekly' | 'hourly',
       teamSize: client.teamSize?.toString() || ''
     })
     setIsEditing(false)
@@ -361,16 +339,25 @@ export function ClientDetailsPage() {
     
     setIsSaving(true)
     try {
-      const updateData = {
-        ...editData,
-        teamSize: editData.teamSize ? parseInt(editData.teamSize) : null
+      const updateData: any = {
+        name: editData.name,
+        industry: editData.industry,
+        status: editData.status,
+        contractType: editData.contractType || undefined,
+        contractStart: editData.contractStart || undefined,
+        contractEnd: editData.contractEnd || undefined,
+        billingCycle: editData.billingCycle || undefined,
+        teamSize: editData.teamSize ? parseInt(editData.teamSize) : undefined
       }
       
       await api.updateClient(clientId, updateData)
       
       // Refresh client data
-      const response = await api.getClient(clientId)
-      setClient(response)
+      const response = await api.getClient(clientId) as any
+      setClient({
+        ...response,
+        services: response.services || []
+      } as ClientDetails)
       setIsEditing(false)
       
       alert('Client updated successfully!')
@@ -400,7 +387,7 @@ export function ClientDetailsPage() {
       
       // Refresh client data
       const response = await api.getClient(clientId)
-      setClient(response)
+      setClient(convertClientToClientDetails(response))
       setIsServiceDialogOpen(false)
       resetServiceForm()
       
@@ -431,7 +418,7 @@ export function ClientDetailsPage() {
       
       // Refresh client data
       const response = await api.getClient(clientId)
-      setClient(response)
+      setClient(convertClientToClientDetails(response))
       
       const successMessage = permanent 
         ? 'Service assignment permanently deleted'
@@ -519,18 +506,22 @@ export function ClientDetailsPage() {
       sunday: 'off',
     }
 
+    const workSchedule = developer.workSchedule && typeof developer.workSchedule === 'object' && 'monday' in developer.workSchedule
+      ? developer.workSchedule as { monday: string; tuesday: string; wednesday: string; thursday: string; friday: string; saturday: string; sunday: string }
+      : defaultSchedule
+
     setEditingDeveloper({
       serviceId,
       assignmentId: developer.id,
       name: developer.name,
       hourlyRate: developer.hourlyRate,
       fixedPrice: developer.fixedPrice,
-      workSchedule: developer.workSchedule || defaultSchedule,
+      workSchedule,
     })
     setEditDeveloperData({
       hourlyRate: developer.hourlyRate?.toString() || '',
       fixedPrice: developer.fixedPrice?.toString() || '',
-      workSchedule: developer.workSchedule || defaultSchedule,
+      workSchedule,
     })
     setIsEditDeveloperDialogOpen(true)
   }
@@ -614,7 +605,7 @@ export function ClientDetailsPage() {
 
       // Refresh client data
       const response = await api.getClient(editingServiceData.clientId.toString())
-      setClient(response)
+      setClient(convertClientToClientDetails(response))
       setIsEditServiceDialogOpen(false)
       setEditingServiceData(null)
 
@@ -1177,7 +1168,7 @@ export function ClientDetailsPage() {
                               <div className="flex items-center gap-2 mb-1">
                                 <p className="text-sm font-medium text-gray-900 truncate">{contact.fullName}</p>
                                 {contact.isPrimary && (
-                                  <Star className="h-3 w-3 text-yellow-500 fill-current" title="Primary Contact" />
+                                  <Star className="h-3 w-3 text-yellow-500 fill-current" aria-label="Primary Contact" />
                                 )}
                               </div>
                               {contact.position && (

@@ -412,7 +412,7 @@ export function ServicesPage() {
                   <SelectTrigger className="rounded-xl border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border border-gray-200 shadow-lg">
+                  <SelectContent>
                     <SelectItem value="outstaffing" className="rounded-lg">Outstaffing</SelectItem>
                     <SelectItem value="outsourcing" className="rounded-lg">Outsourcing</SelectItem>
                   </SelectContent>
@@ -430,7 +430,7 @@ export function ServicesPage() {
                   <SelectTrigger className="rounded-xl border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border border-gray-200 shadow-lg">
+                  <SelectContent>
                     <SelectItem value="hourly" className="rounded-lg">Hourly</SelectItem>
                     <SelectItem value="monthly" className="rounded-lg">Monthly</SelectItem>
                     <SelectItem value="fixed" className="rounded-lg">Fixed Price</SelectItem>

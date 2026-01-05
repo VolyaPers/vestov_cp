@@ -6,32 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
-
-interface ClientDetails {
-  id: number
-  name: string
-  industry?: string
-  status: 'active' | 'inactive' | 'prospect'
-  contractType?: 'outstaffing' | 'outsourcing' | 'hybrid'
-  contractStart?: string
-  contractEnd?: string
-  billingCycle?: string
-  teamSize?: number
-  createdAt: string
-  services: Array<{
-    id: number
-    serviceTypeName: string
-    serviceDescription?: string
-    serviceCategory: string
-    billingModel: string
-    rate?: number
-    serviceLevelPrice?: number
-    startDate: string
-    endDate?: string
-    isActive: boolean
-    createdAt: string
-  }>
-}
+import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 
 interface ServiceDeveloper {
   id: number
@@ -96,7 +72,10 @@ interface Invoice {
 
 export function ClientPortal() {
   const [, params] = useRoute('/client/portal/:clientId')
-  const clientId = params?.clientId
+  if (!hasRouteParam(params, 'clientId')) {
+    return <div>Client ID not found</div>
+  }
+  const clientId = getRouteParam(params, 'clientId')
   const [client, setClient] = useState<ClientDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [serviceDevelopers, setServiceDevelopers] = useState<Record<number, ServiceDeveloper[]>>({})
@@ -113,7 +92,7 @@ export function ClientPortal() {
       try {
         // Load client details
         const clientResponse = await api.getClient(clientId)
-        setClient(clientResponse)
+        setClient(convertClientToClientDetails(clientResponse))
 
         // Load service developers
         if (clientResponse.services.length > 0) {
@@ -448,7 +427,7 @@ export function ClientPortal() {
                   <div className="flex items-center gap-2 mb-2">
                     <h4 className="font-medium text-gray-900">{contact.fullName}</h4>
                     {contact.isPrimary && (
-                      <Star className="h-4 w-4 text-yellow-500 fill-current" title="Primary Contact" />
+                      <Star className="h-4 w-4 text-yellow-500 fill-current" aria-label="Primary Contact" />
                     )}
                   </div>
                   {contact.position && (

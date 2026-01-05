@@ -31,6 +31,7 @@ import { VacationBalanceCard } from '@/components/VacationBalanceCard'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { format, addYears, differenceInDays } from 'date-fns'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 
 interface TeamMember {
   id: number
@@ -111,7 +112,10 @@ export function TeamMemberDetails() {
 
   // Log for debugging
 
-  const memberId = params?.id
+  if (!hasRouteParam(params, 'id')) {
+    return <div>Member ID not found</div>
+  }
+  const memberId = getRouteParam(params, 'id')
 
   // Log for debugging
 

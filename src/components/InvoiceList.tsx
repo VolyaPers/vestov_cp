@@ -18,7 +18,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api } from '@/lib/api'
-import { Invoice, CreateInvoiceData, UpdateInvoiceData } from '@/types/invoice'
+import { Invoice, CreateInvoiceData as InvoiceCreateInvoiceData, UpdateInvoiceData as InvoiceUpdateInvoiceData } from '@/types/invoice'
+import type { CreateInvoiceData, UpdateInvoiceData } from '@/types/common'
 import { EnhancedInvoiceForm } from './EnhancedInvoiceForm'
 
 interface InvoiceListProps {
@@ -39,7 +40,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   const lastMonthStart = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0]
   const lastMonthEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0]
   
-  const [newInvoiceData, setNewInvoiceData] = useState<CreateInvoiceData>({
+  const [newInvoiceData, setNewInvoiceData] = useState<InvoiceCreateInvoiceData>({
     clientId,
     amount: 0,
     invoiceDate: today,
@@ -49,7 +50,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
     notes: ''
   })
   
-  const [editInvoiceData, setEditInvoiceData] = useState<UpdateInvoiceData>({})
+  const [editInvoiceData, setEditInvoiceData] = useState<InvoiceUpdateInvoiceData>({})
 
   // Fetch invoices for this client
   const { data: invoices = [], isLoading, error } = useQuery({
@@ -76,7 +77,22 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
 
   // Create invoice mutation
   const createInvoiceMutation = useMutation({
-    mutationFn: api.createInvoice,
+    mutationFn: (data: InvoiceCreateInvoiceData) => {
+      // Convert from invoice types to common types
+      const commonData: CreateInvoiceData = {
+        clientId: data.clientId,
+        invoiceNumber: `INV-${Date.now()}`, // Generate invoice number
+        amount: data.amount?.toString() || '0',
+        invoiceDate: data.invoiceDate || today,
+        periodStart: data.periodStart || lastMonthStart,
+        periodEnd: data.periodEnd || lastMonthEnd,
+        description: data.description,
+        notes: data.notes,
+        dueDate: data.dueDate,
+        serviceIds: data.serviceIds,
+      }
+      return api.createInvoice(commonData)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices', 'client', clientId] })
       setIsAddDialogOpen(false)
@@ -89,8 +105,20 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
 
   // Update invoice mutation
   const updateInvoiceMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: UpdateInvoiceData }) => 
-      api.updateInvoice(id, data),
+    mutationFn: ({ id, data }: { id: number; data: InvoiceUpdateInvoiceData }) => {
+      // Convert from invoice types to common types
+      const commonData: UpdateInvoiceData = {
+        amount: typeof data.amount === 'number' ? data.amount.toString() : data.amount,
+        invoiceDate: data.invoiceDate,
+        periodStart: data.periodStart,
+        periodEnd: data.periodEnd,
+        description: data.description,
+        dueDate: data.dueDate,
+        notes: data.notes,
+        serviceIds: data.serviceIds,
+      }
+      return api.updateInvoice(id, commonData)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices', 'client', clientId] })
       setIsEditDialogOpen(false)
@@ -125,9 +153,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       periodStart: invoice.periodStart,
       periodEnd: invoice.periodEnd,
       description: invoice.description || '',
-      status: invoice.status,
       dueDate: invoice.dueDate || '',
-      paidAt: invoice.paidAt ? invoice.paidAt.split('T')[0] : '',
       notes: invoice.notes || ''
     })
     setIsEditDialogOpen(true)

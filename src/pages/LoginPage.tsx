@@ -4,7 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
-import type { User } from '@/types/common'
+
+interface User {
+  id: number
+  username: string
+  fullName: string
+  email: string
+  role: string
+}
 
 interface LoginPageProps {
   onLogin: (user: User) => void

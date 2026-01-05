@@ -10,7 +10,10 @@ import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns'
-import type { LeaveRequest, TeamMember, LeaveType, CreateLeaveRequestData } from '@/types/common'
+import type { TeamMember, LeaveType, CreateLeaveRequestData } from '@/types/common'
+import type { LeaveRequestWithNested } from '@/types/vacation'
+
+type LeaveRequest = LeaveRequestWithNested
 
 // Public holidays configuration
 const getPublicHolidays = (year: number) => {
@@ -145,7 +148,7 @@ export function VacationPage() {
 
   // Create leave request mutation (for calendar)
   const createLeaveMutation = useMutation({
-    mutationFn: async (data: CreateLeaveRequestData & { autoApprove?: boolean }) => {
+    mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string }) => {
       // Use the new admin auto-approve endpoint
       return fetch('/api/vacation/admin/create-and-approve', {
         method: 'POST',
@@ -176,7 +179,7 @@ export function VacationPage() {
 
   // Create leave request mutation (for admin request form)
   const createRequestMutation = useMutation({
-    mutationFn: async (data: CreateLeaveRequestData & { autoApprove?: boolean }) => {
+    mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string; autoApprove?: boolean }) => {
       const endpoint = data.autoApprove
         ? '/api/vacation/admin/create-and-approve'
         : '/api/vacation/requests'
@@ -369,10 +372,10 @@ export function VacationPage() {
   })
 
   const summaryStats = futureApprovedRequests.reduce(
-    (acc: Record<string, LeaveRequest[]>, item: LeaveRequest) => {
+    (acc: { vacation: number; sickLeave: number; other: number }, item: LeaveRequest) => {
       const leaveType = item.leaveType
       const request = item.request || item
-      const days = parseFloat(request.daysCount || 0)
+      const days = parseFloat((request as any).daysCount || '0')
 
       if (leaveType?.name === 'Vacation') {
         acc.vacation += days
@@ -571,7 +574,7 @@ export function VacationPage() {
                           {request.startDate && formatDate(request.startDate)} - {request.endDate && formatDate(request.endDate)}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {request.daysCount} {parseFloat(request.daysCount) === 1 ? 'day' : 'days'}
+                          {(request as any).daysCount || '0'} {parseFloat((request as any).daysCount || '0') === 1 ? 'day' : 'days'}
                         </p>
                       </div>
 
@@ -581,7 +584,7 @@ export function VacationPage() {
                           <>
                             <Button
                               size="sm"
-                              onClick={() => handleApprove(request.id)}
+                              onClick={() => handleApprove(String(request.id))}
                               disabled={approveMutation.isPending}
                               className="bg-green-600 hover:bg-green-700"
                             >
@@ -591,7 +594,7 @@ export function VacationPage() {
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() => handleDeny(request.id)}
+                              onClick={() => handleDeny(String(request.id))}
                               disabled={denyMutation.isPending}
                             >
                               <X className="h-4 w-4 mr-1" />
@@ -603,7 +606,7 @@ export function VacationPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleCancel(request.id)}
+                            onClick={() => handleCancel(String(request.id))}
                             disabled={cancelMutation.isPending}
                           >
                             <X className="h-4 w-4 mr-1" />
@@ -616,7 +619,7 @@ export function VacationPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleDelete(request.id, employee?.name || 'this employee')}
+                          onClick={() => handleDelete(String(request.id), employee?.name || 'this employee')}
                           disabled={deleteMutation.isPending}
                           className="border-red-300 text-red-600 hover:bg-red-50"
                         >
@@ -891,7 +894,7 @@ export function VacationPage() {
                               {workingMembers.slice(0, 2).map((member: TeamMember) => {
                                 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
                                 const dayName = dayNames[date.getDay()]
-                                const isHalfDay = member.workSchedule?.[dayName] === 'half'
+                                const isHalfDay = (member as any).workSchedule?.[dayName] === 'half'
 
                                 return (
                                   <div
@@ -900,7 +903,7 @@ export function VacationPage() {
                                     title={`${member.name} - ${isHalfDay ? 'Half Day' : 'Full Day'}`}
                                   >
                                     <Avatar className="h-5 w-5 border border-green-300 flex-shrink-0">
-                                      <AvatarImage src={member.avatarUrl} alt={member.name || 'Team Member'} />
+                                      <AvatarImage src={(member as any).avatarUrl} alt={member.name || 'Team Member'} />
                                       <AvatarFallback className="text-[8px] font-bold bg-green-200 text-green-900">
                                         {member.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'}
                                       </AvatarFallback>
@@ -1349,7 +1352,7 @@ export function VacationPage() {
                     <Button
                       size="sm"
                       onClick={() => {
-                        handleApprove((selectedVacation.request || selectedVacation).id)
+                        handleApprove(String((selectedVacation.request || selectedVacation).id))
                         setShowEditModal(false)
                       }}
                       className="bg-green-600 hover:bg-green-700 flex-1"
@@ -1361,7 +1364,7 @@ export function VacationPage() {
                       size="sm"
                       variant="destructive"
                       onClick={() => {
-                        handleDeny((selectedVacation.request || selectedVacation).id)
+                        handleDeny(String((selectedVacation.request || selectedVacation).id))
                         setShowEditModal(false)
                       }}
                       className="flex-1"
@@ -1460,7 +1463,7 @@ export function VacationPage() {
                                 {leaveType?.name || 'N/A'}
                               </span>
                               <span className="text-sm text-gray-600">
-                                {request.daysCount} {parseFloat(request.daysCount) === 1 ? 'day' : 'days'}
+                                {(request as any).daysCount || '0'} {parseFloat((request as any).daysCount || '0') === 1 ? 'day' : 'days'}
                               </span>
                             </div>
                             <p className="text-xs text-gray-500 mt-1">

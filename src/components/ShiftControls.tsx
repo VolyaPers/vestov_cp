@@ -28,10 +28,10 @@ export function ShiftControls() {
   // Fetch current shift status
   const fetchCurrentShift = async () => {
     try {
-      const response = await api.get('/shifts/current')
-      if (response.data.hasActiveShift) {
-        setCurrentShift(response.data.shift)
-        setActiveBreak(response.data.activeBreak)
+      const response = await api.request('/shifts/current')
+      if (response.hasActiveShift) {
+        setCurrentShift(response.shift)
+        setActiveBreak(response.activeBreak)
       } else {
         setCurrentShift(null)
         setActiveBreak(null)
@@ -52,11 +52,11 @@ export function ShiftControls() {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.post('/shifts/start')
-      setCurrentShift(response.data.shift)
+      const response = await api.request('/shifts/start', { method: 'POST' })
+      setCurrentShift(response.shift)
       setActiveBreak(null)
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to start shift')
+      setError(err.message || 'Failed to start shift')
     } finally {
       setLoading(false)
     }
@@ -68,11 +68,11 @@ export function ShiftControls() {
     setLoading(true)
     setError(null)
     try {
-      await api.post('/shifts/end')
+      await api.request('/shifts/end', { method: 'POST' })
       setCurrentShift(null)
       setActiveBreak(null)
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to end shift')
+      setError(err.message || 'Failed to end shift')
     } finally {
       setLoading(false)
     }
@@ -82,13 +82,13 @@ export function ShiftControls() {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.post('/shifts/break/start')
-      setActiveBreak(response.data.break)
+      const response = await api.request('/shifts/break/start', { method: 'POST' })
+      setActiveBreak(response.break)
       if (currentShift) {
         setCurrentShift({ ...currentShift, status: 'on_break' })
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to start break')
+      setError(err.message || 'Failed to start break')
     } finally {
       setLoading(false)
     }
@@ -98,13 +98,13 @@ export function ShiftControls() {
     setLoading(true)
     setError(null)
     try {
-      await api.post('/shifts/break/end')
+      await api.request('/shifts/break/end', { method: 'POST' })
       setActiveBreak(null)
       if (currentShift) {
         setCurrentShift({ ...currentShift, status: 'active' })
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to end break')
+      setError(err.message || 'Failed to end break')
     } finally {
       setLoading(false)
     }

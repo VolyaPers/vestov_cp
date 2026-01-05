@@ -2,18 +2,10 @@ import { useState, useEffect } from 'react'
 import { useRoute, Link } from 'wouter'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-
-interface TeamMember {
-  id: number
-  name: string
-  role: string
-  email: string
-  phone?: string
-  status: string
-  startDate: string
-  location?: string
-}
+import { api } from '@/lib/api'
+import type { TeamMember } from '@/types/common'
 
 export function TeamMemberDetailsSimple() {
   const [match, params] = useRoute('/admin/team-detail/:id')
@@ -21,26 +13,15 @@ export function TeamMemberDetailsSimple() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const memberId = params?.id
+  if (!hasRouteParam(params, 'id')) {
+    return <div>Member ID not found</div>
+  }
+  const memberId = getRouteParam(params, 'id')
 
   useEffect(() => {
-    if (!memberId) {
-      setError('No member ID provided')
-      setIsLoading(false)
-      return
-    }
-
     const loadMember = async () => {
       try {
-        const response = await fetch(`/api/admin/team-members/${memberId}`, {
-          credentials: 'include',
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to load team member: ${response.status}`)
-        }
-
-        const data = await response.json()
+        const data = await api.getTeamMember(memberId)
         setMember(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load team member')
@@ -121,31 +102,21 @@ export function TeamMemberDetailsSimple() {
             <CardTitle>{member.name}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Role</p>
-              <p className="text-lg">{member.role}</p>
-            </div>
+            {member.position && (
+              <div>
+                <p className="text-sm font-medium text-gray-500">Position</p>
+                <p className="text-lg">{member.position}</p>
+              </div>
+            )}
 
             <div>
               <p className="text-sm font-medium text-gray-500">Email</p>
               <p className="text-lg">{member.email}</p>
             </div>
 
-            {member.phone && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Phone</p>
-                <p className="text-lg">{member.phone}</p>
-              </div>
-            )}
-
             <div>
               <p className="text-sm font-medium text-gray-500">Status</p>
               <p className="text-lg capitalize">{member.status}</p>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-gray-500">Start Date</p>
-              <p className="text-lg">{new Date(member.startDate).toLocaleDateString()}</p>
             </div>
 
             {member.location && (

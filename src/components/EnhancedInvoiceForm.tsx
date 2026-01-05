@@ -299,14 +299,14 @@ export function EnhancedInvoiceForm({
             service.developers.forEach(dev => {
               if (!updatedDeveloperRates[dev.id]) {
                 // Create default rates based on developer data
-                const defaultRates = {
-                  hourlyRate: dev.hourlyRate || 50,
+                const defaultRates: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } = {
+                  hourlyRate: typeof dev.hourlyRate === 'number' ? dev.hourlyRate : (typeof dev.hourlyRate === 'string' ? parseFloat(dev.hourlyRate) : 50),
                   hoursWorked: 0
                 }
                 
                 // Include fixed price if available
                 if (dev.fixedPrice) {
-                  defaultRates.fixedPrice = dev.fixedPrice
+                  defaultRates.fixedPrice = typeof dev.fixedPrice === 'number' ? dev.fixedPrice : (typeof dev.fixedPrice === 'string' ? parseFloat(dev.fixedPrice) : undefined)
                 }
                 
                 updatedDeveloperRates[dev.id] = defaultRates
@@ -413,14 +413,17 @@ export function EnhancedInvoiceForm({
 
     // Add developer to local client services (UI)
     setLocalClientServices(prevServices => {
-      return prevServices.map(service => {
+      const updated = prevServices.map(service => {
         if (service.id === selectedServiceForDeveloper) {
           const newDeveloper = {
             id: developer.id,
+            developerId: developer.id,
             developerName: developer.name,
-            hourlyRate: rates.hourlyRate || developer.hourlyRate || '0',
-            fixedPrice: rates.fixedPrice || '0',
-            hoursWorked: rates.hoursWorked || 0
+            hourlyRate: rates.hourlyRate?.toString() || developer.hourlyRate?.toString() || '0',
+            fixedPrice: rates.fixedPrice?.toString() || '0',
+            hoursWorked: rates.hoursWorked || 0,
+            employmentType: 'fulltime' as const,
+            isActive: true
           }
           return {
             ...service,
@@ -429,6 +432,7 @@ export function EnhancedInvoiceForm({
         }
         return service
       })
+      return updated
     })
 
     // Add developer rates to invoiceData - this will trigger server recalculation
@@ -527,9 +531,7 @@ export function EnhancedInvoiceForm({
       ...invoiceData,
       serviceIds: activeTab === 'service-based' ? selectedServices : undefined,
       useServicePricing: activeTab === 'service-based',
-      amount: activeTab === 'manual' ? invoiceData.amount : getFinalTotal(),
-      // Automatically set status to 'paid' if paid date is provided
-      status: invoiceData.paidAt ? 'paid' : (invoiceData.status || 'draft')
+      amount: activeTab === 'manual' ? invoiceData.amount : getFinalTotal()
     }
 
     createInvoiceMutation.mutate(finalData)
@@ -809,10 +811,10 @@ export function EnhancedInvoiceForm({
                                             )
                                           )
                                           const serverDev = serviceCalc?.developers.find(dev => 
-                                            dev.developerId === developer.id || dev.id === developer.id
+                                            dev.id === developer.id
                                           )
-                                          if (serverDev?.calculatedAmount) {
-                                            return parseFloat(serverDev.calculatedAmount.toString()).toLocaleString()
+                                          if (serverDev?.amount) {
+                                            return parseFloat(serverDev.amount.toString()).toLocaleString()
                                           }
                                         }
                                         
@@ -914,7 +916,7 @@ export function EnhancedInvoiceForm({
                             
                             // Calculate total using current user input values
                             const developerTotal = calc.developers.reduce((sum, dev) => {
-                              const devId = dev.developerId || dev.id
+                              const devId = dev.id
                               const userRates = invoiceData.developerRates?.[devId] || {}
                               const hourlyRate = userRates.hourlyRate || dev.hourlyRate || 0
                               const hoursWorked = userRates.hoursWorked || dev.hoursWorked || 0
@@ -945,7 +947,7 @@ export function EnhancedInvoiceForm({
                         <div className="text-sm text-gray-600 ml-4">
                           {calc.developers.map((dev, i) => {
                             // Calculate using current user input values
-                            const devId = dev.developerId || dev.id
+                            const devId = dev.id
                             const userRates = invoiceData.developerRates?.[devId] || {}
                             const hourlyRate = userRates.hourlyRate || dev.hourlyRate || 0
                             const hoursWorked = userRates.hoursWorked || dev.hoursWorked || 0
@@ -1152,7 +1154,7 @@ export function EnhancedInvoiceForm({
         <div className="space-y-4">
           <div>
             <Label htmlFor="developer">Developer</Label>
-            <Select onValueChange={(value) => {
+            <Select value={selectedDeveloperToAdd?.toString() || ''} onValueChange={(value) => {
               const devId = parseInt(value)
               setSelectedDeveloperToAdd(devId)
               // Set default rate from developer profile if available

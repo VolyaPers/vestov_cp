@@ -34,8 +34,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatCurrency } from '@/lib/utils'
 import { format } from 'date-fns'
 import { api } from '@/lib/api'
+import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus } from '@/types/common'
 
-interface TeamMember {
+// Local TeamMember interface extends common type with additional fields from API
+interface LocalTeamMember {
   id: number
   name: string
   role: string
@@ -43,8 +45,8 @@ interface TeamMember {
   phone?: string
   skills?: string[]
   bio?: string
-  hourlyRate?: string
-  monthlyRate?: string
+  hourlyRate?: string | number
+  monthlyRate?: string | number
   isBillable: boolean
   status: string
   startDate: string
@@ -55,16 +57,16 @@ interface TeamMember {
 }
 
 export function TeamOverview() {
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [billableMembers, setBillableMembers] = useState<TeamMember[]>([])
-  const [internalStaff, setInternalStaff] = useState<TeamMember[]>([])
+  const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
+  const [billableMembers, setBillableMembers] = useState<LocalTeamMember[]>([])
+  const [internalStaff, setInternalStaff] = useState<LocalTeamMember[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState('all')
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
+  const [editingMember, setEditingMember] = useState<LocalTeamMember | null>(null)
   const [newMember, setNewMember] = useState({
     name: '',
     role: '',
@@ -88,12 +90,12 @@ export function TeamOverview() {
   const loadTeamMembers = async () => {
     try {
       setIsLoading(true)
-      const data = await api.getTeamMembers()
+      const data = await api.getTeamMembers() as unknown as LocalTeamMember[]
       setTeamMembers(data)
 
       // Separate billable and non-billable members
-      const billable = data.filter((member: TeamMember) => member.isBillable)
-      const internal = data.filter((member: TeamMember) => !member.isBillable)
+      const billable = data.filter((member: LocalTeamMember) => member.isBillable)
+      const internal = data.filter((member: LocalTeamMember) => !member.isBillable)
 
       setBillableMembers(billable)
       setInternalStaff(internal)
@@ -111,7 +113,20 @@ export function TeamOverview() {
 
     try {
       setIsSubmitting(true)
-      await api.createTeamMember(newMember)
+      // Convert local TeamMember format to CreateTeamMemberData
+      const createData: CreateTeamMemberData = {
+        name: newMember.name,
+        email: newMember.email,
+        position: newMember.role,
+        skills: newMember.skills || [],
+        hourlyRate: parseFloat(newMember.hourlyRate || '0'),
+        experienceLevel: 'middle', // Default, should be selectable in UI
+        status: newMember.status as TeamMemberStatus,
+        bio: newMember.bio || undefined,
+        location: newMember.location || undefined,
+        clientId: newMember.clientId
+      }
+      await api.createTeamMember(createData)
       await loadTeamMembers()
       setIsAddModalOpen(false)
       resetForm()
@@ -142,7 +157,7 @@ export function TeamOverview() {
     })
   }
 
-  const handleEditTeamMember = (member: TeamMember) => {
+  const handleEditTeamMember = (member: LocalTeamMember) => {
     setEditingMember(member)
     setIsEditModalOpen(true)
   }
@@ -154,7 +169,20 @@ export function TeamOverview() {
 
     try {
       setIsSubmitting(true)
-      await api.updateTeamMember(editingMember.id.toString(), editingMember)
+      // Convert local TeamMember format to UpdateTeamMemberData
+      const updateData: UpdateTeamMemberData = {
+        name: editingMember.name,
+        email: editingMember.email,
+        position: editingMember.role,
+        skills: editingMember.skills || [],
+        hourlyRate: typeof editingMember.hourlyRate === 'string' ? parseFloat(editingMember.hourlyRate || '0') : editingMember.hourlyRate || 0,
+        experienceLevel: 'middle', // Should be selectable in UI
+        status: editingMember.status as TeamMemberStatus,
+        bio: editingMember.bio || undefined,
+        location: editingMember.location || undefined,
+        clientId: editingMember.clientId
+      }
+      await api.updateTeamMember(editingMember.id.toString(), updateData)
       await loadTeamMembers()
       setIsEditModalOpen(false)
       setEditingMember(null)
@@ -183,7 +211,7 @@ export function TeamOverview() {
     }
   }
 
-  const getFilteredMembers = (members: TeamMember[]) => {
+  const getFilteredMembers = (members: LocalTeamMember[]) => {
     if (!searchTerm) return members
     
     return members.filter(member =>
@@ -207,7 +235,7 @@ export function TeamOverview() {
     }
   }
 
-  const MemberCard = ({ member }: { member: TeamMember }) => (
+  const MemberCard = ({ member }: { member: LocalTeamMember }) => (
     <div className="group relative bg-white border border-gray-200 rounded-xl p-6 hover:border-gray-300 hover:shadow-sm transition-all duration-200">
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
@@ -323,7 +351,7 @@ export function TeamOverview() {
                   </div>
                   <div>
                     <div className="font-semibold text-gray-900">
-                      {formatCurrency(parseFloat(member.hourlyRate))}
+                      {formatCurrency(parseFloat(String(member.hourlyRate || '0')))}
                     </div>
                     <div className="text-xs text-gray-500">per hour</div>
                   </div>

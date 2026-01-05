@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRoute } from 'wouter'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { DollarSign, Calendar, FileText, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,7 +23,10 @@ interface Invoice {
 
 export function ClientInvoices() {
   const [, params] = useRoute('/client/invoices/:clientId')
-  const clientId = params?.clientId
+  if (!hasRouteParam(params, 'clientId')) {
+    return <div>Client ID not found</div>
+  }
+  const clientId = getRouteParam(params, 'clientId')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [totals, setTotals] = useState<{

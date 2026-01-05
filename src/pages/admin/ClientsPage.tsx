@@ -272,10 +272,11 @@ export function ClientsPage() {
     }
 
     try {
-      await api.createClient({
+      const createData: any = {
         ...newClientData,
         teamSize: newClientData.teamSize ? parseInt(newClientData.teamSize) : 0,
-      })
+      }
+      await api.createClient(createData)
       loadClients()
       loadAnalytics()
       setIsClientDialogOpen(false)
@@ -672,7 +673,7 @@ export function ClientsPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-medium text-sm">{service.serviceTypeName}</span>
-                              <Badge className={getCategoryColor(service.serviceCategory)} size="sm">
+                              <Badge className={getCategoryColor(service.serviceCategory)} variant="secondary">
                                 {service.serviceCategory}
                               </Badge>
                               {!service.isActive && (

@@ -3,14 +3,28 @@ import { useRoute } from 'wouter'
 import { ArrowLeft, Edit, MapPin, Mail, Phone, Calendar, User, FileText, Star, Clock, CheckCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import type { TeamMember } from '@/types/common'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
+
+// Extended TeamMember type with additional fields from API
+type TeamMemberWithExtras = TeamMember & {
+  role?: string
+  phone?: string
+  monthlyRate?: number | string
+  startDate?: string
+  clientName?: string
+}
 
 export function EmployeeDetailsPage() {
   const [, params] = useRoute('/admin/employees/:id')
-  const employeeId = params?.id
+  if (!hasRouteParam(params, 'id')) {
+    return <div>Employee ID not found</div>
+  }
+  const employeeId = getRouteParam(params, 'id')
 
-  const { data: employee, isLoading } = useQuery({
+  const { data: employee, isLoading } = useQuery<TeamMemberWithExtras>({
     queryKey: ['admin', 'team-members', employeeId],
-    queryFn: () => api.getTeamMember(employeeId!),
+    queryFn: () => api.getTeamMember(employeeId) as Promise<TeamMemberWithExtras>,
     enabled: !!employeeId,
   })
 
@@ -216,7 +230,7 @@ export function EmployeeDetailsPage() {
                   <div className="p-4 bg-gradient-to-br from-green-50/80 to-emerald-50/80 rounded-lg border border-green-200/40">
                     <p className="text-sm font-bold text-green-700 mb-2">Base Hourly Rate</p>
                     <p className="text-green-600 font-bold text-xl">
-                      {formatCurrency(parseFloat(employee.hourlyRate))}
+                      {formatCurrency(typeof employee.hourlyRate === 'number' ? employee.hourlyRate : parseFloat(String(employee.hourlyRate || 0)))}
                     </p>
                   </div>
                 )}
@@ -224,7 +238,7 @@ export function EmployeeDetailsPage() {
                   <div className="p-4 bg-gradient-to-br from-blue-50/80 to-sky-50/80 rounded-lg border border-blue-200/40">
                     <p className="text-sm font-bold text-blue-700 mb-2">Monthly Rate</p>
                     <p className="text-blue-600 font-bold text-xl">
-                      {formatCurrency(parseFloat(employee.monthlyRate))}
+                      {formatCurrency(typeof employee.monthlyRate === 'number' ? employee.monthlyRate : parseFloat(String(employee.monthlyRate || 0)))}
                     </p>
                   </div>
                 )}

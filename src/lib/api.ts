@@ -336,6 +336,10 @@ class ApiClient {
     return this.request(`/invoices/client/${clientId}`)
   }
 
+  async getInvoice(invoiceId: number) {
+    return this.request(`/invoices/${invoiceId}`)
+  }
+
   async createInvoice(data: CreateInvoiceData) {
     return this.request('/invoices', {
       method: 'POST',

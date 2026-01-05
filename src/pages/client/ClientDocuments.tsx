@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRoute } from 'wouter'
+import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { FileText, Download, Eye, Calendar, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,7 +29,10 @@ interface DocumentWithUploader {
 
 export function ClientDocuments() {
   const [, params] = useRoute('/client/documents/:clientId')
-  const clientId = params?.clientId
+  if (!hasRouteParam(params, 'clientId')) {
+    return <div>Client ID not found</div>
+  }
+  const clientId = getRouteParam(params, 'clientId')
   const [documents, setDocuments] = useState<DocumentWithUploader[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
