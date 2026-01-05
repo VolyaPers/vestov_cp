@@ -183,6 +183,7 @@ app.use(session({
   store: new PgSession({
     pool,
     tableName: 'user_sessions',
+    schemaName: 'public',
     createTableIfMissing: true,
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
