@@ -49,8 +49,6 @@ export function VacationPage() {
   const [showRequestModal, setShowRequestModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false)
-import type { LeaveRequest, TeamMember, LeaveType } from '@/types/common'
-
   const [selectedVacation, setSelectedVacation] = useState<LeaveRequest | null>(null)
   const [selectedDayEvents, setSelectedDayEvents] = useState<LeaveRequest[]>([])
   const [selectedDate, setSelectedDate] = useState<string>('')
