@@ -180,7 +180,7 @@ router.post('/', async (req, res) => {
     }
 
     // Calculate years at company and limit
-    const yearsAtCompany = calculateYearsAtCompany(member.startDate)
+    const yearsAtCompany = calculateEmploymentMetrics(member.startDate).careerYear
     const yearlyLimit = getYearlyLimit(yearsAtCompany)
 
     // Calculate total used in current year
