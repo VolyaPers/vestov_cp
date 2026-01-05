@@ -158,7 +158,13 @@ export function UsersPage() {
       if (userFormData.teamMemberId) {
         payload.teamMemberId = parseInt(userFormData.teamMemberId)
       }
-      await api.createUser(payload)
+      const result = await api.createUser(payload)
+      
+      // Only proceed if we got a valid user back
+      if (!result || !result.id) {
+        throw new Error('User creation failed: No user data returned')
+      }
+      
       await loadUsers()
       await loadAvailableTeamMembers() // Refresh available team members
       setIsUserDialogOpen(false)
@@ -166,7 +172,10 @@ export function UsersPage() {
       alert('User created successfully.')
     } catch (error) {
       console.error('Failed to create user:', error)
-      alert(error instanceof Error ? error.message : 'Failed to create user')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create user'
+      alert(errorMessage)
+      // Don't close dialog or reset form on error
+      return
     }
   }
 

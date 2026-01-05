@@ -93,23 +93,53 @@ export async function createUserAccount(
       12
     )
 
-    const [newUser] = await tx
-      .insert(users)
-      .values({
-        username: normalizedUsername,
-        password: hashedPassword,
-        fullName,
-        email: normalizedEmail,
-        role,
-        position,
-        avatarUrl,
-        teamMemberId: teamMemberId ?? null,
-        isActive,
-        authProvider: 'local',
-      })
-      .returning()
+    try {
+      const [newUser] = await tx
+        .insert(users)
+        .values({
+          username: normalizedUsername,
+          password: hashedPassword,
+          fullName,
+          email: normalizedEmail,
+          role,
+          position,
+          avatarUrl,
+          teamMemberId: teamMemberId ?? null,
+          isActive,
+          authProvider: 'local',
+        })
+        .returning()
 
-    return { user: newUser }
+      if (!newUser) {
+        throw new Error('Failed to create user')
+      }
+
+      return { user: newUser }
+    } catch (dbError: any) {
+      // Handle database constraint violations
+      if (dbError.code === '23505') { // Unique violation
+        const constraint = dbError.constraint || ''
+        const detail = dbError.detail || ''
+        
+        // Check if it's username or email conflict
+        if (constraint.includes('username') || detail.includes('username')) {
+          throw new Error(`Username "${normalizedUsername}" is already in use by another user`)
+        } else if (constraint.includes('email') || detail.includes('email')) {
+          throw new Error(`Email "${normalizedEmail}" is already in use by another user`)
+        } else {
+          // Try to determine from the error message
+          if (detail.includes(normalizedEmail)) {
+            throw new Error(`Email "${normalizedEmail}" is already in use by another user`)
+          } else if (detail.includes(normalizedUsername)) {
+            throw new Error(`Username "${normalizedUsername}" is already in use by another user`)
+          } else {
+            throw new Error('A user with this information already exists')
+          }
+        }
+      }
+      // Re-throw other database errors
+      throw dbError
+    }
   })
 }
 
