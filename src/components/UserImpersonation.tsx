@@ -73,50 +73,15 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   const handleImpersonate = async (userId: number) => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/impersonate/${userId}`, {
-        method: 'POST',
-        credentials: 'include'
+      const data = await api.request(`/impersonate/${userId}`, {
+        method: 'POST'
       })
-
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`
-        try {
-          const text = await response.text()
-          if (text) {
-            const error = JSON.parse(text)
-            errorMessage = error.error || errorMessage
-          }
-        } catch {
-          // Use default error message if parsing fails
-        }
-        throw new Error(errorMessage)
-      }
-
-      const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text()
-        console.error('[UserImpersonation] Non-JSON response:', text.slice(0, 200))
-        throw new Error('Invalid response format from server')
-      }
-
-      const text = await response.text()
-      if (!text) {
-        throw new Error('Empty response from server')
-      }
-
-      let data
-      try {
-        data = JSON.parse(text)
-      } catch (error) {
-        console.error('[UserImpersonation] Failed to parse JSON:', text.slice(0, 500))
-        throw new Error('Invalid JSON response from server')
-      }
       
       await onImpersonate(userId)
       setShowDropdown(false)
 
       // Redirect to appropriate portal based on impersonated user's role
-      const targetRole = data.user.role
+      const targetRole = data.user?.role
       const redirectPath = targetRole === 'admin' ? '/admin/dashboard' :
                           targetRole === 'team_member' ? '/employee/dashboard' :
                           '/client/portal'
@@ -124,7 +89,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
       window.location.href = redirectPath
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to impersonate user'
-      console.error('Error impersonating user:', error)
+      console.error('[UserImpersonation] Error impersonating user:', error)
       alert(errorMessage)
     } finally {
       setLoading(false)
@@ -134,46 +99,14 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   const handleStopImpersonation = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/stop-impersonation', {
-        method: 'POST',
-        credentials: 'include'
+      const data = await api.request('/stop-impersonation', {
+        method: 'POST'
       })
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to stop impersonation'
-        try {
-          const text = await response.text()
-          if (text) {
-            const error = JSON.parse(text)
-            errorMessage = error.error || errorMessage
-          }
-        } catch {
-          // Use default error message if parsing fails
-        }
-        throw new Error(errorMessage)
-      }
-
-      const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Invalid response format from server')
-      }
-
-      const text = await response.text()
-      if (!text) {
-        throw new Error('Empty response from server')
-      }
-
-      let data
-      try {
-        data = JSON.parse(text)
-      } catch (error) {
-        console.error('[UserImpersonation] Failed to parse JSON:', text.slice(0, 500))
-        throw new Error('Invalid JSON response from server')
-      }
+      
       await onStopImpersonation()
 
       // Redirect back to admin dashboard (original user should be admin)
-      const targetRole = data.user.role
+      const targetRole = data.user?.role
       const redirectPath = targetRole === 'admin' ? '/admin/dashboard' :
                           targetRole === 'team_member' ? '/employee/dashboard' :
                           '/client/portal'
