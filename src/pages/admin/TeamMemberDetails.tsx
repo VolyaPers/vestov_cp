@@ -32,6 +32,7 @@ import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { format, addYears, differenceInDays } from 'date-fns'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
+import type { UpdateTeamMemberData } from '@/types/common'
 
 interface TeamMember {
   id: number
@@ -136,18 +137,8 @@ export function TeamMemberDetails() {
   const loadTeamMember = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch(`/api/admin/team-members/${memberId}`, {
-        credentials: 'include',
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setMember(data)
-      } else if (response.status === 404) {
-        setMember(null)
-      } else {
-        console.error('Failed to load team member, status:', response.status)
-        setMember(null)
-      }
+      const data = await api.getTeamMember(memberId)
+      setMember(data as unknown as TeamMember)
     } catch (error) {
       console.error('Failed to load team member:', error)
       setMember(null)
@@ -247,12 +238,8 @@ export function TeamMemberDetails() {
       }
 
       // Create new employment cycle with leave balance initialization
-      const response = await fetch('/api/vacation/cycles/initialize', {
+      await api.request('/vacation/cycles/initialize', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
         body: JSON.stringify({
           employeeId: parseInt(memberId!),
           cycleStart,
@@ -272,15 +259,10 @@ export function TeamMemberDetails() {
         }),
       })
 
-      if (response.ok) {
-        // Refresh the vacation data
-        await loadVacationData()
-        setShowCycleModal(false)
-        setCycleFormData({ cycleStart: '', isActive: true })
-      } else {
-        console.error('Failed to create employment cycle')
-        alert('Failed to create employment cycle. Please try again.')
-      }
+      // Refresh the vacation data
+      await loadVacationData()
+      setShowCycleModal(false)
+      setCycleFormData({ cycleStart: '', isActive: true })
     } catch (error) {
       console.error('Error creating employment cycle:', error)
       alert('Error creating employment cycle. Please try again.')
@@ -348,23 +330,22 @@ export function TeamMemberDetails() {
 
     try {
       setIsSubmitting(true)
-      const response = await fetch(`/api/admin/team-members/${editingMember.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(editingMember),
-      })
-
-      if (response.ok) {
-        const updatedMember = await response.json()
-        setMember(updatedMember)
-        setIsEditModalOpen(false)
-        setEditingMember(null)
-      } else {
-        console.error('Failed to update team member')
+      const updateData: UpdateTeamMemberData = {
+        name: editingMember.name,
+        email: editingMember.email,
+        position: editingMember.role,
+        skills: editingMember.skills || [],
+        hourlyRate: typeof editingMember.hourlyRate === 'number' ? editingMember.hourlyRate : parseFloat(String(editingMember.hourlyRate || '0')),
+        experienceLevel: 'middle', // Default, TeamMember interface doesn't include this
+        status: editingMember.status as 'active' | 'bench' | 'unavailable',
+        bio: editingMember.bio || undefined,
+        location: editingMember.location || undefined,
+        clientId: editingMember.clientId || undefined,
       }
+      const updatedMember = await api.updateTeamMember(String(editingMember.id), updateData)
+      setMember(updatedMember as unknown as TeamMember)
+      setIsEditModalOpen(false)
+      setEditingMember(null)
     } catch (error) {
       console.error('Error updating team member:', error)
     } finally {
@@ -378,18 +359,9 @@ export function TeamMemberDetails() {
     }
 
     try {
-      const response = await fetch(`/api/admin/team-members/${member.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-
-      if (response.ok) {
-        // Redirect to team overview after successful deletion
-        window.location.href = '/admin/team'
-      } else {
-        console.error('Failed to delete team member')
-        alert('Failed to delete team member. Please try again.')
-      }
+      await api.deleteTeamMember(String(member.id))
+      // Redirect to team overview after successful deletion
+      window.location.href = '/admin/team'
     } catch (error) {
       console.error('Error deleting team member:', error)
       alert('Error deleting team member. Please try again.')

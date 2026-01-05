@@ -77,6 +77,70 @@ class ApiClient {
     }
   }
 
+  // Request with FormData (for file uploads)
+  requestFormData = async (endpoint: string, formData: FormData) => {
+    const url = `${API_BASE}${endpoint}`
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    })
+
+    if (!response.ok) {
+      let errorMessage = `API Error: ${response.status}`
+      try {
+        const text = await response.text()
+        if (text) {
+          const errorData = JSON.parse(text)
+          if (errorData.error) {
+            errorMessage = errorData.error
+          }
+        }
+      } catch {
+        // Use default error message if parsing fails
+      }
+      throw new Error(errorMessage)
+    }
+
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+      return response.json()
+    }
+    return response
+  }
+
+  // Request binary data (for file downloads)
+  requestBinary = async (endpoint: string, options: RequestInit = {}) => {
+    const url = `${API_BASE}${endpoint}`
+    const config: RequestInit = {
+      ...options,
+      credentials: 'include',
+      headers: {
+        ...options.headers,
+      },
+    }
+
+    const response = await fetch(url, config)
+    
+    if (!response.ok) {
+      let errorMessage = `API Error: ${response.status}`
+      try {
+        const text = await response.text()
+        if (text) {
+          const errorData = JSON.parse(text)
+          if (errorData.error) {
+            errorMessage = errorData.error
+          }
+        }
+      } catch {
+        // Use default error message if parsing fails
+      }
+      throw new Error(errorMessage)
+    }
+
+    return response.blob()
+  }
+
   // Auth
   login = async (username: string, password: string) => {
     return this.request('/login', {
@@ -502,28 +566,7 @@ class ApiClient {
   async uploadClientLogo(clientId: number, file: File) {
     const formData = new FormData()
     formData.append('logo', file)
-
-    const url = `${API_BASE}/admin/clients/${clientId}/logo`
-    const response = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    })
-
-    if (!response.ok) {
-      let errorMessage = `Upload failed: ${response.status}`
-      try {
-        const errorData = await response.json()
-        if (errorData.error) {
-          errorMessage = errorData.error
-        }
-      } catch {
-        // Use default error message
-      }
-      throw new Error(errorMessage)
-    }
-
-    return response.json()
+    return this.requestFormData(`/admin/clients/${clientId}/logo`, formData)
   }
 
   // Shift Management

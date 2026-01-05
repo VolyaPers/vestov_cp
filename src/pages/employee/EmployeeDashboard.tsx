@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Link } from 'wouter'
+import { api } from '@/lib/api'
 
 interface DashboardData {
   profile: {
@@ -83,22 +84,12 @@ export function EmployeeDashboard() {
       setLoading(true)
 
       // Load all data in parallel
-      const [profileRes, roadmapRes, vacationsRes, reimbursementsRes] = await Promise.all([
-        fetch('/api/vacation/my-profile', { credentials: 'include' }),
-        fetch('/api/roadmap', { credentials: 'include' }),
-        fetch('/api/vacation/my-requests', { credentials: 'include' }),
-        fetch('/api/reimbursements/my-requests', { credentials: 'include' })
+      const [profile, roadmap, vacationRequests, reimbursementData] = await Promise.all([
+        api.request('/vacation/my-profile'),
+        api.request('/roadmap'),
+        api.request('/vacation/my-requests'),
+        api.request('/reimbursements/my-requests')
       ])
-
-      // Check if all responses are ok
-      if (!profileRes.ok || !roadmapRes.ok || !vacationsRes.ok || !reimbursementsRes.ok) {
-        throw new Error('Failed to load dashboard data')
-      }
-
-      const profile = await profileRes.json()
-      const roadmap = await roadmapRes.json()
-      const vacationRequests = await vacationsRes.json()
-      const reimbursementData = await reimbursementsRes.json()
 
       // Handle case where reimbursements might be empty array
       const reimbursements = Array.isArray(reimbursementData) ? reimbursementData : []

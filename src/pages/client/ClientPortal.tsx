@@ -145,15 +145,7 @@ export function ClientPortal() {
 
   const handleDocumentDownload = async (documentId: number, filename: string) => {
     try {
-      const response = await fetch(`/api/documents/download/${documentId}`, {
-        credentials: 'include'
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to download document')
-      }
-
-      const blob = await response.blob()
+      const blob = await api.requestBinary(`/documents/download/${documentId}`)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.style.display = 'none'

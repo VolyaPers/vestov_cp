@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { api } from '@/lib/api'
 
 interface TeamMember {
   id: number
@@ -39,9 +40,7 @@ export function EmployeeProfile() {
       setLoading(true)
 
       // Get employee profile
-      const profileResponse = await fetch('/api/vacation/my-profile', { credentials: 'include' })
-      if (!profileResponse.ok) throw new Error('Failed to fetch profile')
-      const member = await profileResponse.json()
+      const member = await api.request('/vacation/my-profile')
 
       setTeamMember(member)
       setFormData({
@@ -61,17 +60,10 @@ export function EmployeeProfile() {
 
     try {
       setSaving(true)
-      const response = await fetch(`/api/admin/team-members/${teamMember.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...teamMember,
-          ...formData
-        })
+      await api.updateTeamMember(String(teamMember.id), {
+        ...teamMember,
+        ...formData
       })
-
-      if (!response.ok) throw new Error('Failed to update profile')
 
       await loadProfile()
       setEditing(false)

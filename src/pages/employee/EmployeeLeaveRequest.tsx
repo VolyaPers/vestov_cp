@@ -54,14 +54,11 @@ export function EmployeeLeaveRequest() {
       setLoading(true)
 
       // Get current user info
-      const userResponse = await fetch('/api/user', { credentials: 'include' })
-      if (!userResponse.ok) throw new Error('Failed to fetch user')
-      const userData = await userResponse.json()
+      const userData = await api.getCurrentUser()
+      if (!userData) throw new Error('Failed to fetch user')
 
       // Get team member by email
-      const teamResponse = await fetch('/api/admin/team-members', { credentials: 'include' })
-      if (!teamResponse.ok) throw new Error('Failed to fetch team member')
-      const teamData = await teamResponse.json()
+      const teamData = await api.getTeamMembers()
       const member = teamData.find((tm: any) => tm.email === userData.email)
 
       if (!member) {
@@ -72,21 +69,19 @@ export function EmployeeLeaveRequest() {
       setTeamMemberId(member.id)
 
       // Load leave balances
-      const balancesResponse = await fetch(`/api/vacation/balances/${member.id}`, {
-        credentials: 'include',
-      })
-      if (balancesResponse.ok) {
-        const balancesData = await balancesResponse.json()
+      try {
+        const balancesData = await api.request(`/vacation/balances/${member.id}`)
         setLeaveBalances(balancesData)
+      } catch (error) {
+        console.error('Failed to load balances:', error)
       }
 
       // Load leave requests
-      const requestsResponse = await fetch(`/api/vacation/requests?employeeId=${member.id}`, {
-        credentials: 'include',
-      })
-      if (requestsResponse.ok) {
-        const requestsData = await requestsResponse.json()
+      try {
+        const requestsData = await api.request(`/vacation/requests?employeeId=${member.id}`)
         setLeaveRequests(requestsData)
+      } catch (error) {
+        console.error('Failed to load requests:', error)
       }
 
       // Load leave types

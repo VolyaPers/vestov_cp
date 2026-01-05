@@ -93,39 +93,30 @@ export function EmployeeVacations() {
       setLoading(true)
 
       // Get employee profile
-      const profileResponse = await fetch('/api/vacation/my-profile', { credentials: 'include' })
-      if (!profileResponse.ok) throw new Error('Failed to fetch profile')
-      const member = await profileResponse.json()
+      const member = await api.request('/vacation/my-profile')
       setTeamMember(member)
 
       // Load employment cycle
-      const cycleResponse = await fetch(`/api/vacation/employment-cycle/${member.id}`, {
-        credentials: 'include',
-      })
-      if (cycleResponse.ok) {
-        const cycleData = await cycleResponse.json()
+      try {
+        const cycleData = await api.request(`/vacation/employment-cycle/${member.id}`)
         setEmploymentCycle(cycleData)
+      } catch (error) {
+        console.error('Failed to load employment cycle:', error)
       }
 
       // Load leave balances
-      const balancesResponse = await fetch(`/api/vacation/balances/${member.id}`, {
-        credentials: 'include',
-      })
-      if (balancesResponse.ok) {
-        const balancesData = await balancesResponse.json()
+      try {
+        const balancesData = await api.request(`/vacation/balances/${member.id}`)
         // balancesData is {employmentCycle, balances}, extract balances array
         setLeaveBalances(Array.isArray(balancesData) ? balancesData : balancesData.balances || [])
-      } else {
-        console.error('Failed to load balances:', balancesResponse.status)
+      } catch (error) {
+        console.error('Failed to load balances:', error)
         setLeaveBalances([])
       }
 
       // Load leave requests - use path parameter instead of query parameter
-      const requestsResponse = await fetch(`/api/vacation/requests/${member.id}`, {
-        credentials: 'include',
-      })
-      if (requestsResponse.ok) {
-        const requestsData = await requestsResponse.json()
+      try {
+        const requestsData = await api.request(`/vacation/requests/${member.id}`)
         // Transform API response: {request, leaveType, ...} -> flat structure
         const transformedRequests = Array.isArray(requestsData)
           ? requestsData.map((item: any) => ({
@@ -141,8 +132,8 @@ export function EmployeeVacations() {
             }))
           : []
         setLeaveRequests(transformedRequests)
-      } else {
-        console.error('Failed to load requests:', requestsResponse.status)
+      } catch (error) {
+        console.error('Failed to load requests:', error)
         setLeaveRequests([])
       }
 

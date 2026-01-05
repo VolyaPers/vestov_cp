@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Calendar, DollarSign, Gift, TrendingUp, Award, CheckCircle, Lock, GraduationCap, Laptop, BookOpen } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { api } from '@/lib/api'
 
 interface RoadmapData {
   currentYear: number
@@ -32,14 +33,8 @@ export function EmployeeRoadmap() {
 
   const loadRoadmapData = async () => {
     try {
-      const response = await fetch('/api/roadmap', {
-        credentials: 'include'
-      })
-
-      if (response.ok) {
-        const roadmapData = await response.json()
-        setData(roadmapData)
-      }
+      const roadmapData = await api.request('/roadmap')
+      setData(roadmapData)
     } catch (error) {
       console.error('Error loading roadmap:', error)
     } finally {

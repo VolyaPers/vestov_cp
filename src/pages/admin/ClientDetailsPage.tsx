@@ -654,23 +654,7 @@ export function ClientDetailsPage() {
       formData.append('clientId', clientId)
       formData.append('type', uploadDocumentType)
 
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        let errorMessage = 'Failed to upload document'
-        try {
-          const errorJson = JSON.parse(errorText)
-          errorMessage = errorJson.error || errorMessage
-        } catch {
-          errorMessage = errorText || errorMessage
-        }
-        throw new Error(errorMessage)
-      }
+      await api.requestFormData('/documents/upload', formData)
 
       // Refresh documents list
       await loadDocuments()

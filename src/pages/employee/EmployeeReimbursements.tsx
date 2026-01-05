@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { api } from '@/lib/api'
 
 interface ReimbursementLimits {
   yearsAtCompany: number
@@ -72,21 +73,19 @@ export function EmployeeReimbursements() {
       const year = new Date().getFullYear()
 
       // Load limits
-      const limitsResponse = await fetch(`/api/reimbursements/limits/${year}`, {
-        credentials: 'include'
-      })
-      if (limitsResponse.ok) {
-        const limitsData = await limitsResponse.json()
+      try {
+        const limitsData = await api.request(`/reimbursements/limits/${year}`)
         setLimits(limitsData)
+      } catch (error) {
+        console.error('Failed to load limits:', error)
       }
 
       // Load requests
-      const requestsResponse = await fetch('/api/reimbursements/my-requests', {
-        credentials: 'include'
-      })
-      if (requestsResponse.ok) {
-        const requestsData = await requestsResponse.json()
+      try {
+        const requestsData = await api.request('/reimbursements/my-requests')
         setRequests(requestsData)
+      } catch (error) {
+        console.error('Failed to load requests:', error)
       }
     } catch (error) {
       console.error('Error loading reimbursement data:', error)
@@ -111,21 +110,14 @@ export function EmployeeReimbursements() {
 
     try {
       setSubmitting(true)
-      const response = await fetch('/api/reimbursements', {
+      await api.request('/reimbursements', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           expenseAmount: expense,
           description: description.trim(),
           category: category || null
         })
       })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to submit request')
-      }
 
       // Reset form
       setExpenseAmount('')
@@ -150,15 +142,7 @@ export function EmployeeReimbursements() {
       const formData = new FormData()
       formData.append('evidence', file)
 
-      const response = await fetch(`/api/reimbursements/${requestId}/upload`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to upload evidence')
-      }
+      await api.requestFormData(`/reimbursements/${requestId}/upload`, formData)
 
       // Reload data
       await loadData()

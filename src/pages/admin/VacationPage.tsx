@@ -150,10 +150,8 @@ export function VacationPage() {
   const createLeaveMutation = useMutation({
     mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string }) => {
       // Use the new admin auto-approve endpoint
-      return fetch('/api/vacation/admin/create-and-approve', {
+      return api.request('/vacation/admin/create-and-approve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           employeeId: parseInt(data.employeeId),
           leaveTypeId: parseInt(data.leaveTypeId),
@@ -162,7 +160,7 @@ export function VacationPage() {
           reason: data.reason || null,
           autoApprove: true,
         }),
-      }).then(r => r.json())
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
@@ -196,7 +194,7 @@ export function VacationPage() {
           reason: data.reason || null,
           autoApprove: data.autoApprove,
         }),
-      }).then(r => r.json())
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
