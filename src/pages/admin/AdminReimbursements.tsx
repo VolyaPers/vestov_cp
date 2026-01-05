@@ -13,6 +13,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+const getEvidenceUrl = (evidencePath: string | null) => {
+  if (!evidencePath) return null
+  const envApiUrl = import.meta.env.VITE_API_URL
+  const API_BASE = envApiUrl 
+    ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
+    : '/api'
+  // Remove /api from the base URL to get the backend base URL, then add the evidence path
+  const backendBase = API_BASE.replace(/\/api$/, '')
+  return `${backendBase}${evidencePath}`
+}
+
 interface ReimbursementRequest {
   id: number
   employeeId: number
@@ -393,7 +404,7 @@ export function AdminReimbursements() {
                   {request.evidenceUrl && (
                     <div className="mb-3">
                       <a
-                        href={request.evidenceUrl}
+                        href={getEvidenceUrl(request.evidenceUrl) || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-blue-600 hover:underline"

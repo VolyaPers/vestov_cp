@@ -14,6 +14,17 @@ import {
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
 
+const getEvidenceUrl = (evidencePath: string | null) => {
+  if (!evidencePath) return null
+  const envApiUrl = import.meta.env.VITE_API_URL
+  const API_BASE = envApiUrl 
+    ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
+    : '/api'
+  // Remove /api from the base URL to get the backend base URL, then add the evidence path
+  const backendBase = API_BASE.replace(/\/api$/, '')
+  return `${backendBase}${evidencePath}`
+}
+
 interface ReimbursementLimits {
   yearsAtCompany: number
   yearlyLimit: number
@@ -466,7 +477,7 @@ export function EmployeeReimbursements() {
                   {request.evidenceUrl && (
                     <div className="mt-3">
                       <a
-                        href={request.evidenceUrl}
+                        href={getEvidenceUrl(request.evidenceUrl) || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-blue-600 hover:underline"
