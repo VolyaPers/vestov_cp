@@ -446,4 +446,74 @@ router.post('/:id/upload', upload.single('evidence'), async (req, res) => {
   }
 })
 
+// GET /api/reimbursements/evidence/:filename - Serve evidence file
+router.get('/evidence/:filename', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' })
+    }
+
+    const { filename } = req.params
+    
+    // Security: Only allow filenames that start with 'evidence-'
+    if (!filename.startsWith('evidence-')) {
+      return res.status(400).json({ error: 'Invalid filename' })
+    }
+
+    const filePath = path.join(process.cwd(), 'uploads', filename)
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' })
+    }
+
+    // Verify the file belongs to a reimbursement request that the user has access to
+    const requests = await db
+      .select({
+        request: reimbursementRequests,
+        member: teamMembers
+      })
+      .from(reimbursementRequests)
+      .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
+      .where(eq(reimbursementRequests.evidenceUrl, `/uploads/${filename}`))
+      .limit(1)
+
+    if (requests.length === 0) {
+      return res.status(404).json({ error: 'Reimbursement request not found' })
+    }
+
+    const request = requests[0]
+
+    // Check if user has access: either they are the employee who requested it, or they are an admin
+    const hasAccess = req.user.role === 'admin' || request.member.email === req.user.email
+
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Not authorized to view this evidence' })
+    }
+
+    // Set appropriate content type based on file extension
+    const ext = path.extname(filename).toLowerCase()
+    let contentType = 'application/octet-stream'
+
+    switch (ext) {
+      case '.jpg':
+      case '.jpeg':
+        contentType = 'image/jpeg'
+        break
+      case '.png':
+        contentType = 'image/png'
+        break
+      case '.pdf':
+        contentType = 'application/pdf'
+        break
+    }
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`)
+    res.sendFile(path.resolve(filePath))
+  } catch (error) {
+    console.error('Error serving evidence file:', error)
+    res.status(500).json({ error: 'Failed to serve evidence file' })
+  }
+})
+
 export default router

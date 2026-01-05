@@ -20,9 +20,10 @@ const getEvidenceUrl = (evidencePath: string | null) => {
   const API_BASE = envApiUrl 
     ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
     : '/api'
-  // Remove /api from the base URL to get the backend base URL, then add the evidence path
-  const backendBase = API_BASE.replace(/\/api$/, '')
-  return `${backendBase}${evidencePath}`
+  // Extract filename from path (e.g., /uploads/evidence-123.jpg -> evidence-123.jpg)
+  const filename = evidencePath.split('/').pop() || ''
+  // Use the API endpoint to serve the file with authentication
+  return `${API_BASE}/reimbursements/evidence/${filename}`
 }
 
 interface ReimbursementLimits {
