@@ -34,12 +34,21 @@ class ApiClient {
 
     const response = await fetch(url, config)
     
+    // Handle 304 Not Modified (cached response)
+    if (response.status === 304) {
+      // Return empty object for 304 - caller should handle cached data
+      return {}
+    }
+    
     if (!response.ok) {
       let errorMessage = `API Error: ${response.status}`
       try {
-        const errorData = await response.json()
-        if (errorData.error) {
-          errorMessage = errorData.error
+        const text = await response.text()
+        if (text) {
+          const errorData = JSON.parse(text)
+          if (errorData.error) {
+            errorMessage = errorData.error
+          }
         }
       } catch {
         // Use default error message if parsing fails
@@ -47,7 +56,25 @@ class ApiClient {
       throw new Error(errorMessage)
     }
 
-    return response.json()
+    // Check if response has content
+    const contentType = response.headers.get('content-type')
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text()
+      console.warn('Non-JSON response received:', { url, status: response.status, contentType, text: text.slice(0, 200) })
+      throw new Error('Invalid response format: expected JSON')
+    }
+
+    const text = await response.text()
+    if (!text) {
+      return {}
+    }
+
+    try {
+      return JSON.parse(text)
+    } catch (error) {
+      console.error('Failed to parse JSON response:', { url, status: response.status, text: text.slice(0, 500) })
+      throw new Error('Invalid JSON response from server')
+    }
   }
 
   // Auth

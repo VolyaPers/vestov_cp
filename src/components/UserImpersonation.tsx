@@ -31,7 +31,18 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   const loadUsers = async () => {
     try {
       const response = await api.getUsers({ limit: 1000 })
-      const allUsers = (response.users || response) as User[]
+      
+      // Handle different response formats
+      let allUsers: User[] = []
+      if (Array.isArray(response)) {
+        allUsers = response
+      } else if (response?.users && Array.isArray(response.users)) {
+        allUsers = response.users
+      } else if (response && typeof response === 'object') {
+        // If response is an object but not the expected format, log it
+        console.warn('[UserImpersonation] Unexpected response format:', response)
+        allUsers = []
+      }
       
       // Filter users: exclude current user and only include active users
       // isActive can be true, null, or undefined (all treated as active)
@@ -50,7 +61,12 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
       
       setUsers(filteredUsers)
     } catch (error) {
-      console.error('Error loading users:', error)
+      console.error('[UserImpersonation] Error loading users:', error)
+      // Show user-friendly error message
+      if (error instanceof Error) {
+        console.error('[UserImpersonation] Error details:', error.message, error.stack)
+      }
+      setUsers([]) // Set empty array on error to prevent UI issues
     }
   }
 
@@ -63,11 +79,39 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error)
+        let errorMessage = `HTTP ${response.status}`
+        try {
+          const text = await response.text()
+          if (text) {
+            const error = JSON.parse(text)
+            errorMessage = error.error || errorMessage
+          }
+        } catch {
+          // Use default error message if parsing fails
+        }
+        throw new Error(errorMessage)
       }
 
-      const data = await response.json()
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error('[UserImpersonation] Non-JSON response:', text.slice(0, 200))
+        throw new Error('Invalid response format from server')
+      }
+
+      const text = await response.text()
+      if (!text) {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (error) {
+        console.error('[UserImpersonation] Failed to parse JSON:', text.slice(0, 500))
+        throw new Error('Invalid JSON response from server')
+      }
+      
       await onImpersonate(userId)
       setShowDropdown(false)
 
@@ -96,10 +140,36 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
       })
 
       if (!response.ok) {
-        throw new Error('Failed to stop impersonation')
+        let errorMessage = 'Failed to stop impersonation'
+        try {
+          const text = await response.text()
+          if (text) {
+            const error = JSON.parse(text)
+            errorMessage = error.error || errorMessage
+          }
+        } catch {
+          // Use default error message if parsing fails
+        }
+        throw new Error(errorMessage)
       }
 
-      const data = await response.json()
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Invalid response format from server')
+      }
+
+      const text = await response.text()
+      if (!text) {
+        throw new Error('Empty response from server')
+      }
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (error) {
+        console.error('[UserImpersonation] Failed to parse JSON:', text.slice(0, 500))
+        throw new Error('Invalid JSON response from server')
+      }
       await onStopImpersonation()
 
       // Redirect back to admin dashboard (original user should be admin)
