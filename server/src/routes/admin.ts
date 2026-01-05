@@ -18,10 +18,71 @@ import {
   timeEntries,
   feedback
 } from '../db/schema.js'
-import { requireAdmin } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 import { calculateDays } from '../utils/dateUtils.js'
 
 const router = Router()
+
+// PUT /team-members/:id - Allow users to update their own profile OR admins to update any profile
+router.put('/team-members/:id', requireAuth, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' })
+    }
+
+    const memberId = parseInt(req.params.id)
+    
+    // Get the team member to check ownership
+    const existingMembers = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.id, memberId))
+    
+    const existingMember = existingMembers[0]
+    
+    if (!existingMember) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    // Allow update if user is admin OR if user is updating their own profile (email matches)
+    const isAdmin = req.user.role === 'admin'
+    const isOwner = existingMember.email === req.user.email
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ error: 'You can only update your own profile' })
+    }
+
+    // Prepare update data - restrict fields if not admin
+    const updateData: any = { updatedAt: new Date() }
+    
+    if (isAdmin) {
+      // Admins can update all fields
+      Object.assign(updateData, req.body)
+    } else {
+      // Non-admins can only update specific fields (phone, location, bio)
+      const allowedFields = ['phone', 'location', 'bio']
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field]
+        }
+      }
+    }
+
+    const [member] = await db
+      .update(teamMembers)
+      .set(updateData)
+      .where(eq(teamMembers.id, memberId))
+      .returning()
+    
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+    res.json(member)
+  } catch (error) {
+    console.error('Error updating team member:', error)
+    res.status(500).json({ error: 'Failed to update team member' })
+  }
+})
 
 // Apply admin middleware to all routes
 router.use(requireAdmin)
@@ -348,22 +409,6 @@ router.post('/team-members', async (req, res) => {
   }
 })
 
-router.put('/team-members/:id', async (req, res) => {
-  try {
-    const [member] = await db
-      .update(teamMembers)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(teamMembers.id, parseInt(req.params.id)))
-      .returning()
-    
-    if (!member) {
-      return res.status(404).json({ error: 'Team member not found' })
-    }
-    res.json(member)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update team member' })
-  }
-})
 
 router.delete('/team-members/:id', async (req, res) => {
   try {
