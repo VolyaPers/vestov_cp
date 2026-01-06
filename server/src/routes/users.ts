@@ -8,6 +8,36 @@ import { createUserAccount, deactivateUserAndMemberships } from '../services/use
 
 const router = Router()
 
+// Get users with role='team_member' that don't have a team member linked yet
+router.get('/available-team-member-users', async (req, res) => {
+  try {
+    const availableUsers = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        fullName: users.fullName,
+        email: users.email,
+        role: users.role,
+        position: users.position,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.role, 'team_member'),
+          sql`${users.teamMemberId} IS NULL`,
+          eq(users.isActive, true)
+        )
+      )
+      .orderBy(users.fullName)
+
+    res.json(availableUsers)
+  } catch (error) {
+    console.error('Error fetching available team member users:', error)
+    res.status(500).json({ error: 'Failed to fetch available team member users' })
+  }
+})
+
 // Get team members available for user creation (those without user accounts)
 router.get('/available-team-members', async (req, res) => {
   try {
@@ -186,9 +216,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Invalid role' })
     }
 
-    if (role === 'team_member' && !teamMemberId) {
-      return res.status(400).json({ error: 'Team member must be selected for team_member role' })
-    }
+    // If role is team_member and no teamMemberId provided, user will be created without team member link
+    // Team member can be created and linked later from the Team page
 
     const createdBy = (req as any)?.user?.id ?? null
 

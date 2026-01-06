@@ -133,10 +133,8 @@ export function UsersPage() {
       return
     }
 
-    if (userFormData.role === 'team_member' && !userFormData.teamMemberId) {
-      alert('Please select a team member')
-      return
-    }
+    // teamMemberId is optional - user can be created without linking to a team member
+    // They can be linked later from the Team page
 
     try {
       const payload: {
@@ -718,22 +716,29 @@ export function UsersPage() {
             {/* Team Member Selection - Only show when role is team_member */}
             {userFormData.role === 'team_member' && !isEditingUser && (
               <div>
-                <Label htmlFor="teamMember">Link to Team Member *</Label>
+                <Label htmlFor="teamMember">Link to Team Member (Optional)</Label>
                 <Select
-                  value={userFormData.teamMemberId}
+                  value={userFormData.teamMemberId || ''}
                   onValueChange={(value) => {
-                    setUserFormData({ ...userFormData, teamMemberId: value })
-                    // Auto-fill email from selected team member
-                    const selectedTm = availableTeamMembers.find(tm => tm.id.toString() === value)
-                    if (selectedTm) {
-                      setUserFormData(prev => ({ ...prev, email: selectedTm.email, fullName: selectedTm.name, teamMemberId: value }))
+                    if (value === 'none') {
+                      setUserFormData({ ...userFormData, teamMemberId: '' })
+                    } else {
+                      setUserFormData({ ...userFormData, teamMemberId: value })
+                      // Auto-fill email from selected team member
+                      const selectedTm = availableTeamMembers.find(tm => tm.id.toString() === value)
+                      if (selectedTm) {
+                        setUserFormData(prev => ({ ...prev, email: selectedTm.email, fullName: selectedTm.name, teamMemberId: value }))
+                      }
                     }
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a team member" />
+                    <SelectValue placeholder="Select a team member (optional)" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">
+                      <span className="text-gray-500">None - Create without linking</span>
+                    </SelectItem>
                     {availableTeamMembers.length === 0 ? (
                       <div className="p-2 text-sm text-gray-500">No available team members (all have accounts)</div>
                     ) : (
@@ -749,7 +754,8 @@ export function UsersPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Select an existing team member to create their login account
+                  Optional: Select an existing team member to link, or leave empty to create without linking. 
+                  You can link this user to a team member later from the Team page.
                 </p>
               </div>
             )}

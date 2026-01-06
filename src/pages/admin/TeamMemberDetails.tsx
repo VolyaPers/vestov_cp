@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { EditTeamMemberDialog } from '@/components/EditTeamMemberDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -550,9 +551,9 @@ export function TeamMemberDetails() {
             )}
 
             {/* Skills */}
-            {member.skills && member.skills.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Skills</h3>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Skills</h3>
+              {member.skills && member.skills.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {member.skills.map((skill, index) => (
                     <Badge key={index} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -560,8 +561,10 @@ export function TeamMemberDetails() {
                     </Badge>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-gray-500 italic">No skills added yet. Click "Edit Team Member" to add skills.</p>
+              )}
+            </div>
 
             {/* Billing Information */}
             {member.isBillable && (
@@ -823,178 +826,24 @@ export function TeamMemberDetails() {
           </CardContent>
         </Card>
 
-        {/* Edit Modal - Same as in TeamOverview */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl">
-            <DialogHeader className="pb-6 border-b border-gray-100">
-              <DialogTitle className="text-2xl font-bold text-gray-900">Edit Team Member</DialogTitle>
-              <p className="text-gray-600 mt-2">Update team member information</p>
-            </DialogHeader>
-
-            {editingMember && (
-              <div className="py-6 space-y-6">
-                {/* Basic Information */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-name" className="text-sm font-medium text-gray-700">Full Name *</Label>
-                      <Input
-                        id="edit-name"
-                        value={editingMember.name}
-                        onChange={(e) => setEditingMember({ ...editingMember, name: e.target.value })}
-                        placeholder="Enter full name"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-role" className="text-sm font-medium text-gray-700">Role *</Label>
-                      <Input
-                        id="edit-role"
-                        value={editingMember.role}
-                        onChange={(e) => setEditingMember({ ...editingMember, role: e.target.value })}
-                        placeholder="e.g. Senior Developer, Designer"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-email" className="text-sm font-medium text-gray-700">Email Address *</Label>
-                      <Input
-                        id="edit-email"
-                        type="email"
-                        value={editingMember.email}
-                        onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
-                        placeholder="Enter email address"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-phone" className="text-sm font-medium text-gray-700">Phone Number</Label>
-                      <Input
-                        id="edit-phone"
-                        value={editingMember.phone || ''}
-                        onChange={(e) => setEditingMember({ ...editingMember, phone: e.target.value })}
-                        placeholder="Enter phone number"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-location" className="text-sm font-medium text-gray-700">Location</Label>
-                      <Input
-                        id="edit-location"
-                        value={editingMember.location || ''}
-                        onChange={(e) => setEditingMember({ ...editingMember, location: e.target.value })}
-                        placeholder="e.g. San Francisco, CA"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-startDate" className="text-sm font-medium text-gray-700">Start Date</Label>
-                      <Input
-                        id="edit-startDate"
-                        type="date"
-                        value={editingMember.startDate}
-                        onChange={(e) => setEditingMember({ ...editingMember, startDate: e.target.value })}
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bio */}
-                <div className="space-y-2">
-                  <Label htmlFor="edit-bio" className="text-sm font-medium text-gray-700">Bio</Label>
-                  <Textarea
-                    id="edit-bio"
-                    value={editingMember.bio || ''}
-                    onChange={(e) => setEditingMember({ ...editingMember, bio: e.target.value })}
-                    placeholder="Brief description about the team member..."
-                    className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl min-h-[80px] resize-none"
-                  />
-                </div>
-
-                {/* Employment Type */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Employment Details</h3>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="edit-billable"
-                      checked={editingMember.isBillable}
-                      onCheckedChange={(checked) => setEditingMember({ ...editingMember, isBillable: checked })}
-                    />
-                    <Label htmlFor="edit-billable" className="text-sm font-medium text-gray-700">
-                      Billable Resource
-                    </Label>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-status" className="text-sm font-medium text-gray-700">Status</Label>
-                      <Select value={editingMember.status} onValueChange={(value) => setEditingMember({ ...editingMember, status: value as 'active' | 'bench' | 'unavailable' })}>
-                        <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="bench">On Bench</SelectItem>
-                          <SelectItem value="unavailable">Unavailable</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {editingMember.isBillable && (
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-hourlyRate" className="text-sm font-medium text-gray-700">Hourly Rate ($)</Label>
-                        <Input
-                          id="edit-hourlyRate"
-                          type="number"
-                          value={editingMember.hourlyRate || ''}
-                          onChange={(e) => setEditingMember({ ...editingMember, hourlyRate: e.target.value })}
-                          placeholder="e.g. 150"
-                          className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsEditModalOpen(false)
-                  setEditingMember(null)
-                }}
-                className="border-gray-200 hover:bg-gray-50 rounded-xl"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleUpdateTeamMember}
-                disabled={isSubmitting || !editingMember?.name.trim() || !editingMember?.email.trim() || !editingMember?.role.trim()}
-                className="stripe-btn-primary rounded-lg"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Update Team Member
-                  </>
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Edit Modal - Using shared component */}
+        <EditTeamMemberDialog
+          open={isEditModalOpen}
+          onOpenChange={(open) => {
+            setIsEditModalOpen(open)
+            if (!open) {
+              setEditingMember(null)
+            }
+          }}
+          member={editingMember}
+          onMemberChange={(updates) => {
+            if (editingMember) {
+              setEditingMember({ ...editingMember, ...updates })
+            }
+          }}
+          onSave={handleUpdateTeamMember}
+          isSubmitting={isSubmitting}
+        />
 
         {/* Employment Cycle Modal */}
         <Dialog open={showCycleModal} onOpenChange={setShowCycleModal}>

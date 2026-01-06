@@ -66,7 +66,10 @@ export async function createUserAccount(
       throw new Error(`${conflictField === 'email' ? 'Email' : 'Username'} "${conflictValue}" is already in use by another user`)
     }
 
+    let finalTeamMemberId: number | null = null
+
     if (teamMemberId) {
+      // Link to existing team member
       const [teamMember] = await tx
         .select()
         .from(teamMembers)
@@ -86,6 +89,12 @@ export async function createUserAccount(
       if (existingTeamUser) {
         throw new Error('This team member already has a user account')
       }
+
+      finalTeamMemberId = Number(teamMemberId)
+    } else if (role === 'team_member' && !teamMemberId) {
+      // Don't create team member automatically - user can be linked later from Team page
+      // Leave teamMemberId as null - it can be set later when adding the user as a team member
+      finalTeamMemberId = null
     }
 
     const hashedPassword = await bcrypt.hash(
@@ -104,7 +113,7 @@ export async function createUserAccount(
           role,
           position,
           avatarUrl,
-          teamMemberId: teamMemberId ?? null,
+          teamMemberId: finalTeamMemberId,
           isActive,
           authProvider: 'local',
         })

@@ -206,11 +206,15 @@ class ApiClient {
     return this.request('/admin/team-members') as Promise<TeamMember[]>
   }
 
+  async getAvailableTeamMemberUsers(): Promise<User[]> {
+    return this.request('/users/available-team-member-users') as Promise<User[]>
+  }
+
   async getTeamMember(id: string): Promise<TeamMember> {
     return this.request(`/admin/team-members/${id}`) as Promise<TeamMember>
   }
 
-  async createTeamMember(data: CreateTeamMemberData): Promise<TeamMember> {
+  async createTeamMember(data: CreateTeamMemberData | { userId: number }): Promise<TeamMember> {
     return this.request('/admin/team-members', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -500,10 +504,16 @@ class ApiClient {
   }
 
   async createUser(data: CreateUserData): Promise<User> {
-    return this.request('/users', {
+    const response = await this.request('/users', {
       method: 'POST',
       body: JSON.stringify(data),
-    }) as Promise<User>
+    }) as { user?: User } | User
+    
+    // Backend returns { user: ... }, extract it
+    if (response && typeof response === 'object' && 'user' in response) {
+      return response.user as User
+    }
+    return response as User
   }
 
   async updateUser(id: number, data: UpdateUserData): Promise<User> {

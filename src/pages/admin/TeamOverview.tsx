@@ -26,7 +26,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { EditTeamMemberDialog } from '@/components/EditTeamMemberDialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
@@ -34,7 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatCurrency } from '@/lib/utils'
 import { format } from 'date-fns'
 import { api } from '@/lib/api'
-import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus } from '@/types/common'
+import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus, User } from '@/types/common'
 
 // Local TeamMember interface extends common type with additional fields from API
 interface LocalTeamMember {
@@ -56,6 +56,9 @@ interface LocalTeamMember {
   clientName?: string
 }
 
+type AvailableUser = User
+
+// TeamOverview Component - Updated 2026-01-06
 export function TeamOverview() {
   const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
   const [billableMembers, setBillableMembers] = useState<LocalTeamMember[]>([])
@@ -63,10 +66,12 @@ export function TeamOverview() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState('all')
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingMember, setEditingMember] = useState<LocalTeamMember | null>(null)
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([])
+  const [selectedUserId, setSelectedUserId] = useState<string>('')
+  const [isSelectOpen, setIsSelectOpen] = useState(false)
   const [newMember, setNewMember] = useState({
     name: '',
     role: '',
@@ -85,12 +90,41 @@ export function TeamOverview() {
 
   useEffect(() => {
     loadTeamMembers()
+    loadAvailableUsers()
   }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (isSelectOpen && !target.closest('.team-member-dropdown')) {
+        setIsSelectOpen(false)
+      }
+    }
+
+    if (isSelectOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isSelectOpen])
+
+  const loadAvailableUsers = async () => {
+    try {
+      const users = await api.getAvailableTeamMemberUsers()
+      setAvailableUsers(users)
+    } catch (error) {
+      console.error('[TeamOverview] Failed to load available users:', error)
+      setAvailableUsers([])
+    }
+  }
 
   const loadTeamMembers = async () => {
     try {
       setIsLoading(true)
-      const data = await api.getTeamMembers() as unknown as LocalTeamMember[]
+      const data = (await api.getTeamMembers()) as unknown as LocalTeamMember[]
       setTeamMembers(data)
 
       // Separate billable and non-billable members
@@ -106,34 +140,26 @@ export function TeamOverview() {
     }
   }
 
-  const handleAddTeamMember = async () => {
-    if (!newMember.name.trim() || !newMember.email.trim() || !newMember.role.trim()) {
+  const handleAddTeamMember = async (userId?: string) => {
+    const userIdToUse = userId || selectedUserId
+    if (!userIdToUse) {
+      alert('Please select a user to add as team member')
       return
     }
 
     try {
       setIsSubmitting(true)
-      // Convert local TeamMember format to CreateTeamMemberData
-      const createData: CreateTeamMemberData = {
-        name: newMember.name,
-        email: newMember.email,
-        position: newMember.role,
-        skills: newMember.skills || [],
-        hourlyRate: parseFloat(newMember.hourlyRate || '0'),
-        experienceLevel: 'middle', // Default, should be selectable in UI
-        status: newMember.status as TeamMemberStatus,
-        bio: newMember.bio || undefined,
-        location: newMember.location || undefined,
-        clientId: newMember.clientId
-      }
-      await api.createTeamMember(createData)
+      // Create team member and link to user
+      await api.createTeamMember({ userId: parseInt(userIdToUse) })
       await loadTeamMembers()
-      setIsAddModalOpen(false)
-      resetForm()
+      await loadAvailableUsers() // Refresh available users list
+      setSelectedUserId('')
+      setIsSelectOpen(false)
       alert('Team member added successfully.')
     } catch (error) {
       console.error('Error adding team member:', error)
-      alert('Error adding team member. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Error adding team member. Please try again.'
+      alert(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -444,7 +470,7 @@ export function TeamOverview() {
               <div className="text-sm stripe-text-secondary">Total Team</div>
             </div>
           </div>
-          <div className="text-sm stripe-text-muted">All team members</div>
+          <div className="text-sm stripe-text-muted">All team members </div>
         </div>
 
         <div className="stripe-card-hover p-6">
@@ -490,7 +516,7 @@ export function TeamOverview() {
       </div>
 
       {/* Search and Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 mb-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
@@ -500,355 +526,65 @@ export function TeamOverview() {
             className="pl-10 bg-white border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 rounded-xl"
           />
         </div>
-        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-sky-400 via-purple-400 to-purple-500 hover:from-sky-500 hover:via-purple-500 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl">
-              <Plus className="h-4 w-4 mr-2" />
+        <div className="flex items-center gap-2" style={{ minWidth: '200px' }}>
+          <div className="relative team-member-dropdown" style={{ display: 'block' }}>
+            <button
+              type="button"
+            onClick={() => {
+              if (availableUsers.length === 0) {
+                  alert('No users available with role "team_member". Please create a user with this role first.')
+                  return
+                }
+                setIsSelectOpen(!isSelectOpen)
+              }}
+              disabled={availableUsers.length === 0 || isSubmitting}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-400 via-purple-400 to-purple-500 hover:from-sky-500 hover:via-purple-500 hover:to-purple-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              style={{ display: 'inline-flex', visibility: 'visible', minWidth: '150px', position: 'relative', zIndex: 1 }}
+            >
+              <Plus className="h-4 w-4" />
               Add Team Member
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl">
-            <DialogHeader className="pb-6 border-b border-gray-100">
-              <DialogTitle className="text-2xl font-bold text-gray-900">Add New Team Member</DialogTitle>
-              <p className="text-gray-600 mt-2">Add a new team member to your organization</p>
-            </DialogHeader>
-            
-            <div className="py-6 space-y-6">
-              {/* Basic Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name" className="text-sm font-medium text-gray-700">Full Name *</Label>
-                    <Input
-                      id="name"
-                      value={newMember.name}
-                      onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
-                      placeholder="Enter full name"
-                      className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="role" className="text-sm font-medium text-gray-700">Role *</Label>
-                    <Input
-                      id="role"
-                      value={newMember.role}
-                      onChange={(e) => setNewMember({ ...newMember, role: e.target.value })}
-                      placeholder="e.g. Senior Developer, Designer"
-                      className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={newMember.email}
-                      onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
-                      placeholder="Enter email address"
-                      className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="text-sm font-medium text-gray-700">Phone Number</Label>
-                    <Input
-                      id="phone"
-                      value={newMember.phone}
-                      onChange={(e) => setNewMember({ ...newMember, phone: e.target.value })}
-                      placeholder="Enter phone number"
-                      className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="location" className="text-sm font-medium text-gray-700">Location</Label>
-                    <Input
-                      id="location"
-                      value={newMember.location}
-                      onChange={(e) => setNewMember({ ...newMember, location: e.target.value })}
-                      placeholder="e.g. San Francisco, CA"
-                      className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="startDate" className="text-sm font-medium text-gray-700">Start Date</Label>
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={newMember.startDate}
-                      onChange={(e) => setNewMember({ ...newMember, startDate: e.target.value })}
-                      className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Bio */}
-              <div className="space-y-2">
-                <Label htmlFor="bio" className="text-sm font-medium text-gray-700">Bio</Label>
-                <Textarea
-                  id="bio"
-                  value={newMember.bio}
-                  onChange={(e) => setNewMember({ ...newMember, bio: e.target.value })}
-                  placeholder="Brief description about the team member..."
-                  className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl min-h-[80px] resize-none"
-                />
-              </div>
-
-              {/* Employment Type */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Employment Details</h3>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="billable"
-                    checked={newMember.isBillable}
-                    onCheckedChange={(checked) => setNewMember({ ...newMember, isBillable: checked })}
-                  />
-                  <Label htmlFor="billable" className="text-sm font-medium text-gray-700">
-                    Billable Resource
-                  </Label>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="status" className="text-sm font-medium text-gray-700">Status</Label>
-                    <Select value={newMember.status} onValueChange={(value: 'active' | 'bench' | 'unavailable') => setNewMember({ ...newMember, status: value })}>
-                      <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="bench">On Bench</SelectItem>
-                        <SelectItem value="unavailable">Unavailable</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  {newMember.isBillable && (
-                    <div className="space-y-2">
-                      <Label htmlFor="hourlyRate" className="text-sm font-medium text-gray-700">Hourly Rate ($)</Label>
-                      <Input
-                        id="hourlyRate"
-                        type="number"
-                        value={newMember.hourlyRate}
-                        onChange={(e) => setNewMember({ ...newMember, hourlyRate: e.target.value })}
-                        placeholder="e.g. 150"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
+            </button>
+            {isSelectOpen && availableUsers.length > 0 && (
+              <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                <div className="p-2">
+                  {availableUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      onClick={async () => {
+                        setIsSelectOpen(false)
+                        await handleAddTeamMember(user.id.toString())
+                      }}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer rounded-md text-sm"
+                    >
+                      <div className="font-medium">{user.fullName}</div>
+                      <div className="text-gray-500 text-xs">{user.email}</div>
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsAddModalOpen(false)
-                  resetForm()
-                }}
-                className="border-gray-200 hover:bg-gray-50 rounded-xl"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddTeamMember}
-                disabled={isSubmitting || !newMember.name.trim() || !newMember.email.trim() || !newMember.role.trim()}
-                className="bg-gradient-to-r from-sky-400 via-purple-400 to-purple-500 hover:from-sky-500 hover:via-purple-500 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Team Member
-                  </>
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Team Member Dialog */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl">
-            <DialogHeader className="pb-6 border-b border-gray-100">
-              <DialogTitle className="text-2xl font-bold text-gray-900">Edit Team Member</DialogTitle>
-              <p className="text-gray-600 mt-2">Update team member information</p>
-            </DialogHeader>
-
-            {editingMember && (
-              <div className="py-6 space-y-6">
-                {/* Basic Information */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-name" className="text-sm font-medium text-gray-700">Full Name *</Label>
-                      <Input
-                        id="edit-name"
-                        value={editingMember.name}
-                        onChange={(e) => setEditingMember({ ...editingMember, name: e.target.value })}
-                        placeholder="Enter full name"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-role" className="text-sm font-medium text-gray-700">Role *</Label>
-                      <Input
-                        id="edit-role"
-                        value={editingMember.role}
-                        onChange={(e) => setEditingMember({ ...editingMember, role: e.target.value })}
-                        placeholder="e.g. Senior Developer, Designer"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-email" className="text-sm font-medium text-gray-700">Email Address *</Label>
-                      <Input
-                        id="edit-email"
-                        type="email"
-                        value={editingMember.email}
-                        onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
-                        placeholder="Enter email address"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-phone" className="text-sm font-medium text-gray-700">Phone Number</Label>
-                      <Input
-                        id="edit-phone"
-                        value={editingMember.phone || ''}
-                        onChange={(e) => setEditingMember({ ...editingMember, phone: e.target.value })}
-                        placeholder="Enter phone number"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-location" className="text-sm font-medium text-gray-700">Location</Label>
-                      <Input
-                        id="edit-location"
-                        value={editingMember.location || ''}
-                        onChange={(e) => setEditingMember({ ...editingMember, location: e.target.value })}
-                        placeholder="e.g. San Francisco, CA"
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-startDate" className="text-sm font-medium text-gray-700">Start Date</Label>
-                      <Input
-                        id="edit-startDate"
-                        type="date"
-                        value={editingMember.startDate}
-                        onChange={(e) => setEditingMember({ ...editingMember, startDate: e.target.value })}
-                        className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bio */}
-                <div className="space-y-2">
-                  <Label htmlFor="edit-bio" className="text-sm font-medium text-gray-700">Bio</Label>
-                  <Textarea
-                    id="edit-bio"
-                    value={editingMember.bio || ''}
-                    onChange={(e) => setEditingMember({ ...editingMember, bio: e.target.value })}
-                    placeholder="Brief description about the team member..."
-                    className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl min-h-[80px] resize-none"
-                  />
-                </div>
-
-                {/* Employment Type */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Employment Details</h3>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="edit-billable"
-                      checked={editingMember.isBillable}
-                      onCheckedChange={(checked) => setEditingMember({ ...editingMember, isBillable: checked })}
-                    />
-                    <Label htmlFor="edit-billable" className="text-sm font-medium text-gray-700">
-                      Billable Resource
-                    </Label>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-status" className="text-sm font-medium text-gray-700">Status</Label>
-                      <Select value={editingMember.status} onValueChange={(value: 'active' | 'bench' | 'unavailable') => setEditingMember({ ...editingMember, status: value })}>
-                        <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="bench">On Bench</SelectItem>
-                          <SelectItem value="unavailable">Unavailable</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {editingMember.isBillable && (
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-hourlyRate" className="text-sm font-medium text-gray-700">Hourly Rate ($)</Label>
-                        <Input
-                          id="edit-hourlyRate"
-                          type="number"
-                          value={editingMember.hourlyRate || ''}
-                          onChange={(e) => setEditingMember({ ...editingMember, hourlyRate: e.target.value })}
-                          placeholder="e.g. 150"
-                          className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
               </div>
             )}
-
-            <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsEditModalOpen(false)
-                  setEditingMember(null)
-                }}
-                className="border-gray-200 hover:bg-gray-50 rounded-xl"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleUpdateTeamMember}
-                disabled={isSubmitting || !editingMember?.name.trim() || !editingMember?.email.trim() || !editingMember?.role.trim()}
-                className="bg-gradient-to-r from-sky-400 via-purple-400 to-purple-500 hover:from-sky-500 hover:via-purple-500 hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Update Team Member
-                  </>
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </div>
       </div>
+
+      {/* Edit Team Member Dialog */}
+      <EditTeamMemberDialog
+        open={isEditModalOpen}
+        onOpenChange={(open) => {
+          setIsEditModalOpen(open)
+          if (!open) {
+            setEditingMember(null)
+          }
+        }}
+        member={editingMember}
+        onMemberChange={(updates) => {
+          if (editingMember) {
+            setEditingMember({ ...editingMember, ...updates })
+          }
+        }}
+        onSave={handleUpdateTeamMember}
+        isSubmitting={isSubmitting}
+      />
 
       {/* Tabs for different member types - Stripe style */}
       <div className="stripe-card">
@@ -863,7 +599,7 @@ export function TeamOverview() {
               }`}
             >
               <Users className="h-4 w-4 mr-2 inline" />
-              All Team Members ({teamMembers.length})
+              All Team Members! ({teamMembers.length})
             </button>
             <button
               onClick={() => setActiveTab('billable')}

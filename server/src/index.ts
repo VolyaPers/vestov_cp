@@ -25,6 +25,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
+import crypto from 'crypto'
 import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns } from './utils/migrations.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -247,7 +248,147 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-runMigrations().then(() => {
+async function runOrphanedTeamMembersFix() {
+  try {
+    // Check if script has already run
+    const result = await pool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_name = 'script_execution_log'
+      ) as table_exists
+    `)
+    
+    if (!result.rows[0]?.table_exists) {
+      // Create log table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS script_execution_log (
+          id SERIAL PRIMARY KEY,
+          script_name VARCHAR(255) UNIQUE NOT NULL,
+          executed_at TIMESTAMP DEFAULT NOW(),
+          status VARCHAR(50) NOT NULL
+        )
+      `)
+    }
+
+    // Check if this script has already run
+    const checkResult = await pool.query(`
+      SELECT executed_at FROM script_execution_log 
+      WHERE script_name = 'fix-orphaned-team-members'
+    `)
+
+    if (checkResult.rows.length > 0) {
+      console.log('[ORPHANED FIX] Script already executed at:', checkResult.rows[0].executed_at)
+      return
+    }
+
+    console.log('[ORPHANED FIX] Running fix for orphaned team members...')
+    const { fixOrphanedTeamMembers } = await import('./scripts/fix-orphaned-team-members.js')
+    
+    // Note: The script will exit the process, so we need to wrap it
+    // For now, we'll just log that it should be run manually or via migration
+    // Actually, let's run it but catch any exits
+    await pool.query(`
+      INSERT INTO script_execution_log (script_name, status) 
+      VALUES ('fix-orphaned-team-members', 'running')
+      ON CONFLICT (script_name) DO NOTHING
+    `)
+
+    // Import and run the fix function directly (modified version that doesn't exit)
+    const { db } = await import('./db/index.js')
+    const { teamMembers, users } = await import('./db/schema.js')
+    const { eq, isNull, sql } = await import('drizzle-orm')
+    const { createUserAccount } = await import('./services/userService.js')
+
+    // Find orphaned team members
+    const linkedTeamMemberIds = await db
+      .select({ id: users.teamMemberId })
+      .from(users)
+      .where(sql`${users.teamMemberId} IS NOT NULL`)
+
+    const linkedIds = new Set(linkedTeamMemberIds.map(u => u.id).filter((id): id is number => id !== null))
+    const allMembers = await db.select().from(teamMembers)
+    const orphanedMembers = allMembers.filter(member => !linkedIds.has(member.id))
+
+    if (orphanedMembers.length === 0) {
+      console.log('[ORPHANED FIX] ✅ No orphaned team members found.')
+      await pool.query(`
+        UPDATE script_execution_log 
+        SET status = 'completed', executed_at = NOW()
+        WHERE script_name = 'fix-orphaned-team-members'
+      `)
+      return
+    }
+
+    console.log(`[ORPHANED FIX] Found ${orphanedMembers.length} orphaned team member(s)`)
+
+    let created = 0
+    let deleted = 0
+    let errors = 0
+
+    for (const member of orphanedMembers) {
+      if (!member.email || member.email.trim() === '') {
+        await db.delete(teamMembers).where(eq(teamMembers.id, member.id))
+        deleted++
+        continue
+      }
+
+      const normalizedEmail = member.email.trim().toLowerCase()
+      const [existingUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, normalizedEmail))
+        .limit(1)
+
+      if (existingUser && existingUser.role === 'team_member' && !existingUser.teamMemberId) {
+        await db
+          .update(users)
+          .set({ teamMemberId: member.id, updatedAt: new Date() })
+          .where(eq(users.id, existingUser.id))
+        created++
+      } else if (!existingUser) {
+        try {
+          const username = normalizedEmail.split('@')[0]
+          await createUserAccount({
+            username,
+            password: crypto.randomUUID(),
+            fullName: member.name,
+            email: normalizedEmail,
+            role: 'team_member',
+            position: member.role || 'Team Member',
+            teamMemberId: member.id,
+            source: 'orphaned_fix',
+            isActive: true
+          })
+          created++
+        } catch (error) {
+          console.error(`[ORPHANED FIX] Error creating user for team member ${member.id}:`, error)
+          errors++
+        }
+      } else {
+        errors++
+      }
+    }
+
+    console.log(`[ORPHANED FIX] ✅ Completed: ${created} users created/linked, ${deleted} deleted, ${errors} errors`)
+    
+    await pool.query(`
+      UPDATE script_execution_log 
+      SET status = 'completed', executed_at = NOW()
+      WHERE script_name = 'fix-orphaned-team-members'
+    `)
+  } catch (error) {
+    console.error('[ORPHANED FIX] Error:', error)
+    await pool.query(`
+      UPDATE script_execution_log 
+      SET status = 'failed', executed_at = NOW()
+      WHERE script_name = 'fix-orphaned-team-members'
+    `)
+  }
+}
+
+runMigrations().then(async () => {
+  await runOrphanedTeamMembersFix()
+  
   app.listen(PORT, () => {
     console.log(`[SERVER START] Server running on port ${PORT}`)
     console.log(`[SERVER START] Environment: ${process.env.NODE_ENV || 'development'}`)

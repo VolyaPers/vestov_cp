@@ -318,7 +318,21 @@ router.get('/team-members', async (req, res) => {
   try {
     const { billable, email } = req.query
 
-    let query = db
+    let conditions = []
+
+    // Add billable filter if provided
+    if (billable === 'true') {
+      conditions.push(eq(teamMembers.isBillable, true))
+    } else if (billable === 'false') {
+      conditions.push(eq(teamMembers.isBillable, false))
+    }
+
+    // Add email filter if provided
+    if (email) {
+      conditions.push(eq(teamMembers.email, email as string))
+    }
+
+    const members = await db
       .select({
         id: teamMembers.id,
         name: teamMembers.name,
@@ -339,26 +353,8 @@ router.get('/team-members', async (req, res) => {
       })
       .from(teamMembers)
       .leftJoin(clients, eq(teamMembers.clientId, clients.id))
-
-    let conditions = []
-
-    // Add billable filter if provided
-    if (billable === 'true') {
-      conditions.push(eq(teamMembers.isBillable, true))
-    } else if (billable === 'false') {
-      conditions.push(eq(teamMembers.isBillable, false))
-    }
-
-    // Add email filter if provided
-    if (email) {
-      conditions.push(eq(teamMembers.email, email as string))
-    }
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions))
-    }
-
-    const members = await query.orderBy(desc(teamMembers.createdAt))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(teamMembers.createdAt))
 
     res.json(members)
   } catch (error) {
@@ -400,12 +396,60 @@ router.get('/team-members/:id', async (req, res) => {
   }
 })
 
+// Create team member and link to existing user
+// This endpoint is restricted - team members should only be created via user creation
 router.post('/team-members', async (req, res) => {
   try {
-    const [member] = await db.insert(teamMembers).values(req.body).returning()
+    const { userId } = req.body
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required. Team members can only be created by linking to an existing user with role="team_member"' })
+    }
+
+    // Verify user exists and has role='team_member'
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, Number(userId)))
+      .limit(1)
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    if (user.role !== 'team_member') {
+      return res.status(400).json({ error: 'User must have role="team_member" to create a team member' })
+    }
+
+    if (user.teamMemberId) {
+      return res.status(400).json({ error: 'User already has a team member linked' })
+    }
+
+    // Create team member from user data
+    const today = new Date().toISOString().slice(0, 10)
+    const [member] = await db
+      .insert(teamMembers)
+      .values({
+        name: user.fullName,
+        role: user.position || 'Team Member',
+        email: user.email,
+        startDate: today,
+        status: 'active',
+        isBillable: true,
+      })
+      .returning()
+
+    // Link user to team member
+    await db
+      .update(users)
+      .set({ teamMemberId: member.id, updatedAt: new Date() })
+      .where(eq(users.id, user.id))
+
     res.json(member)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create team member' })
+    console.error('Error creating team member:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create team member'
+    res.status(500).json({ error: errorMessage })
   }
 })
 

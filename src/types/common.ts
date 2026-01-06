@@ -178,6 +178,7 @@ export interface UpdateClientData extends Partial<CreateClientData> {
 }
 
 export interface CreateTeamMemberData {
+  userId?: number // Optional: if provided, links to existing user with role='team_member'
   name: string
   email: string
   position?: string
