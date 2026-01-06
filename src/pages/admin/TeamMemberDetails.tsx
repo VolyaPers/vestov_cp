@@ -21,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { EditTeamMemberDialog } from '@/components/EditTeamMemberDialog'
+import { EditTeamMemberDialog, type EditTeamMemberData } from '@/components/EditTeamMemberDialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -97,7 +97,7 @@ export function TeamMemberDetails() {
   const [isLoading, setIsLoading] = useState(true)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
+  const [editingMember, setEditingMember] = useState<EditTeamMemberData | null>(null)
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([])
   const [employmentCycle, setEmploymentCycle] = useState<EmploymentCycle | null>(null)
   const [allEmploymentCycles, setAllEmploymentCycles] = useState<EmploymentCycle[]>([])
@@ -319,7 +319,10 @@ export function TeamMemberDetails() {
 
   const handleEditTeamMember = () => {
     if (member) {
-      setEditingMember({ ...member })
+      setEditingMember({
+        ...member,
+        hourlyRate: member.hourlyRate ? String(member.hourlyRate) : undefined,
+      })
       setIsEditModalOpen(true)
     }
   }
