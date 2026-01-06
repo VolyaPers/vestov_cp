@@ -22,6 +22,7 @@ export interface EditTeamMemberData {
   status: 'active' | 'bench' | 'unavailable' | string
   startDate: string
   location?: string
+  clientId?: number
 }
 
 interface EditTeamMemberDialogProps {
