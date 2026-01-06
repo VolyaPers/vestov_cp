@@ -8,8 +8,17 @@ import { sql } from 'drizzle-orm'
 import { eq } from 'drizzle-orm'
 import { users, teamMembers } from '../db/schema.js'
 import * as schema from '../db/schema.js'
-import { linkOrCreateUserAccount } from '../services/userService.js'
 import type { UserWithPassword, UserWithoutPassword, SessionData, UserWithImpersonation } from '../types/passport.js'
+
+interface GoogleAuthInfo {
+  message: string
+  googleData?: {
+    email: string
+    fullName: string
+    googleId: string
+    avatarUrl: string | null
+  }
+}
 
 export function setupPassport(pool: Pool) {
   const db = drizzle(pool, { schema })
@@ -108,18 +117,68 @@ export function setupPassport(pool: Pool) {
             const googleId = profile.id
             const avatarUrl = profile.photos && profile.photos.length > 0 ? profile.photos[0].value : null
 
-            const { user: linkedUser } = await linkOrCreateUserAccount({
-              email,
-              fullName,
-              googleId,
-              avatarUrl,
-            })
+            // Check if user exists first
+            const normalizedEmail = email.trim().toLowerCase()
+            const [existingUser] = await db
+              .select()
+              .from(users)
+              .where(eq(users.email, normalizedEmail))
+              .limit(1)
 
-            if (!linkedUser.isActive) {
+            if (!existingUser) {
+              // User doesn't exist - signal that registration is needed
+              // Pass Google profile data so frontend can use it for registration
+              return done(null, false, { 
+                message: 'USER_NOT_FOUND',
+                googleData: {
+                  email,
+                  fullName,
+                  googleId,
+                  avatarUrl
+                }
+              })
+            }
+
+            // User exists - proceed with linking/updating
+            if (!existingUser.isActive) {
               return done(null, false, { message: 'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.' })
             }
 
-            const { password: _, ...userWithoutPassword } = linkedUser
+            // Link Google account if not already linked
+            const updateData: {
+              googleId?: string
+              authProvider?: string
+              fullName?: string
+              avatarUrl?: string | null
+              lastLoginAt?: Date
+              updatedAt: Date
+            } = {
+              updatedAt: new Date(),
+              lastLoginAt: new Date(),
+            }
+
+            if (!existingUser.googleId) {
+              updateData.googleId = googleId
+              updateData.authProvider = existingUser.authProvider === 'local' ? 'local' : 'google'
+            } else if (existingUser.googleId !== googleId) {
+              return done(null, false, { message: 'This email is already linked to a different Google account.' })
+            }
+
+            if (!existingUser.fullName || existingUser.fullName.trim().length === 0) {
+              updateData.fullName = fullName
+            }
+
+            if (!existingUser.avatarUrl && avatarUrl) {
+              updateData.avatarUrl = avatarUrl
+            }
+
+            const [updatedUser] = await db
+              .update(users)
+              .set(updateData)
+              .where(eq(users.id, existingUser.id))
+              .returning()
+
+            const { password: _, ...userWithoutPassword } = updatedUser
             return done(null, userWithoutPassword as UserWithoutPassword)
           } catch (error) {
             console.error('[GOOGLE OAUTH] Error during authentication:', error)

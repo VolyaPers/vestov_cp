@@ -17,6 +17,21 @@ interface LoginPageProps {
   onLogin: (user: User) => void
 }
 
+interface GoogleSignupData {
+  googleId?: string
+  avatarUrl?: string
+}
+
+interface RegisterRequestData {
+  firstName: string
+  lastName: string
+  email: string
+  role: 'admin' | 'client' | 'team_member'
+  password?: string
+  googleId?: string
+  avatarUrl?: string
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
@@ -27,11 +42,43 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [role, setRole] = useState<'admin' | 'client' | 'team_member'>('client')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [googleSignupData, setGoogleSignupData] = useState<GoogleSignupData | null>(null)
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const errorParam = urlParams.get('error')
     const errorMessage = urlParams.get('message')
+    const googleSignup = urlParams.get('google_signup')
+    
+    // Handle Google signup flow
+    if (googleSignup === '1') {
+      const googleEmail = urlParams.get('email')
+      const googleName = urlParams.get('name')
+      const googleAvatar = urlParams.get('avatar')
+      const googleId = urlParams.get('googleId')
+      
+      if (googleEmail && googleName) {
+        // Parse name into first and last name
+        const nameParts = googleName.trim().split(' ')
+        const googleFirstName = nameParts[0] || ''
+        const googleLastName = nameParts.slice(1).join(' ') || ''
+        
+        // Pre-fill form with Google data
+        setEmail(googleEmail)
+        setFirstName(googleFirstName)
+        setLastName(googleLastName)
+        setMode('register')
+        setGoogleSignupData({
+          googleId: googleId || undefined,
+          avatarUrl: googleAvatar || undefined,
+        })
+        setError('Please complete your registration to create your account. Your Google account information has been pre-filled.')
+        
+        // Clean URL
+        const cleanUrl = window.location.pathname
+        window.history.replaceState({}, '', cleanUrl)
+      }
+    }
     
     if (errorParam) {
       const defaultErrorMessages: Record<string, string> = {
@@ -85,15 +132,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setError('')
 
     try {
+      const registerData: RegisterRequestData = {
+        firstName,
+        lastName,
+        email,
+        role,
+      }
+      
+      // Only include password if not Google signup
+      if (!googleSignupData) {
+        registerData.password = password
+      } else {
+        // Include Google data for Google signup
+        if (googleSignupData.googleId) {
+          registerData.googleId = googleSignupData.googleId
+        }
+        if (googleSignupData.avatarUrl) {
+          registerData.avatarUrl = googleSignupData.avatarUrl
+        }
+      }
+      
       const response = await api.request('/register', {
         method: 'POST',
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          email,
-          password,
-          role,
-        }),
+        body: JSON.stringify(registerData),
       })
       onLogin(response.user)
       window.dispatchEvent(new CustomEvent('user-login', { detail: response.user }))
@@ -215,18 +276,25 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     disabled={isLoading}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-password">Password</Label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    placeholder="Create a password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
+                {!googleSignupData && (
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">Password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      placeholder="Create a password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                )}
+                {googleSignupData && (
+                  <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-md">
+                    You're registering with Google. No password needed - you'll sign in with Google in the future.
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
                   <select
@@ -245,7 +313,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
 
             {error && (
-              <div className="text-red-600 text-sm text-center">{error}</div>
+              <div className="text-red-600 text-sm text-center" role="alert" aria-live="polite">
+                {error}
+              </div>
             )}
             <Button 
               type="submit" 

@@ -7,6 +7,27 @@ import { db } from '../db/index.js'
 import { users, teamMembers } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { createUserAccount } from '../services/userService.js'
+import type { UserWithoutPassword } from '../types/passport.js'
+
+interface GoogleAuthInfo {
+  message: string
+  googleData?: {
+    email: string
+    fullName: string
+    googleId: string
+    avatarUrl: string | null
+  }
+}
+
+interface RegisterRequestBody {
+  firstName?: string
+  lastName?: string
+  email?: string
+  password?: string
+  role?: string
+  googleId?: string
+  avatarUrl?: string
+}
 
 const router = Router()
 
@@ -24,10 +45,17 @@ const ALLOWED_ROLES = ['admin', 'client', 'team_member']
 // Register route (self-service signup or claim existing admin-created user)
 router.post('/register', async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role } = req.body || {}
+    const body = req.body as RegisterRequestBody
+    const { firstName, lastName, email, password, role, googleId, avatarUrl } = body || {}
+    const isGoogleSignup = !!googleId
 
-    if (!firstName || !lastName || !email || !password || !role) {
+    // For Google signup, password is optional
+    if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ error: 'Missing required fields' })
+    }
+    
+    if (!isGoogleSignup && !password) {
+      return res.status(400).json({ error: 'Password is required for email/password registration' })
     }
 
     if (!ALLOWED_ROLES.includes(role)) {
@@ -64,19 +92,25 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: 'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.' })
       }
 
-      const hashedPassword = await bcrypt.hash(password, 12)
+      // For existing users, password is required unless it's a Google account being linked
+      if (!isGoogleSignup && !password) {
+        return res.status(400).json({ error: 'Password is required to claim an existing account' })
+      }
+
+      const hashedPassword = password ? await bcrypt.hash(password, 12) : existing.password || ''
       const updateData: {
-        password: string
+        password?: string
         fullName?: string
         username: string
         role: string
         position: string | null
         teamMemberId: number | null
         authProvider?: string
+        googleId?: string
+        avatarUrl?: string | null
         updatedAt: Date
         isActive: boolean
       } = {
-        password: hashedPassword,
         fullName: existing.fullName && existing.fullName.trim().length > 0 ? existing.fullName : fullName,
         username: existing.username,
         role: existing.role,
@@ -86,8 +120,21 @@ router.post('/register', async (req, res) => {
         isActive: true,
       }
 
-      if (existing.authProvider === 'google') {
-        updateData.authProvider = 'local'
+      if (isGoogleSignup) {
+        // Link Google account
+        if (googleId) {
+          updateData.googleId = googleId
+        }
+        if (avatarUrl) {
+          updateData.avatarUrl = avatarUrl
+        }
+        updateData.authProvider = 'google'
+      } else {
+        // Set password for local auth
+        updateData.password = hashedPassword
+        if (existing.authProvider === 'google') {
+          updateData.authProvider = 'local'
+        }
       }
 
       const [updated] = await db
@@ -147,22 +194,47 @@ router.post('/register', async (req, res) => {
         fullName,
         role,
         username,
-        password,
+        password: isGoogleSignup ? undefined : password,
         position,
         teamMemberId: teamMemberId ?? undefined,
-        source: 'self_register',
+        avatarUrl: isGoogleSignup ? avatarUrl : undefined,
+        source: isGoogleSignup ? 'google_register' : 'self_register',
       })
+      
+      // If Google signup, link the Google account
+      let finalUser = newUser
+      if (isGoogleSignup && googleId) {
+        await db
+          .update(users)
+          .set({
+            googleId,
+            authProvider: 'google',
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, newUser.id))
+        
+        // Refresh user data
+        const [updatedUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, newUser.id))
+          .limit(1)
+        
+        if (updatedUser) {
+          finalUser = updatedUser
+        }
+      }
 
       userResponse = {
-        id: newUser.id,
-        username: newUser.username,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        role: newUser.role,
-        position: newUser.position,
-        avatarUrl: newUser.avatarUrl,
-        isActive: newUser.isActive,
-        teamMemberId: teamMemberId ?? newUser.teamMemberId ?? null,
+        id: finalUser.id,
+        username: finalUser.username,
+        fullName: finalUser.fullName,
+        email: finalUser.email,
+        role: finalUser.role,
+        position: finalUser.position,
+        avatarUrl: finalUser.avatarUrl,
+        isActive: finalUser.isActive,
+        teamMemberId: teamMemberId ?? finalUser.teamMemberId ?? null,
       }
     }
 
@@ -435,7 +507,7 @@ router.get('/google/callback', (req, res, next) => {
   passport.authenticate('google', {
     failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
     session: true
-  }, (err: unknown, user: Express.User | false, info?: { message?: string }) => {
+  }, (err: unknown, user: Express.User | false, info?: GoogleAuthInfo) => {
     if (err) {
       const error = err as Error
       console.error('[GOOGLE OAUTH] Authentication error:', error.message)
@@ -458,6 +530,15 @@ router.get('/google/callback', (req, res, next) => {
     if (!user) {
       const errorMessage = info?.message || 'Authentication failed'
       console.error('[GOOGLE OAUTH] No user returned:', errorMessage)
+      
+      // Check if user doesn't exist (needs registration)
+      if (errorMessage === 'USER_NOT_FOUND' && info?.googleData) {
+        const googleData = info.googleData
+        console.log(`[GOOGLE OAUTH] User not found (${googleData.email}), redirecting to registration flow`)
+        const registerUrl = `${frontendUrl}/?google_signup=1&email=${encodeURIComponent(googleData.email)}&name=${encodeURIComponent(googleData.fullName)}&avatar=${encodeURIComponent(googleData.avatarUrl || '')}&googleId=${encodeURIComponent(googleData.googleId || '')}`
+        return res.redirect(registerUrl)
+      }
+      
       const errorParam = errorMessage.includes('inactive')
         ? 'google_auth_inactive'
         : 'google_auth_failed'
@@ -471,6 +552,7 @@ router.get('/google/callback', (req, res, next) => {
       return res.redirect(errorUrl)
     }
 
+    // User exists - proceed with login
     req.logIn(user, (loginErr) => {
       if (loginErr) {
         console.error('[GOOGLE OAUTH] Session login error:', loginErr)
@@ -479,11 +561,12 @@ router.get('/google/callback', (req, res, next) => {
         return res.redirect(errorUrl)
       }
 
+      // Redirect to home page (/) instead of /client for existing users
       const redirectPath = user.role === 'admin'
         ? '/admin/dashboard'
         : user.role === 'team_member'
           ? '/employee/dashboard'
-          : '/client'
+          : '/'
 
       const fullRedirectUrl = `${frontendUrl}${redirectPath}`
 
