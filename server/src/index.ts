@@ -282,18 +282,13 @@ async function runOrphanedTeamMembersFix() {
     }
 
     console.log('[ORPHANED FIX] Running fix for orphaned team members...')
-    const { fixOrphanedTeamMembers } = await import('./scripts/fix-orphaned-team-members.js')
-    
-    // Note: The script will exit the process, so we need to wrap it
-    // For now, we'll just log that it should be run manually or via migration
-    // Actually, let's run it but catch any exits
     await pool.query(`
       INSERT INTO script_execution_log (script_name, status) 
       VALUES ('fix-orphaned-team-members', 'running')
       ON CONFLICT (script_name) DO NOTHING
     `)
 
-    // Import and run the fix function directly (modified version that doesn't exit)
+    // Run the fix function inline (doesn't exit process, suitable for server startup)
     const { db } = await import('./db/index.js')
     const { teamMembers, users } = await import('./db/schema.js')
     const { eq, isNull, sql } = await import('drizzle-orm')
@@ -310,7 +305,7 @@ async function runOrphanedTeamMembersFix() {
     const orphanedMembers = allMembers.filter(member => !linkedIds.has(member.id))
 
     if (orphanedMembers.length === 0) {
-      console.log('[ORPHANED FIX] ✅ No orphaned team members found.')
+      console.log('[ORPHANED FIX] ✅ No orphaned team members found. All team members are linked to users.')
       await pool.query(`
         UPDATE script_execution_log 
         SET status = 'completed', executed_at = NOW()
@@ -318,6 +313,8 @@ async function runOrphanedTeamMembersFix() {
       `)
       return
     }
+
+    console.log(`[ORPHANED FIX] 📊 Found ${orphanedMembers.length} orphaned team member(s) to process`)
 
     console.log(`[ORPHANED FIX] Found ${orphanedMembers.length} orphaned team member(s)`)
 
@@ -327,6 +324,7 @@ async function runOrphanedTeamMembersFix() {
 
     for (const member of orphanedMembers) {
       if (!member.email || member.email.trim() === '') {
+        console.log(`[ORPHANED FIX] 🗑️  Deleting team member ${member.id} (${member.name}) - no email address`)
         await db.delete(teamMembers).where(eq(teamMembers.id, member.id))
         deleted++
         continue
@@ -345,6 +343,7 @@ async function runOrphanedTeamMembersFix() {
           .set({ teamMemberId: member.id, updatedAt: new Date() })
           .where(eq(users.id, existingUser.id))
         created++
+        console.log(`[ORPHANED FIX] ✅ Linked existing user ${existingUser.id} to team member ${member.id}`)
       } else if (!existingUser) {
         try {
           const username = normalizedEmail.split('@')[0]
@@ -360,22 +359,39 @@ async function runOrphanedTeamMembersFix() {
             isActive: true
           })
           created++
+          console.log(`[ORPHANED FIX] ✅ Created user for team member ${member.id} (${normalizedEmail})`)
         } catch (error) {
-          console.error(`[ORPHANED FIX] Error creating user for team member ${member.id}:`, error)
+          console.error(`[ORPHANED FIX] ❌ Error creating user for team member ${member.id} (${normalizedEmail}):`, error)
           errors++
         }
       } else {
+        const reason = existingUser.role !== 'team_member' 
+          ? `User has role '${existingUser.role}' instead of 'team_member'`
+          : existingUser.teamMemberId 
+            ? `User already linked to team member ${existingUser.teamMemberId}`
+            : 'Unknown reason'
+        console.warn(`[ORPHANED FIX] ⚠️  Skipping team member ${member.id} (${normalizedEmail}): ${reason}`)
         errors++
       }
     }
 
-    console.log(`[ORPHANED FIX] ✅ Completed: ${created} users created/linked, ${deleted} deleted, ${errors} errors`)
+    console.log(`[ORPHANED FIX] 📋 Summary:`)
+    console.log(`[ORPHANED FIX]   ✅ Users created/linked: ${created}`)
+    console.log(`[ORPHANED FIX]   🗑️  Team members deleted: ${deleted}`)
+    console.log(`[ORPHANED FIX]   ⚠️  Errors (require manual review): ${errors}`)
     
+    const finalStatus = errors > 0 ? 'completed_with_errors' : 'completed'
     await pool.query(`
       UPDATE script_execution_log 
-      SET status = 'completed', executed_at = NOW()
+      SET status = $1, executed_at = NOW()
       WHERE script_name = 'fix-orphaned-team-members'
-    `)
+    `, [finalStatus])
+    
+    if (errors > 0) {
+      console.log(`[ORPHANED FIX] ⚠️  Script completed with ${errors} error(s). Please review the logs above.`)
+    } else {
+      console.log(`[ORPHANED FIX] ✅ Script completed successfully!`)
+    }
   } catch (error) {
     console.error('[ORPHANED FIX] Error:', error)
     await pool.query(`
