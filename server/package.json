@@ -8,7 +8,7 @@
     "build": "tsc || true && npm run copy-migrations",
     "copy-migrations": "cp -r drizzle dist/drizzle || true",
     "migrate": "node dist/migrate.js",
-    "start": "node dist/index.js",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
