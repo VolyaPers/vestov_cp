@@ -530,14 +530,18 @@ router.get('/google/callback', (req, res, next) => {
     if (!user) {
       const errorMessage = info?.message || 'Authentication failed'
       console.error('[GOOGLE OAUTH] No user returned:', errorMessage)
+      console.log('[GOOGLE OAUTH] Info object:', JSON.stringify(info, null, 2))
       
       // Check if user doesn't exist (needs registration)
       if (errorMessage === 'USER_NOT_FOUND' && info?.googleData) {
         const googleData = info.googleData
         console.log(`[GOOGLE OAUTH] User not found (${googleData.email}), redirecting to registration flow`)
         const registerUrl = `${frontendUrl}/?google_signup=1&email=${encodeURIComponent(googleData.email)}&name=${encodeURIComponent(googleData.fullName)}&avatar=${encodeURIComponent(googleData.avatarUrl || '')}&googleId=${encodeURIComponent(googleData.googleId || '')}`
+        console.log('[GOOGLE OAUTH] Registration URL:', registerUrl)
         return res.redirect(registerUrl)
       }
+      
+      console.log('[GOOGLE OAUTH] Not a USER_NOT_FOUND case, treating as regular error')
       
       const errorParam = errorMessage.includes('inactive')
         ? 'google_auth_inactive'
@@ -553,6 +557,7 @@ router.get('/google/callback', (req, res, next) => {
     }
 
     // User exists - proceed with login
+    console.log('[GOOGLE OAUTH] User exists, proceeding with login for:', user.email)
     req.logIn(user, (loginErr) => {
       if (loginErr) {
         console.error('[GOOGLE OAUTH] Session login error:', loginErr)
@@ -571,6 +576,7 @@ router.get('/google/callback', (req, res, next) => {
       const fullRedirectUrl = `${frontendUrl}${redirectPath}`
 
       console.log(`[GOOGLE OAUTH] Successful login for ${user.email} (role: ${user.role}), redirecting to ${fullRedirectUrl}`)
+      console.log('[GOOGLE OAUTH] User object:', JSON.stringify({ id: user.id, email: user.email, role: user.role }, null, 2))
       res.redirect(fullRedirectUrl)
     })
   })(req, res, next)

@@ -119,16 +119,24 @@ export function setupPassport(pool: Pool) {
 
             // Check if user exists first
             const normalizedEmail = email.trim().toLowerCase()
+            console.log('[GOOGLE OAUTH] Checking for existing user with email:', normalizedEmail)
             const [existingUser] = await db
               .select()
               .from(users)
               .where(eq(users.email, normalizedEmail))
               .limit(1)
 
+            console.log('[GOOGLE OAUTH] User lookup result:', existingUser ? `Found user ID ${existingUser.id}` : 'User not found')
+            console.log('[GOOGLE OAUTH] DEBUG - existingUser is:', existingUser ? 'truthy' : 'falsy')
+            console.log('[GOOGLE OAUTH] DEBUG - typeof existingUser:', typeof existingUser)
+
             if (!existingUser) {
               // User doesn't exist - signal that registration is needed
               // Pass Google profile data so frontend can use it for registration
-              return done(null, false, { 
+              console.log('[GOOGLE OAUTH] ===== USER NOT FOUND - RETURNING USER_NOT_FOUND =====')
+              console.log('[GOOGLE OAUTH] Email:', email)
+              console.log('[GOOGLE OAUTH] Google ID:', googleId)
+              const authInfo = { 
                 message: 'USER_NOT_FOUND',
                 googleData: {
                   email,
@@ -136,8 +144,14 @@ export function setupPassport(pool: Pool) {
                   googleId,
                   avatarUrl
                 }
-              })
+              }
+              console.log('[GOOGLE OAUTH] Auth info being returned:', JSON.stringify(authInfo, null, 2))
+              return done(null, false, authInfo)
             }
+            
+            console.log('[GOOGLE OAUTH] ===== USER EXISTS - PROCEEDING WITH LOGIN =====')
+            console.log('[GOOGLE OAUTH] User ID:', existingUser.id)
+            console.log('[GOOGLE OAUTH] User email:', existingUser.email)
 
             // User exists - proceed with linking/updating
             if (!existingUser.isActive) {
