@@ -70,7 +70,17 @@ export function EmployeeLeaveRequest() {
 
       // Load leave balances
       try {
-        const balancesData = await api.request(`/vacation/balances/${member.id}`)
+        let balancesData
+        try {
+          balancesData = await api.request(`/vacation/balances/${member.id}`)
+        } catch (error: any) {
+          // Silently handle missing employment cycle - it's a valid state, not an error
+          if (error?.message?.includes('No active employment cycle found')) {
+            balancesData = { balances: [] }
+          } else {
+            throw error
+          }
+        }
         setLeaveBalances(balancesData)
       } catch (error) {
         console.error('Failed to load balances:', error)

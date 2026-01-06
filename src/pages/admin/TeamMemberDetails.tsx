@@ -168,6 +168,9 @@ export function TeamMemberDetails() {
       if (cycleResponse.ok) {
         const cycleData = await cycleResponse.json()
         setEmploymentCycle(cycleData)
+      } else if (cycleResponse.status === 404) {
+        // No active cycle is a valid state, not an error
+        setEmploymentCycle(null)
       }
 
       // Load all employment cycles
@@ -695,7 +698,7 @@ export function TeamMemberDetails() {
                 }
                 return (
                   <div className="text-center py-8">
-                    <p className="text-gray-500">No active employment cycle found</p>
+                    <p className="text-gray-500">No active employment cycle found, please contact an admin</p>
                   </div>
                 )
               })()
@@ -705,7 +708,7 @@ export function TeamMemberDetails() {
                   <Calendar className="h-8 w-8 text-yellow-600" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Employment Cycle Found</h3>
-                <p className="text-gray-500 mb-6">This employee needs an active employment cycle to manage leave requests and balances.</p>
+                <p className="text-gray-500 mb-6">No active employment cycle found, please contact an admin to set up the employment cycle for this employee.</p>
                 <div className="space-y-2">
                   <p className="text-sm text-gray-600">📅 Employment cycles define leave allocation periods</p>
                   <p className="text-sm text-gray-600">💼 Required for leave request processing</p>

@@ -747,7 +747,7 @@ export default function VacationDashboard() {
         {selectedView === 'employee' && employeeId && (
           <div className="space-y-8">
             {/* Employment Cycle */}
-            {employmentCycle && (
+            {employmentCycle ? (
               <div className="stripe-card rounded-lg p-8 hover:shadow-md transition-all duration-150">
                 <div className="flex items-center gap-4 mb-6">
                   <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center">
@@ -776,6 +776,12 @@ export default function VacationDashboard() {
                       )}
                     </p>
                   </div>
+                </div>
+              </div>
+            ) : (
+              <div className="stripe-card rounded-lg p-8 border border-yellow-200 bg-yellow-50">
+                <div className="text-center">
+                  <p className="text-gray-700 font-medium">No active employment cycle found, please contact an admin</p>
                 </div>
               </div>
             )}

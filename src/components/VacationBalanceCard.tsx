@@ -82,6 +82,10 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
   }
 
   if (error) {
+    const errorMessage = error.message?.includes('No active employment cycle found')
+      ? 'Please contact an administrator to set up your employment cycle.'
+      : (error.message || 'Failed to load vacation balance')
+    
     return (
       <Card className="border-destructive">
         <CardHeader>
@@ -89,7 +93,7 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
             <AlertCircle className="h-5 w-5" />
             Error Loading Balance
           </CardTitle>
-          <CardDescription>{error.message || 'Failed to load vacation balance'}</CardDescription>
+          <CardDescription>{errorMessage}</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -100,13 +104,8 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
       <Card>
         <CardHeader>
           <CardTitle>Vacation Balance</CardTitle>
-          <CardDescription>No active employment cycle found</CardDescription>
+          <CardDescription>Please contact an administrator to set up your employment cycle.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Please contact your administrator to set up your employment cycle.
-          </p>
-        </CardContent>
       </Card>
     )
   }

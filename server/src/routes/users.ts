@@ -506,10 +506,7 @@ router.delete('/:id', async (req, res) => {
 router.delete('/:id/hard', requireAuth, async (req, res) => {
   try {
     const { id } = req.params
-    interface AuthenticatedRequest extends Express.Request {
-      user?: { id: number; role: string }
-    }
-    const authUser = (req as AuthenticatedRequest).user
+    const authUser = (req as any).user
 
     if (!authUser || authUser.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' })

@@ -565,7 +565,7 @@ router.post('/leave-requests', async (req, res) => {
       endDate,
       halfDayStart: halfDayStart || false,
       halfDayEnd: halfDayEnd || false,
-      daysCount,
+      daysCount: daysCount.toString(),
       reason,
       requestedBy: req.user!.id,
     }).returning()
@@ -592,7 +592,7 @@ router.patch('/leave-requests/:id', async (req, res) => {
     // Recalculate days if dates changed
     let updateData = req.body
     if (startDate && endDate) {
-      updateData.daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd)
+      updateData.daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd).toString()
     }
     
     const [request] = await db

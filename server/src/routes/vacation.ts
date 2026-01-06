@@ -181,10 +181,10 @@ router.get('/my-requests', auth, async (req, res) => {
       endDate: req.endDate,
       halfDayStart: req.halfDayStart,
       halfDayEnd: req.halfDayEnd,
-      totalDays: req.totalDays,
+      totalDays: req.daysCount,
       reason: req.reason,
       status: req.status,
-      decisionNote: req.decisionNote,
+      decisionNote: req.decisionReason,
       createdAt: req.createdAt,
       updatedAt: req.updatedAt,
       type: leaveTypeMap.get(req.leaveTypeId) || 'Unknown'
@@ -649,7 +649,7 @@ router.post('/requests', auth, async (req, res) => {
         // Default sick leave allocation is 7 days per cycle
         let totalSickLeaveAllocation = 7
         if (balances.length > 0) {
-          const allocatedDays = parseFloat(balances[0].allocatedDays || '7')
+          const allocatedDays = parseFloat(balances[0].totalDays || '7')
           const adjustmentDays = parseFloat(balances[0].adjustmentDays || '0')
           totalSickLeaveAllocation = allocatedDays + adjustmentDays
         }

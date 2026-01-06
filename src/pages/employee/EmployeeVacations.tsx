@@ -120,8 +120,13 @@ export function EmployeeVacations() {
       try {
         const cycleData = await api.request(`/vacation/employment-cycle/${member.id}`)
         setEmploymentCycle(cycleData)
-      } catch (error) {
-        console.error('Failed to load employment cycle:', error)
+      } catch (error: any) {
+        // Silently handle missing employment cycle - it's a valid state, not an error
+        if (error?.message?.includes('No active employment cycle found')) {
+          setEmploymentCycle(null)
+        } else {
+          console.error('Failed to load employment cycle:', error)
+        }
       }
 
       // Load leave balances
@@ -129,9 +134,14 @@ export function EmployeeVacations() {
         const balancesData = await api.request(`/vacation/balances/${member.id}`)
         // balancesData is {employmentCycle, balances}, extract balances array
         setLeaveBalances(Array.isArray(balancesData) ? balancesData : balancesData.balances || [])
-      } catch (error) {
-        console.error('Failed to load balances:', error)
-        setLeaveBalances([])
+      } catch (error: any) {
+        // Silently handle missing employment cycle - it's a valid state, not an error
+        if (error?.message?.includes('No active employment cycle found')) {
+          setLeaveBalances([])
+        } else {
+          console.error('Failed to load balances:', error)
+          setLeaveBalances([])
+        }
       }
 
       // Load leave requests - use path parameter instead of query parameter
