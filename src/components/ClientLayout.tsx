@@ -297,6 +297,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
             </div>
           ) : (
             <Switch>
+              <Route path="/client/dashboard" component={ClientDashboard} />
               <Route path="/client/team-status" component={ClientTeamStatus} />
               <Route path="/client/documents/:id" component={ClientDocuments} />
               <Route path="/client/invoices/:id" component={ClientInvoices} />

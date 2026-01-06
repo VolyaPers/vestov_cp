@@ -15,7 +15,7 @@ function DefaultRedirect({ user }: { user: User }) {
       ? '/admin/dashboard'
       : user.role === 'team_member'
         ? '/employee/dashboard'
-        : '/client'
+        : '/client/dashboard'
 
     const current = window.location.pathname
     if (!current.startsWith(defaultPath.split('/').slice(0, 2).join('/'))) {

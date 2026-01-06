@@ -105,7 +105,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         ? '/admin/dashboard'
         : userRole === 'team_member'
           ? '/employee/dashboard'
-          : '/client'
+          : '/client/dashboard'
     window.location.href = target
   }
 
