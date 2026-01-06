@@ -84,21 +84,17 @@ export async function notifyShiftEvent(options: NotifyShiftEventOptions) {
     employeeEmail,
     shiftId,
     breakType,
-    breakNote,
-    timestamp = new Date()
+    breakNote
   } = options
 
   const actor = employeeName || employeeEmail
-  const formattedTs = formatTimestamp(timestamp)
   const note = breakNote?.trim()
 
   const textByEvent: Record<ShiftEvent, string> = {
-    shift_started: `🚀 Shift started — ${actor} ${formattedTs}`,
-    shift_ended: `✅ Shift ended — ${actor} ${formattedTs}`,
-    break_started: `☕ Break started (${breakType || 'regular'}) — ${actor} ${formattedTs}${
-      note ? ` | Description: ${note}` : ''
-    }`,
-    break_ended: `↩️ Break ended — ${actor} ${formattedTs}`
+    shift_started: `🚀 ${actor} Started the Shift`,
+    shift_ended: `🏁 ${actor} Ended the Shift`,
+    break_started: `☕ ${actor} On Break${note ? ` | Note: ${note}` : ''}`,
+    break_ended: `↩️ ${actor} Ended the Break`
   }
 
   await postToSlack({
