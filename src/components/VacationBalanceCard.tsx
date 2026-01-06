@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip } from '@/components/ui/tooltip'
-import { Calendar, Lock, DollarSign, AlertCircle, Heart, Info, Activity } from 'lucide-react'
+import { Calendar, Lock, AlertCircle, Heart, Info, Activity } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -38,6 +38,7 @@ interface VacationBalance {
   cycleEndDate: string
   cycleId: number
   cycleNumber: number
+  careerYear: number // Career year based on time at company (used for UI logic)
   baseAllocation: number
 }
 
@@ -118,6 +119,11 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
     })
   }
 
+  // Use careerYear directly from balance - this is the source of truth
+  // careerYear is calculated on the backend using 365-day calculation (calculateEmploymentMetrics)
+  const careerYear = balance.careerYear ?? balance.cycleNumber ?? 1
+  const isFirstYear = careerYear === 1
+
   return (
     <Card>
       <CardHeader>
@@ -157,18 +163,22 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
           <div className="text-center">
             <p className="text-xs text-muted-foreground mb-2">Days Until New Cycle</p>
             <p className="text-lg font-semibold text-primary">
-              {(() => {
+              {careerYear >= 5 ? (
+                '-'
+              ) : (() => {
                 const today = new Date()
+                today.setHours(0, 0, 0, 0)
                 const cycleEnd = new Date(balance.cycleEndDate)
+                cycleEnd.setHours(0, 0, 0, 0)
                 const daysRemaining = Math.ceil((cycleEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                return daysRemaining > 0 ? daysRemaining : 0
+                return Math.max(0, daysRemaining)
               })()}
             </p>
           </div>
         </div>
 
         {/* Educational Info About Vacation Policy */}
-        {balance.cycleNumber === 1 ? (
+        {isFirstYear ? (
           // First Year: No 50/50 split
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center gap-3">
@@ -202,7 +212,7 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
           </div>
         )}
         {/* First Half / Second Half Breakdown */}
-        {balance.cycleNumber === 1 ? (
+        {isFirstYear ? (
           // First Year: Show single card with all days available
           <div className="p-6 rounded-lg border-2 border-primary bg-primary/5">
             <div className="flex items-center gap-2 mb-4">
@@ -303,9 +313,7 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
                 </p>
               </div>
             </div>
-          ) : (
-            <div></div>
-          )}
+          ) : null}
 
           {/* Financial Summary */}
           <div className="p-4 bg-gray-50 rounded-lg space-y-3">
@@ -405,23 +413,6 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
               </div>
             </div>
 
-            {/* Sick Leave Usage Summary */}
-            {/* <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Allocated</p>
-                  <p className="text-lg font-bold">{sickLeaveBalance.totalAllocated}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Used</p>
-                  <p className="text-lg font-bold text-orange-600">{sickLeaveBalance.totalUsed.toFixed(1)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Remaining</p>
-                  <p className="text-lg font-bold text-green-600">{sickLeaveBalance.totalRemaining.toFixed(1)}</p>
-                </div>
-              </div>
-            </div> */}
           </div>
         )}
 

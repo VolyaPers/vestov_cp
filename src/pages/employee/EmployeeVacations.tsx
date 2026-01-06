@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar, Clock, FileText, ChevronLeft, ChevronRight, Plane, Heart, Plus, Wallet } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -59,12 +59,36 @@ interface LeaveRequest {
   requestedAt: string
 }
 
+interface LeaveType {
+  id: number
+  name: string
+  isDeductible: boolean
+  halfDaySupported: boolean
+  createdAt: string
+}
+
+interface LeaveRequestResponse {
+  request: {
+    id: number
+    startDate: string
+    endDate: string
+    daysCount: number
+    status: string
+    reason: string | null
+    decisionReason: string | null
+    createdAt: string
+  }
+  leaveType: {
+    name: string
+  }
+}
+
 export function EmployeeVacations() {
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null)
   const [employmentCycle, setEmploymentCycle] = useState<EmploymentCycle | null>(null)
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([])
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
-  const [leaveTypes, setLeaveTypes] = useState<any[]>([])
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -84,11 +108,7 @@ export function EmployeeVacations() {
     reason: ''
   })
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -119,7 +139,7 @@ export function EmployeeVacations() {
         const requestsData = await api.request(`/vacation/requests/${member.id}`)
         // Transform API response: {request, leaveType, ...} -> flat structure
         const transformedRequests = Array.isArray(requestsData)
-          ? requestsData.map((item: any) => ({
+          ? (requestsData as LeaveRequestResponse[]).map((item) => ({
               id: item.request.id,
               leaveTypeName: item.leaveType.name,
               startDate: item.request.startDate,
@@ -146,7 +166,11 @@ export function EmployeeVacations() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleDayClick = (date: Date) => {
     const formattedDate = format(date, 'yyyy-MM-dd')
@@ -298,6 +322,7 @@ export function EmployeeVacations() {
         {/* Vacation Balance Tab */}
         <TabsContent value="balance" className="space-y-4">
           <VacationBalanceCard
+            key={`vacation-balance-${vacationBalance50?.careerYear ?? 'loading'}-${vacationBalance50?.cycleId ?? 'none'}`}
             balance={vacationBalance50}
             isLoading={isLoadingBalance}
             error={balanceError as Error | null}

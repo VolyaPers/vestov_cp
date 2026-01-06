@@ -1,6 +1,7 @@
 import { db } from '../db/index.js'
-import { employmentCycles, leaveBalances, leaveRequests, leaveTypes } from '../db/schema.js'
+import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers } from '../db/schema.js'
 import { eq, and, gte, lte, sql } from 'drizzle-orm'
+import { calculateEmploymentMetrics } from './employment.js'
 
 export interface VacationBalance {
   // Totals
@@ -33,7 +34,8 @@ export interface VacationBalance {
   cycleMidpointDate: string
   cycleEndDate: string
   cycleId: number
-  cycleNumber: number
+  cycleNumber: number // For metadata only (which cycle in DB)
+  careerYear: number // Career year based on time at company (used for UI logic)
   baseAllocation: number
 }
 
@@ -48,15 +50,15 @@ export interface VacationBalance {
  * 5. Any days beyond 5 will expire
  */
 /**
- * Determine vacation allocation based on employment cycle number
- * 1st year: 16 days
- * 2nd year: 20 days
- * 3rd year and beyond: 24 days
+ * Determine vacation allocation based on career year (time at company)
+ * Year 1: 16 days
+ * Year 2: 20 days
+ * Year 3 and beyond: 24 days
  */
-function getVacationAllocation(cycleNumber: number): number {
-  if (cycleNumber === 1) return 16
-  if (cycleNumber === 2) return 20
-  return 24 // 3rd year and beyond
+function getVacationAllocation(careerYear: number): number {
+  if (careerYear === 1) return 16
+  if (careerYear === 2) return 20
+  return 24 // Year 3 and beyond
 }
 
 export async function calculateVacationBalance(
@@ -84,7 +86,22 @@ export async function calculateVacationBalance(
   const cycleMidpoint = new Date(cycle.cycleMidpoint)
   const cycleEnd = new Date(cycle.cycleEnd)
 
-  // Determine which cycle number this is (1st, 2nd, 3rd, etc.)
+  // Get team member to access startDate for career year calculation
+  const [member] = await db
+    .select()
+    .from(teamMembers)
+    .where(eq(teamMembers.id, employeeId))
+    .limit(1)
+
+  if (!member || !member.startDate) {
+    throw new Error('Team member not found or missing start date')
+  }
+
+  // Calculate career year using the same logic as dashboard/roadmap (365-day calculation)
+  const employment = calculateEmploymentMetrics(member.startDate)
+  const careerYear = employment.careerYear
+
+  // Determine which cycle number this is (for metadata purposes only)
   const allEmployeeCycles = await db
     .select()
     .from(employmentCycles)
@@ -111,8 +128,9 @@ export async function calculateVacationBalance(
 
   const vacationTypeId = vacationTypes[0].id
 
-  // Calculate total allocated days based on cycle number (16, 20, or 24 days)
-  const baseAllocation = getVacationAllocation(cycleNumber)
+  // Calculate total allocated days based on career year (16, 20, or 24 days)
+  // This uses the same calculation as dashboard/roadmap for consistency
+  const baseAllocation = getVacationAllocation(careerYear)
 
   // Check for any adjustments in the leave balances table
   let adjustmentDays = 0
@@ -153,7 +171,8 @@ export async function calculateVacationBalance(
   const totalRemaining = totalAllocated - totalUsed
 
   // 50/50 split ONLY applies from second year onwards (when allocation is 20 or 24 days)
-  const apply5050Split = cycleNumber >= 2
+  // Use careerYear to match dashboard/roadmap calculation
+  const apply5050Split = careerYear >= 2
 
   let firstHalfAvailable: number
   let firstHalfUsed: number
@@ -236,7 +255,8 @@ export async function calculateVacationBalance(
     cycleMidpointDate: cycle.cycleMidpoint,
     cycleEndDate: cycle.cycleEnd,
     cycleId: cycle.id,
-    cycleNumber,
+    cycleNumber, // For metadata only
+    careerYear, // Career year for UI logic (matches dashboard/roadmap)
     baseAllocation
   }
 }
