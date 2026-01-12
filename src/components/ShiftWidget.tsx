@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Clock, Coffee, Info, Loader2, Play, Square } from 'lucide-react'
 import { api } from '../lib/api'
 
@@ -26,27 +26,34 @@ export function ShiftWidget() {
   const holdTimer = useRef<number | null>(null)
   const holdTriggered = useRef(false)
   const [holdAction, setHoldAction] = useState<ConfirmAction | null>(null)
+  const [holdProgress, setHoldProgress] = useState(0)
   const [showInfoCard, setShowInfoCard] = useState(true)
-
-  const fetchCurrentShift = async () => {
-    try {
-      const response = await api.getCurrentShift()
-      if (response.hasActiveShift) {
-        setCurrentShift(response.shift)
-        setActiveBreak(response.activeBreak)
-      } else {
-        setCurrentShift(null)
-        setActiveBreak(null)
-      }
-    } catch (err) {
-      console.error('Error fetching shift:', err)
-    }
-  }
+  const progressInterval = useRef<number | null>(null)
+  const holdStartTime = useRef<number | null>(null)
 
   useEffect(() => {
+    const fetchCurrentShift = async () => {
+      try {
+        const response = await api.getCurrentShift()
+        if (response.hasActiveShift) {
+          setCurrentShift(response.shift)
+          setActiveBreak(response.activeBreak)
+        } else {
+          setCurrentShift(null)
+          setActiveBreak(null)
+        }
+      } catch (err) {
+        console.error('Error fetching shift:', err)
+      }
+    }
+
     fetchCurrentShift()
     const interval = setInterval(fetchCurrentShift, 30000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      if (holdTimer.current) clearTimeout(holdTimer.current)
+      if (progressInterval.current) clearInterval(progressInterval.current)
+    }
   }, [])
 
   const handleStartShift = async () => {
@@ -135,10 +142,27 @@ export function ShiftWidget() {
     if (loading) return
     holdTriggered.current = false
     setHoldAction(action)
+    setHoldProgress(0)
+    const startTime = Date.now()
+    holdStartTime.current = startTime
+    
+    // Update progress every 50ms for smooth animation
+    progressInterval.current = window.setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min((elapsed / 3000) * 100, 100)
+      setHoldProgress(progress)
+    }, 50)
+    
     holdTimer.current = window.setTimeout(async () => {
       holdTriggered.current = true
       setHoldAction(null)
+      setHoldProgress(0)
       setConfirmAction(null)
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+        progressInterval.current = null
+      }
+      holdStartTime.current = null
       await runAction(action)
     }, 3000)
   }
@@ -148,7 +172,13 @@ export function ShiftWidget() {
       clearTimeout(holdTimer.current)
       holdTimer.current = null
     }
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current)
+      progressInterval.current = null
+    }
     setHoldAction(null)
+    setHoldProgress(0)
+    holdStartTime.current = null
     if (!holdTriggered.current && !loading) {
       setConfirmAction(action)
     }
@@ -198,7 +228,9 @@ export function ShiftWidget() {
     return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
   }
 
-  const mainAction: ConfirmAction = currentShift ? (activeBreak ? 'endBreak' : 'startBreak') : 'startShift'
+  const mainAction = useMemo<ConfirmAction>(() => {
+    return currentShift ? (activeBreak ? 'endBreak' : 'startBreak') : 'startShift'
+  }, [currentShift, activeBreak])
 
   return (
     <div className="p-4 border-t border-gray-200 space-y-3">
@@ -268,7 +300,16 @@ export function ShiftWidget() {
             onTouchStart={() => startHold(mainAction)}
             onTouchEnd={() => cancelHold(mainAction)}
             disabled={loading}
-            className={`flex-1 py-2 rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 ${
+            aria-label={
+              holdAction === mainAction
+                ? `Holding to ${currentShift ? (activeBreak ? 'end break' : 'start break') : 'start shift'}... ${Math.round(holdProgress)}%`
+                : currentShift
+                  ? activeBreak
+                    ? 'End break'
+                    : 'Start break'
+                  : 'Start shift'
+            }
+            className={`flex-1 py-2 rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden ${
               activeBreak
                 ? 'bg-blue-500 hover:bg-blue-600 text-white'
                 : currentShift
@@ -276,16 +317,29 @@ export function ShiftWidget() {
                   : 'bg-green-500 hover:bg-green-600 text-white'
             }`}
           >
-            {loading || holdAction === mainAction ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                {currentShift ? <Coffee className="w-4 h-4" /> : <Play className="w-4 h-4" fill="currentColor" />}
-                <span>
-                  {currentShift ? (activeBreak ? 'End Break' : 'Break') : 'Start Shift'}
-                </span>
-              </>
+            {holdAction === mainAction && (
+              <div
+                role="progressbar"
+                aria-valuenow={Math.round(holdProgress)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Hold progress"
+                className="absolute inset-0 bg-black/30 transition-all duration-50 ease-linear"
+                style={{ width: `${holdProgress}%` }}
+              />
             )}
+            <span className="relative z-10 flex items-center gap-1">
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  {currentShift ? <Coffee className="w-4 h-4" /> : <Play className="w-4 h-4" fill="currentColor" />}
+                  <span>
+                    {currentShift ? (activeBreak ? 'End Break' : 'Break') : 'Start Shift'}
+                  </span>
+                </>
+              )}
+            </span>
           </button>
           <button
             onMouseDown={() => startHold('endShift')}
@@ -296,16 +350,34 @@ export function ShiftWidget() {
             onTouchStart={() => startHold('endShift')}
             onTouchEnd={() => cancelHold('endShift')}
             disabled={loading || !currentShift}
-            className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+            aria-label={
+              holdAction === 'endShift'
+                ? `Holding to end shift... ${Math.round(holdProgress)}%`
+                : 'End shift'
+            }
+            className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden"
           >
-            {loading || holdAction === 'endShift' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Square className="w-4 h-4" fill="currentColor" />
-                <span>End</span>
-              </>
+            {holdAction === 'endShift' && (
+              <div
+                role="progressbar"
+                aria-valuenow={Math.round(holdProgress)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Hold progress"
+                className="absolute inset-0 bg-black/30 transition-all duration-50 ease-linear"
+                style={{ width: `${holdProgress}%` }}
+              />
             )}
+            <span className="relative z-10 flex items-center gap-1">
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Square className="w-4 h-4" fill="currentColor" />
+                  <span>End</span>
+                </>
+              )}
+            </span>
           </button>
         </div>
       </div>
