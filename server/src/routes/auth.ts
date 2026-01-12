@@ -45,9 +45,18 @@ const ALLOWED_ROLES = ['admin', 'client', 'team_member']
 // Register route (self-service signup or claim existing admin-created user)
 router.post('/register', async (req, res) => {
   try {
+    console.log('[REGISTER] Request received:', {
+      method: req.method,
+      path: req.path,
+      origin: req.headers.origin,
+      body: { firstName: req.body?.firstName, lastName: req.body?.lastName, email: req.body?.email, role: req.body?.role, hasPassword: !!req.body?.password, hasGoogleId: !!req.body?.googleId },
+    })
+    
     const body = req.body as RegisterRequestBody
     const { firstName, lastName, email, password, role, googleId, avatarUrl } = body || {}
     const isGoogleSignup = !!googleId
+    
+    console.log('[REGISTER] Processing registration for:', { email, role, isGoogleSignup })
 
     // For Google signup, password is optional
     if (!firstName || !lastName || !email || !role) {
@@ -241,17 +250,34 @@ router.post('/register', async (req, res) => {
     // Auto-login after registration
     req.logIn(userResponse, (err) => {
       if (err) {
-        console.error('Session login error after register:', err)
+        console.error('[REGISTER] Session login error after register:', err)
         return res.status(500).json({ error: 'Registration succeeded but login failed' })
       }
 
-      console.log('New user registered:', userResponse.email)
+      console.log('[REGISTER] New user registered successfully:', userResponse.email)
+      console.log('[REGISTER] Sending response:', { status: 201, userId: userResponse.id, email: userResponse.email })
+      
+      // Set CORS headers explicitly
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
+      
       return res.status(201).json({ user: userResponse })
     })
   } catch (error) {
-    console.error('Registration error:', error)
+    console.error('[REGISTER] Registration error:', error)
     const message =
       (error as Error)?.message || 'Failed to register user'
+    
+    // Set CORS headers explicitly on error
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
+    
     return res.status(500).json({ error: message })
   }
 })

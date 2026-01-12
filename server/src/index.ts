@@ -136,10 +136,58 @@ app.use(helmet({
   },
 }))
 
-const corsOrigin = process.env.CORS_ORIGIN || process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
+// Normalize CORS origin - remove trailing slashes
+const normalizeUrl = (url: string | undefined): string | false => {
+  if (!url) return false
+  return url.trim().replace(/\/+$/, '') // Remove trailing slashes
+}
+
+const corsOriginRaw = process.env.CORS_ORIGIN || process.env.FRONTEND_URL
+const corsOrigin = corsOriginRaw 
+  ? normalizeUrl(corsOriginRaw) 
+  : (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
+
 console.log('[SERVER INIT] CORS Origin:', corsOrigin)
+console.log('[SERVER INIT] CORS Environment variables:', {
+  CORS_ORIGIN: process.env.CORS_ORIGIN,
+  FRONTEND_URL: process.env.FRONTEND_URL,
+  CORS_ORIGIN_NORMALIZED: corsOrigin,
+  NODE_ENV: process.env.NODE_ENV,
+})
+
+// CORS logging middleware (for debugging)
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  if (origin || req.method === 'OPTIONS') {
+    console.log('[CORS DEBUG] Request:', {
+      method: req.method,
+      path: req.path,
+      origin: origin || 'no origin',
+      corsOrigin: corsOrigin,
+    })
+  }
+  next()
+})
+
+// CORS configuration with origin function for better matching
 app.use(cors({
-  origin: corsOrigin,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true)
+    }
+    
+    const normalizedOrigin = normalizeUrl(origin)
+    const normalizedCorsOrigin = typeof corsOrigin === 'string' ? corsOrigin : false
+    
+    if (normalizedCorsOrigin && (normalizedOrigin === normalizedCorsOrigin || origin === normalizedCorsOrigin)) {
+      console.log('[CORS] Allowing origin:', origin)
+      callback(null, true)
+    } else {
+      console.log('[CORS] Rejecting origin:', origin, 'Expected:', normalizedCorsOrigin)
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

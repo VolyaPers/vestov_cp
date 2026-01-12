@@ -32,7 +32,31 @@ class ApiClient {
       },
     }
 
-    const response = await fetch(url, config)
+    console.log('[API REQUEST]', { url, method: options.method || 'GET', API_BASE, envApiUrl: import.meta.env.VITE_API_URL })
+
+    let response: Response
+    try {
+      response = await fetch(url, config)
+    } catch (error) {
+      // Network error or CORS error - fetch fails before getting a response
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error('[API REQUEST] Network/CORS error:', {
+        url,
+        error: errorMessage,
+        API_BASE,
+        envApiUrl: import.meta.env.VITE_API_URL,
+        isCorsError: errorMessage.includes('CORS') || errorMessage.includes('Failed to fetch'),
+      })
+      
+      // Provide more helpful error message
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        const helpfulMessage = !import.meta.env.VITE_API_URL
+          ? 'Failed to connect to server. Please check if VITE_API_URL is configured in production.'
+          : `Failed to connect to server at ${url}. This may be a CORS or network issue.`
+        throw new Error(helpfulMessage)
+      }
+      throw error
+    }
     
     // Handle 304 Not Modified (cached response)
     if (response.status === 304) {
