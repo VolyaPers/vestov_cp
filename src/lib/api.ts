@@ -64,39 +64,46 @@ class ApiClient {
       return {}
     }
     
+    // Read response body once - can only be read once
+    const contentType = response.headers.get('content-type')
+    const text = await response.text()
+    
     if (!response.ok) {
       let errorMessage = `API Error: ${response.status}`
       try {
-        const text = await response.text()
         if (text) {
           const errorData = JSON.parse(text)
           if (errorData.error) {
             errorMessage = errorData.error
+          } else if (errorData.message) {
+            errorMessage = errorData.message
           }
         }
       } catch {
         // Use default error message if parsing fails
+        if (text) {
+          errorMessage = text.slice(0, 200)
+        }
       }
+      console.error('[API REQUEST] Error response:', { url, status: response.status, errorMessage, text: text.slice(0, 200) })
       throw new Error(errorMessage)
     }
 
     // Check if response has content
-    const contentType = response.headers.get('content-type')
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text()
-      console.warn('Non-JSON response received:', { url, status: response.status, contentType, text: text.slice(0, 200) })
-      throw new Error('Invalid response format: expected JSON')
-    }
-
-    const text = await response.text()
     if (!text) {
       return {}
+    }
+
+    // Check content type
+    if (contentType && !contentType.includes('application/json')) {
+      console.warn('[API REQUEST] Non-JSON response received:', { url, status: response.status, contentType, text: text.slice(0, 200) })
+      // Still try to parse as JSON in case content-type is wrong
     }
 
     try {
       return JSON.parse(text)
     } catch (error) {
-      console.error('Failed to parse JSON response:', { url, status: response.status, text: text.slice(0, 500) })
+      console.error('[API REQUEST] Failed to parse JSON response:', { url, status: response.status, text: text.slice(0, 500) })
       throw new Error('Invalid JSON response from server')
     }
   }

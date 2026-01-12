@@ -511,10 +511,24 @@ router.delete('/:id', async (req, res) => {
 // Hard delete user and related records (admin only)
 router.delete('/:id/hard', requireAuth, async (req, res) => {
   try {
+    console.log('[HARD DELETE] Request received:', {
+      method: req.method,
+      path: req.path,
+      userId: req.params.id,
+      origin: req.headers.origin,
+      user: req.user ? { id: req.user.id, role: req.user.role } : 'no user',
+    })
+    
     const { id } = req.params
     const authUser = (req as any).user
 
     if (!authUser || authUser.role !== 'admin') {
+      console.log('[HARD DELETE] Access denied - not admin')
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(403).json({ error: 'Admin access required' })
     }
 
@@ -623,9 +637,25 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
     }
 
     console.log(`[HARD DELETE] Successfully deleted user ${userId} (${user.email}) and all related data`)
+    
+    // Set CORS headers explicitly
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
+    
     res.json({ message: 'User and related data deleted successfully' })
   } catch (error) {
-    console.error('Error hard-deleting user:', error)
+    console.error('[HARD DELETE] Error hard-deleting user:', error)
+    
+    // Set CORS headers on error too
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
+    
     res.status(500).json({ error: 'Failed to delete user' })
   }
 })

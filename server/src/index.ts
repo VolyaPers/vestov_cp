@@ -155,7 +155,7 @@ console.log('[SERVER INIT] CORS Environment variables:', {
   NODE_ENV: process.env.NODE_ENV,
 })
 
-// CORS logging middleware (for debugging)
+// CORS logging and header injection middleware (for debugging and ensuring CORS headers)
 app.use((req, res, next) => {
   const origin = req.headers.origin
   if (origin || req.method === 'OPTIONS') {
@@ -166,6 +166,17 @@ app.use((req, res, next) => {
       corsOrigin: corsOrigin,
     })
   }
+  
+  // Ensure CORS headers are set on all responses
+  if (origin && corsOrigin) {
+    const normalizedOrigin = normalizeUrl(origin)
+    const normalizedCorsOrigin = typeof corsOrigin === 'string' ? corsOrigin : false
+    if (normalizedCorsOrigin && (normalizedOrigin === normalizedCorsOrigin || origin === normalizedCorsOrigin)) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
+  }
+  
   next()
 })
 
