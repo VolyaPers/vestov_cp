@@ -557,8 +557,14 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
         await tx.delete(clientUsers).where(eq(clientUsers.userId, userId))
         console.log(`[HARD DELETE] Deleted client assignments`)
       } catch (error) {
-        console.error('[HARD DELETE] Error deleting client assignments:', error)
-        throw error
+        const err = error as Error
+        // If table doesn't exist, that's okay - just log and continue
+        if (err.message.includes('does not exist') || (err.message.includes('relation') && err.message.includes('client_users'))) {
+          console.log(`[HARD DELETE] client_users table does not exist, skipping deletion`)
+        } else {
+          console.error('[HARD DELETE] Error deleting client assignments:', error)
+          // Don't throw - continue with other deletions
+        }
       }
 
       try {
@@ -568,7 +574,12 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
         )
         console.log(`[HARD DELETE] Deleted messages`)
       } catch (error) {
-        console.error('[HARD DELETE] Error deleting messages:', error)
+        const err = error as Error
+        if (err.message.includes('does not exist') || (err.message.includes('relation') && err.message.includes('messages'))) {
+          console.log(`[HARD DELETE] messages table does not exist, skipping`)
+        } else {
+          console.error('[HARD DELETE] Error deleting messages:', error)
+        }
         // Continue - messages might not exist
       }
 
@@ -577,7 +588,12 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
         await tx.delete(serviceRequests).where(eq(serviceRequests.userId, userId))
         console.log(`[HARD DELETE] Deleted service requests`)
       } catch (error) {
-        console.error('[HARD DELETE] Error deleting service requests:', error)
+        const err = error as Error
+        if (err.message.includes('does not exist') || (err.message.includes('relation') && err.message.includes('service_requests'))) {
+          console.log(`[HARD DELETE] service_requests table does not exist, skipping`)
+        } else {
+          console.error('[HARD DELETE] Error deleting service requests:', error)
+        }
         // Continue - service requests might not exist
       }
 
@@ -586,7 +602,12 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
         await tx.delete(financialData).where(eq(financialData.userId, userId))
         console.log(`[HARD DELETE] Deleted financial data`)
       } catch (error) {
-        console.error('[HARD DELETE] Error deleting financial data:', error)
+        const err = error as Error
+        if (err.message.includes('does not exist') || (err.message.includes('relation') && err.message.includes('financial_data'))) {
+          console.log(`[HARD DELETE] financial_data table does not exist, skipping`)
+        } else {
+          console.error('[HARD DELETE] Error deleting financial data:', error)
+        }
         // Continue - financial data might not exist
       }
 
@@ -597,7 +618,12 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
           .where(sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1}`)
         console.log(`[HARD DELETE] Deleted feedback`)
       } catch (error) {
-        console.error('[HARD DELETE] Error deleting feedback:', error)
+        const err = error as Error
+        if (err.message.includes('does not exist') || (err.message.includes('relation') && err.message.includes('feedback'))) {
+          console.log(`[HARD DELETE] feedback table does not exist, skipping`)
+        } else {
+          console.error('[HARD DELETE] Error deleting feedback:', error)
+        }
         // Continue - feedback might not exist
       }
 
@@ -612,7 +638,12 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
           )
         console.log(`[HARD DELETE] Deleted time entries`)
       } catch (error) {
-        console.error('[HARD DELETE] Error deleting time entries:', error)
+        const err = error as Error
+        if (err.message.includes('does not exist') || (err.message.includes('relation') && err.message.includes('time_entries'))) {
+          console.log(`[HARD DELETE] time_entries table does not exist, skipping`)
+        } else {
+          console.error('[HARD DELETE] Error deleting time entries:', error)
+        }
         // Continue - time entries might not exist
       }
 
