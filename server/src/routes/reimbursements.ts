@@ -1,5 +1,5 @@
 import express from 'express'
-import { db } from '../db/index.js'
+import { db, pool } from '../db/index.js'
 import { reimbursementRequests, teamMembers, users } from '../db/schema.js'
 import { eq, and, sql, desc } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from '../utils/employment.js'
@@ -74,19 +74,41 @@ router.get('/limits/:year', async (req, res) => {
     const yearsAtCompany = calculateEmploymentMetrics(member.startDate).careerYear
     const yearlyLimit = getYearlyLimit(yearsAtCompany)
 
-    // Calculate total used in the specified year
-    const usedResult = await db
-      .select({
-        total: sql<string>`COALESCE(SUM(${reimbursementRequests.reimbursementAmount}), 0)`
-      })
-      .from(reimbursementRequests)
-      .where(
-        and(
-          eq(reimbursementRequests.employeeId, member.id),
-          eq(reimbursementRequests.year, year),
-          sql`${reimbursementRequests.status} IN ('pending', 'approved', 'confirmed')`
+    // Calculate total used in the current career year (not calendar year)
+    // Fallback to calendar year if careerYear column doesn't exist yet
+    let usedResult
+    try {
+      usedResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${reimbursementRequests.reimbursementAmount}), 0)`
+        })
+        .from(reimbursementRequests)
+        .where(
+          and(
+            eq(reimbursementRequests.employeeId, member.id),
+            eq(reimbursementRequests.careerYear, yearsAtCompany),
+            sql`${reimbursementRequests.status} IN ('pending', 'approved', 'confirmed')`
+          )
         )
-      )
+    } catch (error: any) {
+      // If careerYear column doesn't exist, use calendar year as fallback
+      if (error?.code === '42703' && error?.message?.includes('career_year')) {
+        usedResult = await db
+          .select({
+            total: sql<string>`COALESCE(SUM(${reimbursementRequests.reimbursementAmount}), 0)`
+          })
+          .from(reimbursementRequests)
+          .where(
+            and(
+              eq(reimbursementRequests.employeeId, member.id),
+              eq(reimbursementRequests.year, year),
+              sql`${reimbursementRequests.status} IN ('pending', 'approved', 'confirmed')`
+            )
+          )
+      } else {
+        throw error
+      }
+    }
 
     const usedAmount = parseFloat(usedResult[0].total)
     const availableAmount = yearlyLimit - usedAmount
@@ -124,28 +146,61 @@ router.get('/my-requests', async (req, res) => {
     }
 
     // Get all requests for this employee
-    const requests = await db
-      .select({
-        id: reimbursementRequests.id,
-        year: reimbursementRequests.year,
-        expenseAmount: reimbursementRequests.expenseAmount,
-        reimbursementAmount: reimbursementRequests.reimbursementAmount,
-        description: reimbursementRequests.description,
-        category: reimbursementRequests.category,
-        status: reimbursementRequests.status,
-        requestedAt: reimbursementRequests.requestedAt,
-        approvedAt: reimbursementRequests.approvedAt,
-        approvalNote: reimbursementRequests.approvalNote,
-        evidenceUrl: reimbursementRequests.evidenceUrl,
-        confirmedAt: reimbursementRequests.confirmedAt,
-        approverName: users.fullName
-      })
-      .from(reimbursementRequests)
-      .leftJoin(users, eq(reimbursementRequests.approvedBy, users.id))
-      .where(eq(reimbursementRequests.employeeId, member.id))
-      .orderBy(desc(reimbursementRequests.requestedAt))
+    // Try to select careerYear, but handle case where column doesn't exist yet
+    try {
+      const requests = await db
+        .select({
+          id: reimbursementRequests.id,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          approverName: users.fullName
+        })
+        .from(reimbursementRequests)
+        .leftJoin(users, eq(reimbursementRequests.approvedBy, users.id))
+        .where(eq(reimbursementRequests.employeeId, member.id))
+        .orderBy(desc(reimbursementRequests.requestedAt))
 
-    res.json(requests)
+      res.json(requests)
+    } catch (error: any) {
+      // If careerYear column doesn't exist, select without it
+      if (error?.code === '42703' && error?.message?.includes('career_year')) {
+        const requests = await db
+          .select({
+            id: reimbursementRequests.id,
+            year: reimbursementRequests.year,
+            careerYear: sql<number | null>`NULL::integer`.as('careerYear'),
+            expenseAmount: reimbursementRequests.expenseAmount,
+            reimbursementAmount: reimbursementRequests.reimbursementAmount,
+            description: reimbursementRequests.description,
+            category: reimbursementRequests.category,
+            status: reimbursementRequests.status,
+            requestedAt: reimbursementRequests.requestedAt,
+            approvedAt: reimbursementRequests.approvedAt,
+            approvalNote: reimbursementRequests.approvalNote,
+            evidenceUrl: reimbursementRequests.evidenceUrl,
+            confirmedAt: reimbursementRequests.confirmedAt,
+            approverName: users.fullName
+          })
+          .from(reimbursementRequests)
+          .leftJoin(users, eq(reimbursementRequests.approvedBy, users.id))
+          .where(eq(reimbursementRequests.employeeId, member.id))
+          .orderBy(desc(reimbursementRequests.requestedAt))
+
+        res.json(requests)
+      } else {
+        throw error
+      }
+    }
   } catch (error) {
     console.error('Error fetching reimbursement requests:', error)
     res.status(500).json({ error: 'Failed to fetch reimbursement requests' })
@@ -188,19 +243,41 @@ router.post('/', async (req, res) => {
     const yearsAtCompany = calculateEmploymentMetrics(member.startDate).careerYear
     const yearlyLimit = getYearlyLimit(yearsAtCompany)
 
-    // Calculate total used in current year
-    const usedResult = await db
-      .select({
-        total: sql<string>`COALESCE(SUM(${reimbursementRequests.reimbursementAmount}), 0)`
-      })
-      .from(reimbursementRequests)
-      .where(
-        and(
-          eq(reimbursementRequests.employeeId, member.id),
-          eq(reimbursementRequests.year, year),
-          sql`${reimbursementRequests.status} IN ('pending', 'approved', 'confirmed')`
+    // Calculate total used in current career year (not calendar year)
+    // Fallback to calendar year if careerYear column doesn't exist yet
+    let usedResult
+    try {
+      usedResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${reimbursementRequests.reimbursementAmount}), 0)`
+        })
+        .from(reimbursementRequests)
+        .where(
+          and(
+            eq(reimbursementRequests.employeeId, member.id),
+            eq(reimbursementRequests.careerYear, yearsAtCompany),
+            sql`${reimbursementRequests.status} IN ('pending', 'approved', 'confirmed')`
+          )
         )
-      )
+    } catch (error: any) {
+      // If careerYear column doesn't exist, use calendar year as fallback
+      if (error?.code === '42703' && error?.message?.includes('career_year')) {
+        usedResult = await db
+          .select({
+            total: sql<string>`COALESCE(SUM(${reimbursementRequests.reimbursementAmount}), 0)`
+          })
+          .from(reimbursementRequests)
+          .where(
+            and(
+              eq(reimbursementRequests.employeeId, member.id),
+              eq(reimbursementRequests.year, year),
+              sql`${reimbursementRequests.status} IN ('pending', 'approved', 'confirmed')`
+            )
+          )
+      } else {
+        throw error
+      }
+    }
 
     const usedAmount = parseFloat(usedResult[0].total)
     const availableAmount = yearlyLimit - usedAmount
@@ -221,28 +298,86 @@ router.post('/', async (req, res) => {
     }
 
     // Create reimbursement request
-    const [request] = await db
-      .insert(reimbursementRequests)
-      .values({
-        employeeId: member.id,
-        year,
-        expenseAmount: expense.toFixed(2),
-        reimbursementAmount: reimbursementAmount.toFixed(2),
-        description,
-        category: category || null,
-        status: 'pending',
-        requestedBy: req.user.id
-      })
-      .returning()
+    // Try to include careerYear, but handle case where column doesn't exist yet
+    try {
+      const result = await db
+        .insert(reimbursementRequests)
+        .values({
+          employeeId: member.id,
+          year,
+          careerYear: yearsAtCompany, // Store the career year when request was made
+          expenseAmount: expense.toFixed(2),
+          reimbursementAmount: reimbursementAmount.toFixed(2),
+          description,
+          category: category || null,
+          status: 'pending',
+          requestedBy: req.user.id
+        })
+        .returning({
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        })
+      const request = result[0]
 
-    res.status(201).json({
-      request,
-      limits: {
-        yearlyLimit,
-        usedAmount,
-        availableAmount: availableAmount - reimbursementAmount
+      res.status(201).json({
+        request,
+        limits: {
+          yearlyLimit,
+          usedAmount,
+          availableAmount: availableAmount - reimbursementAmount
+        }
+      })
+    } catch (error: any) {
+      // If careerYear column doesn't exist, insert using raw SQL
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const result = await pool.query(
+          `INSERT INTO reimbursement_requests 
+           (employee_id, year, expense_amount, reimbursement_amount, description, category, status, requested_by, requested_at, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW(), NOW())
+           RETURNING id, employee_id, year, expense_amount, reimbursement_amount, description, category, status, requested_by, requested_at, approved_by, approved_at, approval_note, evidence_url, confirmed_at, created_at, updated_at`,
+          [
+            member.id,
+            year,
+            expense.toFixed(2),
+            reimbursementAmount.toFixed(2),
+            description,
+            category || null,
+            'pending',
+            req.user.id
+          ]
+        )
+
+        const request = result.rows[0]
+
+        res.status(201).json({
+          request,
+          limits: {
+            yearlyLimit,
+            usedAmount,
+            availableAmount: availableAmount - reimbursementAmount
+          }
+        })
+      } else {
+        throw error
       }
-    })
+    }
+
   } catch (error) {
     console.error('Error creating reimbursement request:', error)
     res.status(500).json({ error: 'Failed to create reimbursement request' })
@@ -374,11 +509,65 @@ router.put('/:id/approve', async (req, res) => {
     const id = parseInt(req.params.id)
     const { note } = req.body
 
-    // Get current request
-    const [request] = await db
-      .select()
-      .from(reimbursementRequests)
-      .where(eq(reimbursementRequests.id, id))
+    // Get current request - select specific fields to avoid careerYear if column doesn't exist
+    let request
+    try {
+      const requests = await db
+        .select({
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        })
+        .from(reimbursementRequests)
+        .where(eq(reimbursementRequests.id, id))
+        .limit(1)
+      request = requests[0]
+    } catch (error: any) {
+      // If careerYear column doesn't exist, select without it
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const requests = await db
+          .select({
+            id: reimbursementRequests.id,
+            employeeId: reimbursementRequests.employeeId,
+            year: reimbursementRequests.year,
+            expenseAmount: reimbursementRequests.expenseAmount,
+            reimbursementAmount: reimbursementRequests.reimbursementAmount,
+            description: reimbursementRequests.description,
+            category: reimbursementRequests.category,
+            status: reimbursementRequests.status,
+            requestedBy: reimbursementRequests.requestedBy,
+            requestedAt: reimbursementRequests.requestedAt,
+            approvedBy: reimbursementRequests.approvedBy,
+            approvedAt: reimbursementRequests.approvedAt,
+            approvalNote: reimbursementRequests.approvalNote,
+            evidenceUrl: reimbursementRequests.evidenceUrl,
+            confirmedAt: reimbursementRequests.confirmedAt,
+            createdAt: reimbursementRequests.createdAt,
+            updatedAt: reimbursementRequests.updatedAt
+          })
+          .from(reimbursementRequests)
+          .where(eq(reimbursementRequests.id, id))
+          .limit(1)
+        request = requests[0]
+      } else {
+        throw error
+      }
+    }
 
     if (!request) {
       return res.status(404).json({ error: 'Request not found' })
@@ -389,17 +578,54 @@ router.put('/:id/approve', async (req, res) => {
     }
 
     // Approve request
-    const [updated] = await db
-      .update(reimbursementRequests)
-      .set({
-        status: 'approved',
-        approvedBy: req.user.id,
-        approvedAt: new Date(),
-        approvalNote: note || null,
-        updatedAt: new Date()
-      })
-      .where(eq(reimbursementRequests.id, id))
-      .returning()
+    let updated
+    try {
+      const result = await db
+        .update(reimbursementRequests)
+        .set({
+          status: 'approved',
+          approvedBy: req.user.id,
+          approvedAt: new Date(),
+          approvalNote: note || null,
+          updatedAt: new Date()
+        })
+        .where(eq(reimbursementRequests.id, id))
+        .returning({
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        })
+      updated = result[0]
+    } catch (error: any) {
+      // If careerYear column doesn't exist, use SQL raw
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const result = await pool.query(
+          `UPDATE reimbursement_requests 
+           SET status = 'approved', approved_by = $1, approved_at = NOW(), approval_note = $2, updated_at = NOW()
+           WHERE id = $3
+           RETURNING id, employee_id, year, expense_amount, reimbursement_amount, description, category, status, requested_by, requested_at, approved_by, approved_at, approval_note, evidence_url, confirmed_at, created_at, updated_at`,
+          [req.user.id, note || null, id]
+        )
+        updated = result.rows[0]
+      } else {
+        throw error
+      }
+    }
 
     res.json(updated)
   } catch (error) {
@@ -426,11 +652,65 @@ router.put('/:id/reject', async (req, res) => {
       return res.status(400).json({ error: 'Rejection reason is required' })
     }
 
-    // Get current request
-    const [request] = await db
-      .select()
-      .from(reimbursementRequests)
-      .where(eq(reimbursementRequests.id, id))
+    // Get current request - select specific fields to avoid careerYear if column doesn't exist
+    let request
+    try {
+      const requests = await db
+        .select({
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        })
+        .from(reimbursementRequests)
+        .where(eq(reimbursementRequests.id, id))
+        .limit(1)
+      request = requests[0]
+    } catch (error: any) {
+      // If careerYear column doesn't exist, select without it
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const requests = await db
+          .select({
+            id: reimbursementRequests.id,
+            employeeId: reimbursementRequests.employeeId,
+            year: reimbursementRequests.year,
+            expenseAmount: reimbursementRequests.expenseAmount,
+            reimbursementAmount: reimbursementRequests.reimbursementAmount,
+            description: reimbursementRequests.description,
+            category: reimbursementRequests.category,
+            status: reimbursementRequests.status,
+            requestedBy: reimbursementRequests.requestedBy,
+            requestedAt: reimbursementRequests.requestedAt,
+            approvedBy: reimbursementRequests.approvedBy,
+            approvedAt: reimbursementRequests.approvedAt,
+            approvalNote: reimbursementRequests.approvalNote,
+            evidenceUrl: reimbursementRequests.evidenceUrl,
+            confirmedAt: reimbursementRequests.confirmedAt,
+            createdAt: reimbursementRequests.createdAt,
+            updatedAt: reimbursementRequests.updatedAt
+          })
+          .from(reimbursementRequests)
+          .where(eq(reimbursementRequests.id, id))
+          .limit(1)
+        request = requests[0]
+      } else {
+        throw error
+      }
+    }
 
     if (!request) {
       return res.status(404).json({ error: 'Request not found' })
@@ -441,17 +721,54 @@ router.put('/:id/reject', async (req, res) => {
     }
 
     // Reject request
-    const [updated] = await db
-      .update(reimbursementRequests)
-      .set({
-        status: 'rejected',
-        approvedBy: req.user.id,
-        approvedAt: new Date(),
-        approvalNote: note,
-        updatedAt: new Date()
-      })
-      .where(eq(reimbursementRequests.id, id))
-      .returning()
+    let updated
+    try {
+      const result = await db
+        .update(reimbursementRequests)
+        .set({
+          status: 'rejected',
+          approvedBy: req.user.id,
+          approvedAt: new Date(),
+          approvalNote: note,
+          updatedAt: new Date()
+        })
+        .where(eq(reimbursementRequests.id, id))
+        .returning({
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        })
+      updated = result[0]
+    } catch (error: any) {
+      // If careerYear column doesn't exist, use SQL raw
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const result = await pool.query(
+          `UPDATE reimbursement_requests 
+           SET status = 'rejected', approved_by = $1, approved_at = NOW(), approval_note = $2, updated_at = NOW()
+           WHERE id = $3
+           RETURNING id, employee_id, year, expense_amount, reimbursement_amount, description, category, status, requested_by, requested_at, approved_by, approved_at, approval_note, evidence_url, confirmed_at, created_at, updated_at`,
+          [req.user.id, note, id]
+        )
+        updated = result.rows[0]
+      } else {
+        throw error
+      }
+    }
 
     res.json(updated)
   } catch (error) {
@@ -473,15 +790,73 @@ router.post('/:id/upload', upload.single('evidence'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' })
     }
 
-    // Get current request
-    const [request] = await db
-      .select({
-        request: reimbursementRequests,
-        member: teamMembers
-      })
-      .from(reimbursementRequests)
-      .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
-      .where(eq(reimbursementRequests.id, id))
+    // Get current request - select specific fields to avoid careerYear if column doesn't exist
+    let request
+    try {
+      const requests = await db
+        .select({
+          request: {
+            id: reimbursementRequests.id,
+            employeeId: reimbursementRequests.employeeId,
+            year: reimbursementRequests.year,
+            careerYear: reimbursementRequests.careerYear,
+            expenseAmount: reimbursementRequests.expenseAmount,
+            reimbursementAmount: reimbursementRequests.reimbursementAmount,
+            description: reimbursementRequests.description,
+            category: reimbursementRequests.category,
+            status: reimbursementRequests.status,
+            requestedBy: reimbursementRequests.requestedBy,
+            requestedAt: reimbursementRequests.requestedAt,
+            approvedBy: reimbursementRequests.approvedBy,
+            approvedAt: reimbursementRequests.approvedAt,
+            approvalNote: reimbursementRequests.approvalNote,
+            evidenceUrl: reimbursementRequests.evidenceUrl,
+            confirmedAt: reimbursementRequests.confirmedAt,
+            createdAt: reimbursementRequests.createdAt,
+            updatedAt: reimbursementRequests.updatedAt
+          },
+          member: teamMembers
+        })
+        .from(reimbursementRequests)
+        .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
+        .where(eq(reimbursementRequests.id, id))
+        .limit(1)
+      request = requests[0]
+    } catch (error: any) {
+      // If careerYear column doesn't exist, select without it
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const requests = await db
+          .select({
+            request: {
+              id: reimbursementRequests.id,
+              employeeId: reimbursementRequests.employeeId,
+              year: reimbursementRequests.year,
+              expenseAmount: reimbursementRequests.expenseAmount,
+              reimbursementAmount: reimbursementRequests.reimbursementAmount,
+              description: reimbursementRequests.description,
+              category: reimbursementRequests.category,
+              status: reimbursementRequests.status,
+              requestedBy: reimbursementRequests.requestedBy,
+              requestedAt: reimbursementRequests.requestedAt,
+              approvedBy: reimbursementRequests.approvedBy,
+              approvedAt: reimbursementRequests.approvedAt,
+              approvalNote: reimbursementRequests.approvalNote,
+              evidenceUrl: reimbursementRequests.evidenceUrl,
+              confirmedAt: reimbursementRequests.confirmedAt,
+              createdAt: reimbursementRequests.createdAt,
+              updatedAt: reimbursementRequests.updatedAt
+            },
+            member: teamMembers
+          })
+          .from(reimbursementRequests)
+          .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
+          .where(eq(reimbursementRequests.id, id))
+          .limit(1)
+        request = requests[0]
+      } else {
+        throw error
+      }
+    }
 
     if (!request) {
       return res.status(404).json({ error: 'Request not found' })
@@ -498,16 +873,53 @@ router.post('/:id/upload', upload.single('evidence'), async (req, res) => {
 
     // Save file path and mark as confirmed
     const evidenceUrl = `/uploads/${req.file.filename}`
-    const [updated] = await db
-      .update(reimbursementRequests)
-      .set({
-        evidenceUrl,
-        confirmedAt: new Date(),
-        status: 'confirmed',
-        updatedAt: new Date()
-      })
-      .where(eq(reimbursementRequests.id, id))
-      .returning()
+    let updated
+    try {
+      const result = await db
+        .update(reimbursementRequests)
+        .set({
+          evidenceUrl,
+          confirmedAt: new Date(),
+          status: 'confirmed',
+          updatedAt: new Date()
+        })
+        .where(eq(reimbursementRequests.id, id))
+        .returning({
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          careerYear: reimbursementRequests.careerYear,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        })
+      updated = result[0]
+    } catch (error: any) {
+      // If careerYear column doesn't exist, use SQL raw
+      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+        const result = await pool.query(
+          `UPDATE reimbursement_requests 
+           SET evidence_url = $1, confirmed_at = NOW(), status = 'confirmed', updated_at = NOW()
+           WHERE id = $2
+           RETURNING id, employee_id, year, expense_amount, reimbursement_amount, description, category, status, requested_by, requested_at, approved_by, approved_at, approval_note, evidence_url, confirmed_at, created_at, updated_at`,
+          [evidenceUrl, id]
+        )
+        updated = result.rows[0]
+      } else {
+        throw error
+      }
+    }
 
     res.json(updated)
   } catch (error) {

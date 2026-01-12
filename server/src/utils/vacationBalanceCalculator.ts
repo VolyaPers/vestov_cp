@@ -1,6 +1,6 @@
 import { db } from '../db/index.js'
-import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers } from '../db/schema.js'
-import { eq, and, gte, lte, sql } from 'drizzle-orm'
+import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers, leaveAllocationSettings } from '../db/schema.js'
+import { eq, and, gte, lte, sql, desc } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from './employment.js'
 
 export interface VacationBalance {
@@ -65,23 +65,52 @@ export async function calculateVacationBalance(
   employeeId: number,
   currentDate: Date = new Date()
 ): Promise<VacationBalance | null> {
-  // Get active employment cycle
-  const cycles = await db
+  console.log(`[calculateVacationBalance] Called for employee ${employeeId}, currentDate: ${currentDate.toISOString().split('T')[0]}`)
+  
+  // Get all cycles for this employee to find the most appropriate one
+  const allCycles = await db
     .select()
     .from(employmentCycles)
-    .where(
-      and(
-        eq(employmentCycles.employeeId, employeeId),
-        eq(employmentCycles.isActive, true)
-      )
-    )
-    .limit(1)
+    .where(eq(employmentCycles.employeeId, employeeId))
+    .orderBy(employmentCycles.cycleStart)
 
-  if (cycles.length === 0) {
-    return null // No active cycle
+  console.log(`[calculateVacationBalance] Found ${allCycles.length} cycles for employee ${employeeId}`)
+  allCycles.forEach(c => {
+    console.log(`[calculateVacationBalance] - Cycle ${c.id}: ${c.cycleStart} - ${c.cycleEnd}, isActive: ${c.isActive}`)
+  })
+
+  if (allCycles.length === 0) {
+    console.log(`[calculateVacationBalance] No cycles found for employee ${employeeId}`)
+    return null // No cycles found
   }
 
-  const cycle = cycles[0]
+  // Find the cycle that contains the current date (prefer active, but accept inactive if it contains current date)
+  let cycle = allCycles.find(c => {
+    const cStart = new Date(c.cycleStart)
+    const cEnd = new Date(c.cycleEnd)
+    return currentDate >= cStart && currentDate <= cEnd
+  })
+
+  // If no cycle contains current date, find the most recent cycle that starts before or on current date
+  // This handles cases where we're in a gap between cycles
+  if (!cycle) {
+    cycle = allCycles
+      .filter(c => {
+        const cStart = new Date(c.cycleStart)
+        return currentDate >= cStart
+      })
+      .sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime())[0]
+  }
+
+  // If still no cycle, use the most recent cycle overall (even if in the future)
+  // This allows employees with future start dates to see their upcoming balance
+  if (!cycle) {
+    cycle = allCycles[allCycles.length - 1]
+  }
+
+  if (!cycle) {
+    return null // No cycle found
+  }
   const cycleStart = new Date(cycle.cycleStart)
   const cycleMidpoint = new Date(cycle.cycleMidpoint)
   const cycleEnd = new Date(cycle.cycleEnd)
@@ -153,22 +182,116 @@ export async function calculateVacationBalance(
   const totalAllocated = baseAllocation + adjustmentDays
 
   // Get all APPROVED vacation requests for this cycle
-  const requests = await db
+  // IMPORTANT: When a request is approved, its days are automatically deducted from available balance
+  // because this query only counts requests with status 'approved'. If a request is cancelled or denied,
+  // it's no longer counted here, so the days are automatically returned to the balance.
+  // Only count vacations that fall within this cycle's date range
+  // Vacations in future cycles should be counted in those cycles, not this one
+  // Convert cycle dates to Date objects for comparison
+  const cycleStartDate = new Date(cycle.cycleStart)
+  const cycleEndDate = new Date(cycle.cycleEnd)
+  
+  // Get all approved vacation requests for this employee
+  const allApprovedRequests = await db
     .select()
     .from(leaveRequests)
     .where(
       and(
         eq(leaveRequests.employeeId, employeeId),
         eq(leaveRequests.leaveTypeId, vacationTypeId),
-        eq(leaveRequests.status, 'approved'),
-        gte(leaveRequests.startDate, cycle.cycleStart),
-        lte(leaveRequests.startDate, cycle.cycleEnd)
+        eq(leaveRequests.status, 'approved') // Only approved requests count as used days
       )
     )
+  
+  console.log(`[DEBUG] Total approved requests found: ${allApprovedRequests.length}`)
+  allApprovedRequests.forEach(r => {
+    console.log(`[DEBUG] - Request ${r.id}: ${r.startDate} - ${r.endDate}, ${r.daysCount} days, status: ${r.status}`)
+  })
+  
+  // Filter requests that fall within this cycle's date range
+  // We do this in JavaScript to ensure proper date comparison
+  const requests = allApprovedRequests.filter(r => {
+    const requestStart = new Date(r.startDate)
+    const isInCycle = requestStart >= cycleStartDate && requestStart <= cycleEndDate
+    if (!isInCycle) {
+      console.log(`[DEBUG] Request ${r.id} (${r.startDate}) is OUTSIDE cycle ${cycle.id} (${cycleStartDate.toISOString().split('T')[0]} - ${cycleEndDate.toISOString().split('T')[0]})`)
+    }
+    return isInCycle
+  })
 
-  // Total used days
-  const totalUsed = requests.reduce((sum, r) => sum + parseFloat(r.daysCount), 0)
+  // Check if there are approved vacations outside this cycle
+  // This helps identify if vacations were approved for future cycles
+  // Find vacations that fall outside the current cycle
+  const vacationsOutsideCycle = allApprovedRequests.filter(r => {
+    const requestStart = new Date(r.startDate)
+    return requestStart < cycleStartDate || requestStart > cycleEndDate
+  })
+
+  // If there are vacations outside the current cycle, check if they belong to another cycle
+  if (vacationsOutsideCycle.length > 0) {
+    // Get all cycles for this employee (not just active ones)
+    const allCycles = await db
+      .select()
+      .from(employmentCycles)
+      .where(eq(employmentCycles.employeeId, employeeId))
+      .orderBy(employmentCycles.cycleStart)
+
+    // Check if any of these vacations belong to other cycles
+    for (const vacation of vacationsOutsideCycle) {
+      const vacationStart = new Date(vacation.startDate)
+      const belongsToCycle = allCycles.find(c => {
+        const cStart = new Date(c.cycleStart)
+        const cEnd = new Date(c.cycleEnd)
+        return vacationStart >= cStart && vacationStart <= cEnd
+      })
+
+      if (!belongsToCycle) {
+        // Vacation doesn't belong to any existing cycle
+        // This is a data integrity issue - vacation approved for a date with no cycle
+        console.warn(
+          `Vacation request ${vacation.id} for employee ${employeeId} ` +
+          `(date: ${vacation.startDate}) does not belong to any existing cycle. ` +
+          `Current cycle: ${cycle.cycleStart} - ${cycle.cycleEnd}`
+        )
+      }
+    }
+  }
+
+  // Total used days - sum of all approved vacation days in this cycle
+  // When a request is approved, its daysCount is automatically included here
+  // When a request is cancelled/denied, it's excluded (status != 'approved'), so days are returned
+  const totalUsed = requests.reduce((sum, r) => {
+    const days = parseFloat(r.daysCount.toString())
+    return sum + days
+  }, 0)
   const totalRemaining = totalAllocated - totalUsed
+
+  // Debug logging to understand why requests might not be counted
+  console.log(`[DEBUG] Vacation Balance Calculation for Employee ${employeeId}`)
+  console.log(`[DEBUG] Cycle: ${cycle.id} (${cycle.cycleStart} - ${cycle.cycleEnd}), isActive: ${cycle.isActive}`)
+  console.log(`[DEBUG] Found ${requests.length} approved requests in this cycle`)
+  console.log(`[DEBUG] Total allocated: ${totalAllocated}, Total used: ${totalUsed}, Total remaining: ${totalRemaining}`)
+  if (requests.length > 0) {
+    requests.forEach(r => {
+      console.log(`[DEBUG] - Request ${r.id}: ${r.startDate} - ${r.endDate}, ${r.daysCount} days, status: ${r.status}`)
+    })
+  } else {
+    // Check if there are approved requests that don't match this cycle
+    const allApproved = await db
+      .select()
+      .from(leaveRequests)
+      .where(
+        and(
+          eq(leaveRequests.employeeId, employeeId),
+          eq(leaveRequests.leaveTypeId, vacationTypeId),
+          eq(leaveRequests.status, 'approved')
+        )
+      )
+    console.log(`[DEBUG] Total approved requests for employee: ${allApproved.length}`)
+    allApproved.forEach(r => {
+      console.log(`[DEBUG] - Request ${r.id}: ${r.startDate} - ${r.endDate}, ${r.daysCount} days (cycle: ${cycle.cycleStart} - ${cycle.cycleEnd})`)
+    })
+  }
 
   // 50/50 split ONLY applies from second year onwards (when allocation is 20 or 24 days)
   // Use careerYear to match dashboard/roadmap calculation
@@ -188,12 +311,19 @@ export async function calculateVacationBalance(
     const halfAllocation = totalAllocated / 2
 
     // Split requests by half based on start date
-    const firstHalfRequests = requests.filter(r => new Date(r.startDate) < cycleMidpoint)
-    const secondHalfRequests = requests.filter(r => new Date(r.startDate) >= cycleMidpoint)
+    // A request belongs to the half where its start date falls
+    const firstHalfRequests = requests.filter(r => {
+      const requestStart = new Date(r.startDate)
+      return requestStart < cycleMidpoint
+    })
+    const secondHalfRequests = requests.filter(r => {
+      const requestStart = new Date(r.startDate)
+      return requestStart >= cycleMidpoint
+    })
 
     // Sum up days used in each half
-    firstHalfUsed = firstHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount), 0)
-    secondHalfUsed = secondHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount), 0)
+    firstHalfUsed = firstHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount.toString()), 0)
+    secondHalfUsed = secondHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount.toString()), 0)
 
     // Calculate remaining days in first half
     firstHalfRemaining = Math.max(0, halfAllocation - firstHalfUsed)
@@ -262,6 +392,192 @@ export async function calculateVacationBalance(
 }
 
 /**
+ * Calculate the next employment cycle start date based on employee start date and a target date
+ */
+function calculateCycleStartForDate(employeeStartDate: Date, targetDate: Date): Date {
+  const startYear = employeeStartDate.getFullYear()
+  const startMonth = employeeStartDate.getMonth()
+  const startDay = employeeStartDate.getDate()
+  
+  const targetYear = targetDate.getFullYear()
+  const targetMonth = targetDate.getMonth()
+  const targetDay = targetDate.getDate()
+  
+  // Calculate which cycle year this date falls into
+  // Cycles are based on anniversary dates
+  let cycleYear = targetYear
+  
+  // If target date is before the anniversary in the target year, use previous year
+  if (targetMonth < startMonth || (targetMonth === startMonth && targetDay < startDay)) {
+    cycleYear = targetYear - 1
+  }
+  
+  // Create cycle start date (anniversary date in the calculated year)
+  const cycleStart = new Date(cycleYear, startMonth, startDay)
+  
+  return cycleStart
+}
+
+/**
+ * Create an employment cycle for a specific date if it doesn't exist
+ */
+async function createCycleForDate(
+  employeeId: number,
+  date: Date
+): Promise<typeof employmentCycles.$inferSelect | null> {
+  try {
+    // Get team member with start date
+    const [member] = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.id, employeeId))
+      .limit(1)
+
+    if (!member || !member.startDate) {
+      return null // No start date available
+    }
+
+    // Calculate which cycle should contain this date
+    const employeeStartDate = new Date(member.startDate)
+    const cycleStart = calculateCycleStartForDate(employeeStartDate, date)
+    
+    // Calculate end date (1 year from cycle start)
+    const cycleEnd = new Date(cycleStart)
+    cycleEnd.setFullYear(cycleStart.getFullYear() + 1)
+    cycleEnd.setDate(cycleEnd.getDate() - 1) // End day before next cycle starts
+    
+    // Check if date is within this cycle
+    if (date < cycleStart || date > cycleEnd) {
+      return null // Date is outside the calculated cycle range
+    }
+
+    // Check if cycle already exists
+    const existingCycles = await db
+      .select()
+      .from(employmentCycles)
+      .where(eq(employmentCycles.employeeId, employeeId))
+      .orderBy(employmentCycles.cycleStart)
+
+    // Check if a cycle with this start date already exists
+    const cycleExists = existingCycles.some(c => {
+      const cStart = new Date(c.cycleStart)
+      return cStart.getTime() === cycleStart.getTime()
+    })
+
+    if (cycleExists) {
+      // Cycle exists, find and return it
+      return existingCycles.find(c => {
+        const cStart = new Date(c.cycleStart)
+        return cStart.getTime() === cycleStart.getTime()
+      }) || null
+    }
+
+    // Calculate midpoint (6 months from start) for 50/50 vacation split
+    const midpointDate = new Date(cycleStart)
+    midpointDate.setMonth(cycleStart.getMonth() + 6)
+    const cycleMidpoint = midpointDate.toISOString().split('T')[0]
+
+    // Check if this should be the active cycle
+    // If the cycle start date is today or in the past, or if it's the most recent cycle, make it active
+    const shouldBeActive = cycleStart <= new Date() || existingCycles.length === 0
+
+    // Create employment cycle
+    const [cycle] = await db
+      .insert(employmentCycles)
+      .values({
+        employeeId,
+        cycleStart: cycleStart.toISOString().split('T')[0],
+        cycleEnd: cycleEnd.toISOString().split('T')[0],
+        cycleMidpoint,
+        isActive: shouldBeActive, // Activate if it's current/past or if it's the first cycle
+      })
+      .returning()
+
+    // If this cycle should be active, deactivate other cycles
+    if (shouldBeActive) {
+      await db
+        .update(employmentCycles)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(employmentCycles.employeeId, employeeId),
+            sql`${employmentCycles.id} != ${cycle.id}`
+          )
+        )
+    }
+
+    // Get all leave types
+    const allLeaveTypes = await db.select().from(leaveTypes)
+
+    // Get default allocation settings or use hardcoded defaults
+    const defaultSettings = await db
+      .select()
+      .from(leaveAllocationSettings)
+      .where(eq(leaveAllocationSettings.isDefault, true))
+      .limit(10)
+
+    // Create leave balances for each leave type
+    for (const leaveType of allLeaveTypes) {
+      // Try to find default setting for this leave type
+      const setting = defaultSettings.find(s => s.leaveTypeId === leaveType.id)
+      
+      // Default allocations if no setting found
+      const defaultAllocation: Record<string, number> = {
+        'Vacation': 20,
+        'Vacation Leave': 20,
+        'Sick Leave': 7,
+        'Sick': 7,
+        'Personal Leave': 5,
+        'Personal': 5,
+      }
+
+      const totalDays = setting 
+        ? parseFloat(setting.allocatedDays.toString())
+        : (defaultAllocation[leaveType.name] || 0)
+
+      await db.insert(leaveBalances).values({
+        employeeId,
+        employmentCycleId: cycle.id,
+        leaveTypeId: leaveType.id,
+        totalDays: totalDays.toString(),
+        adjustmentDays: '0',
+      })
+    }
+
+    console.log(`Auto-created employment cycle for employee ${employeeId} covering date ${date.toISOString().split('T')[0]}`)
+    return cycle
+  } catch (error) {
+    console.error('Error creating cycle for date:', error)
+    return null
+  }
+}
+
+/**
+ * Find the employment cycle that contains a specific date
+ */
+async function findCycleForDate(
+  employeeId: number,
+  date: Date
+): Promise<typeof employmentCycles.$inferSelect | null> {
+  const allCycles = await db
+    .select()
+    .from(employmentCycles)
+    .where(eq(employmentCycles.employeeId, employeeId))
+    .orderBy(employmentCycles.cycleStart)
+
+  // Find the cycle that contains this date
+  for (const cycle of allCycles) {
+    const cycleStart = new Date(cycle.cycleStart)
+    const cycleEnd = new Date(cycle.cycleEnd)
+    if (date >= cycleStart && date <= cycleEnd) {
+      return cycle
+    }
+  }
+
+  return null
+}
+
+/**
  * Validate if a vacation request can be approved based on 50/50 rule
  */
 export async function validateVacationRequest(
@@ -270,11 +586,71 @@ export async function validateVacationRequest(
   requestDays: number,
   currentDate: Date = new Date()
 ): Promise<{ allowed: boolean; reason?: string }> {
+  // First, find which cycle contains the vacation date
+  let cycleForVacation = await findCycleForDate(employeeId, requestStartDate)
+
+  // If no cycle found, try to create one automatically based on employee start date
+  if (!cycleForVacation) {
+    cycleForVacation = await createCycleForDate(employeeId, requestStartDate)
+    
+    if (!cycleForVacation) {
+      // Get team member to check if they have start date
+      const [member] = await db
+        .select()
+        .from(teamMembers)
+        .where(eq(teamMembers.id, employeeId))
+        .limit(1)
+
+      if (!member || !member.startDate) {
+        return {
+          allowed: false,
+          reason: `The vacation date ${requestStartDate.toISOString().split('T')[0]} does not belong to any existing employment cycle. The employee needs a start date to automatically create cycles.`
+        }
+      }
+
+      return {
+        allowed: false,
+        reason: `The vacation date ${requestStartDate.toISOString().split('T')[0]} does not belong to any existing employment cycle and could not be automatically created. Please create an employment cycle for this date range first.`
+      }
+    }
+  }
+
+  // Check if this is a future cycle
+  const cycleStart = new Date(cycleForVacation.cycleStart)
+  const cycleEnd = new Date(cycleForVacation.cycleEnd)
+  const isFutureCycle = cycleStart > currentDate
+  const isActiveCycle = cycleForVacation.isActive
+
+  // If it's a future cycle or not active, we can't validate against current balance
+  // But we should still allow it if the cycle exists (it was just created)
+  if (isFutureCycle || !isActiveCycle) {
+    // For future or inactive cycles, we'll allow the approval
+    // Balance will be validated when that cycle becomes active
+    return { allowed: true }
+  }
+
+  // For active current cycles, validate using the balance calculator
   const balance = await calculateVacationBalance(employeeId, currentDate)
 
   if (!balance) {
-    return { allowed: false, reason: 'No active employment cycle found' }
+    // If no balance found but cycle exists and is active, allow it
+    // This handles edge cases
+    return { allowed: true }
   }
+
+  // Check if the vacation date is within the balance cycle
+  const balanceCycleStart = new Date(balance.cycleStartDate)
+  const balanceCycleEnd = new Date(balance.cycleEndDate)
+  
+  // If vacation is in a different cycle than the balance, allow it if the cycle exists
+  if (requestStartDate < balanceCycleStart || requestStartDate > balanceCycleEnd) {
+    // Vacation is in a different cycle, but the cycle exists, so allow it
+    return { allowed: true }
+  }
+
+  // Vacation is in the balance cycle, validate availability
+  // If cycles don't match but vacation is in balance cycle, use balance for validation
+  // This handles cases where multiple cycles might exist
 
   // Determine which half the request falls into
   const midpoint = new Date(balance.cycleMidpointDate)

@@ -406,13 +406,17 @@ runMigrations().then(async () => {
   await runOrphanedTeamMembersFix()
   
   app.listen(PORT, () => {
-    console.log(`[SERVER START] Server running on port ${PORT}`)
+    console.log('========================================')
+    console.log(`[SERVER START] ✅ Server running on port ${PORT}`)
     console.log(`[SERVER START] Environment: ${process.env.NODE_ENV || 'development'}`)
     console.log(`[SERVER START] CORS Origin: ${corsOrigin}`)
     console.log(`[SERVER START] Database URL: ${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`)
+    console.log('========================================')
   })
 }).catch((err) => {
-  console.error('[SERVER START] Failed to start server:', err)
+  console.error('========================================')
+  console.error('[SERVER START] ❌ Failed to start server:', err)
+  console.error('========================================')
   process.exit(1)
 })
 

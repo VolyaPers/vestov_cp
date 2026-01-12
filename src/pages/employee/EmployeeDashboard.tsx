@@ -109,9 +109,18 @@ export function EmployeeDashboard() {
         vacationDaysUsed += days
       })
 
-      // Calculate reimbursement stats
-      const approvedReimbursements = reimbursements.filter((r: any) => r.status === 'approved' || r.status === 'confirmed')
-      const pendingReimbursements = reimbursements.filter((r: any) => r.status === 'pending')
+      // Calculate reimbursement stats - only count reimbursements from current career year
+      // If careerYear is null (migration not run yet), count all approved reimbursements
+      const currentCareerYear = roadmap.yearsAtCompany
+      const currentYearReimbursements = reimbursements.filter((r: any) => {
+        // If careerYear is null/undefined, include all (fallback for before migration)
+        if (r.careerYear === null || r.careerYear === undefined) {
+          return true
+        }
+        return r.careerYear === currentCareerYear
+      })
+      const approvedReimbursements = currentYearReimbursements.filter((r: any) => r.status === 'approved' || r.status === 'confirmed')
+      const pendingReimbursements = currentYearReimbursements.filter((r: any) => r.status === 'pending')
       const reimbursementUsed = approvedReimbursements.reduce((sum: number, r: any) => sum + parseFloat(r.reimbursementAmount || '0'), 0)
 
       setData({
@@ -260,6 +269,7 @@ export function EmployeeDashboard() {
             </div>
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-600">Reimbursement Budget</p>
+              <p className="text-xs text-gray-500">Available for use:</p>
               <p className="text-3xl font-bold text-gray-900">
                 ${reimbursementRemaining} <span className="text-lg text-gray-500">/ ${data.roadmap.currentReimbursementLimit}</span>
               </p>

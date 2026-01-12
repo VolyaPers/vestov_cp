@@ -250,7 +250,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    const { username, fullName, email, role, position, avatarUrl, isActive } = req.body
+    const { username, fullName, email, role, position, avatarUrl, isActive, password } = req.body
 
     const updateData: {
       username?: string
@@ -260,6 +260,7 @@ router.put('/:id', async (req, res) => {
       position?: string | null
       avatarUrl?: string | null
       isActive?: boolean
+      password?: string
       updatedAt: Date
     } = { updatedAt: new Date() }
     if (username !== undefined) updateData.username = username
@@ -269,6 +270,11 @@ router.put('/:id', async (req, res) => {
     if (position !== undefined) updateData.position = position
     if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl
     if (isActive !== undefined) updateData.isActive = isActive
+    if (password !== undefined && password.trim() !== '') {
+      // Hash the password before storing
+      const hashedPassword = await bcrypt.hash(password, 10)
+      updateData.password = hashedPassword
+    }
 
     const updatedUser = await db
       .update(users)

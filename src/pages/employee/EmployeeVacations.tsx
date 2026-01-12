@@ -57,6 +57,13 @@ interface LeaveRequest {
   reason?: string
   decisionReason?: string
   requestedAt: string
+  isOldCycle?: boolean
+  isFutureCycle?: boolean
+  cycleInfo?: {
+    cycleStart: string
+    cycleEnd: string
+    isActive: boolean
+  } | null
 }
 
 interface LeaveType {
@@ -98,7 +105,21 @@ export function EmployeeVacations() {
   // Fetch vacation balance (50/50 rule)
   const { data: vacationBalance50, isLoading: isLoadingBalance, error: balanceError } = useQuery({
     queryKey: ['myVacationBalance'],
-    queryFn: api.getMyVacationBalance,
+    queryFn: async () => {
+      console.log('[EmployeeVacations] Fetching vacation balance...')
+      try {
+        const result = await api.getMyVacationBalance()
+        console.log('[EmployeeVacations] Vacation balance fetched:', result)
+        return result
+      } catch (error) {
+        console.error('[EmployeeVacations] Error fetching vacation balance:', error)
+        throw error
+      }
+    },
+    staleTime: 0, // Always consider data stale, so it refetches when invalidated
+    cacheTime: 0, // Don't cache, always fetch fresh data
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Refetch when component mounts
   })
 
   const [formData, setFormData] = useState({
@@ -120,9 +141,10 @@ export function EmployeeVacations() {
       try {
         const cycleData = await api.request(`/vacation/employment-cycle/${member.id}`)
         setEmploymentCycle(cycleData)
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Silently handle missing employment cycle - it's a valid state, not an error
-        if (error?.message?.includes('No active employment cycle found')) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (errorMessage.includes('No active employment cycle found')) {
           setEmploymentCycle(null)
         } else {
           console.error('Failed to load employment cycle:', error)
@@ -134,9 +156,10 @@ export function EmployeeVacations() {
         const balancesData = await api.request(`/vacation/balances/${member.id}`)
         // balancesData is {employmentCycle, balances}, extract balances array
         setLeaveBalances(Array.isArray(balancesData) ? balancesData : balancesData.balances || [])
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Silently handle missing employment cycle - it's a valid state, not an error
-        if (error?.message?.includes('No active employment cycle found')) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (errorMessage.includes('No active employment cycle found')) {
           setLeaveBalances([])
         } else {
           console.error('Failed to load balances:', error)
@@ -144,12 +167,35 @@ export function EmployeeVacations() {
         }
       }
 
-      // Load leave requests - use path parameter instead of query parameter
+      // Load leave requests - use requests endpoint which includes cycle information
       try {
         const requestsData = await api.request(`/vacation/requests/${member.id}`)
-        // Transform API response: {request, leaveType, ...} -> flat structure
+        // The API returns {request, leaveType, ...} structure with cycle information
+        interface ApiRequestItem {
+          request: {
+            id: number
+            startDate: string
+            endDate: string
+            daysCount: number
+            status: string
+            reason: string | null
+            decisionReason: string | null
+            createdAt: string
+          }
+          leaveType: {
+            name: string
+          }
+          isOldCycle?: boolean
+          isFutureCycle?: boolean
+          cycleInfo?: {
+            cycleStart: string
+            cycleEnd: string
+            isActive: boolean
+          } | null
+        }
+        
         const transformedRequests = Array.isArray(requestsData)
-          ? (requestsData as LeaveRequestResponse[]).map((item) => ({
+          ? (requestsData as ApiRequestItem[]).map((item) => ({
               id: item.request.id,
               leaveTypeName: item.leaveType.name,
               startDate: item.request.startDate,
@@ -158,7 +204,10 @@ export function EmployeeVacations() {
               status: item.request.status,
               reason: item.request.reason,
               decisionReason: item.request.decisionReason,
-              requestedAt: item.request.createdAt
+              requestedAt: item.request.createdAt,
+              isOldCycle: item.isOldCycle ?? false,
+              isFutureCycle: item.isFutureCycle ?? false,
+              cycleInfo: item.cycleInfo
             }))
           : []
         setLeaveRequests(transformedRequests)
@@ -596,6 +645,11 @@ export function EmployeeVacations() {
                           <div className="flex items-center gap-3 mb-2">
                             <h3 className="font-semibold text-gray-900">{request.leaveTypeName}</h3>
                             {getStatusBadge(request.status)}
+                            {(request.isOldCycle || request.isFutureCycle) && (
+                              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                                {request.isOldCycle ? 'Old Cycle' : 'Future Cycle'}
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-gray-600">
                             <div className="flex items-center gap-1">
@@ -607,6 +661,13 @@ export function EmployeeVacations() {
                               {request.totalDays} {request.totalDays === 1 ? 'day' : 'days'}
                             </div>
                           </div>
+                          {(request.isOldCycle || request.isFutureCycle) && (
+                            <p className="text-xs text-amber-600 mt-1 italic">
+                              {request.isOldCycle 
+                                ? 'This request is from a previous cycle and does not count toward your current balance.'
+                                : 'This request is from a future cycle and will count toward that cycle\'s balance.'}
+                            </p>
+                          )}
                           {request.reason && (
                             <p className="text-sm text-gray-600 mt-2">Reason: {request.reason}</p>
                           )}

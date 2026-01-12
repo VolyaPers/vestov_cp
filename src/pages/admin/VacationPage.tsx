@@ -103,7 +103,14 @@ export function VacationPage() {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       api.approveLeaveRequest(id, reason),
     onSuccess: () => {
+      console.log('[VacationPage] Request approved, invalidating queries...')
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
+      queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
+      // Force refetch immediately
+      queryClient.refetchQueries({ queryKey: ['myVacationBalance'] })
+      queryClient.refetchQueries({ queryKey: ['employeeVacationBalance'] })
+      console.log('[VacationPage] Queries invalidated and refetched')
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -116,6 +123,8 @@ export function VacationPage() {
       api.denyLeaveRequest(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
+      queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -128,6 +137,8 @@ export function VacationPage() {
       api.cancelLeaveRequest(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
+      queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -164,6 +175,8 @@ export function VacationPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
+      queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
       setShowCalendarModal(false)
       setCalendarFormData({
         employeeId: '',
@@ -202,6 +215,8 @@ export function VacationPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
+      queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
       setShowRequestModal(false)
       setRequestFormData({
         employeeId: '',

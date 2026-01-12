@@ -254,6 +254,7 @@ export const reimbursementRequests = pgTable('reimbursement_requests', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
   year: integer('year').notNull(), // Calendar year for the request
+  careerYear: integer('career_year').notNull(), // Career year (1-based) when the request was made
   expenseAmount: decimal('expense_amount', { precision: 10, scale: 2 }).notNull(), // Total expense
   reimbursementAmount: decimal('reimbursement_amount', { precision: 10, scale: 2 }).notNull(), // 50% of expense, capped
   description: text('description').notNull(), // What was purchased

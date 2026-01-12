@@ -56,8 +56,39 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
     const updateData: any = { updatedAt: new Date() }
     
     if (isAdmin) {
-      // Admins can update all fields
-      Object.assign(updateData, req.body)
+      // Admins can update all fields - explicitly process each field to ensure proper handling
+      const allowedFields = [
+        'name', 'role', 'email', 'phone', 'skills', 'bio', 
+        'hourlyRate', 'monthlyRate', 'isBillable', 'status', 
+        'clientId', 'startDate', 'location', 'avatarUrl'
+      ]
+      
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          // Handle date fields
+          if (field === 'startDate' && req.body[field]) {
+            updateData[field] = req.body[field] // Date string will be converted by Drizzle
+          }
+          // Handle boolean fields
+          else if (field === 'isBillable') {
+            updateData[field] = Boolean(req.body[field])
+          }
+          // Handle numeric fields
+          else if (field === 'hourlyRate' || field === 'monthlyRate') {
+            updateData[field] = req.body[field] !== null && req.body[field] !== '' 
+              ? req.body[field] 
+              : null
+          }
+          // Handle array fields
+          else if (field === 'skills') {
+            updateData[field] = Array.isArray(req.body[field]) ? req.body[field] : req.body[field]
+          }
+          // Handle other fields
+          else {
+            updateData[field] = req.body[field]
+          }
+        }
+      }
     } else {
       // Non-admins can only update specific fields (phone, location, bio)
       const allowedFields = ['phone', 'location', 'bio']

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { eq, and, or, between, gte, lte, sql, desc, asc, ne, inArray } from 'drizzle-orm'
+import type { Request } from 'express'
 import { db } from '../db/index.js'
 import {
   employmentCycles,
@@ -41,9 +42,12 @@ function calculateDays(startDate: Date, endDate: Date, halfDayStart: boolean, ha
 }
 
 // Get current employee profile (for logged-in team members)
-router.get('/my-profile', auth, async (req, res) => {
+router.get('/my-profile', auth, async (req: Request, res) => {
   try {
-    const user = (req as any).user
+    const user = req.user
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
 
     // Find team member by email
     const [member] = await db
@@ -63,10 +67,160 @@ router.get('/my-profile', auth, async (req, res) => {
   }
 })
 
-// Get vacation balance for current employee (50/50 milestone rule)
-router.get('/my-balance', auth, async (req, res) => {
+/**
+ * Helper function to ensure default leave types exist in the database
+ */
+async function ensureDefaultLeaveTypes(): Promise<void> {
+  const existingTypes = await db.select().from(leaveTypes)
+  const typeNames = existingTypes.map(t => t.name.toLowerCase())
+  
+  const defaultTypes = [
+    { name: 'Vacation', isDeductible: true, halfDaySupported: true },
+    { name: 'Sick Leave', isDeductible: true, halfDaySupported: true },
+    { name: 'Personal Leave', isDeductible: true, halfDaySupported: true },
+  ]
+  
+  // Create types that don't exist
+  const typesToCreate = defaultTypes.filter(
+    type => !typeNames.includes(type.name.toLowerCase())
+  )
+  
+  if (typesToCreate.length > 0) {
+    try {
+      await db.insert(leaveTypes).values(typesToCreate)
+      console.log(`Created ${typesToCreate.length} missing leave type(s)`)
+    } catch (error: unknown) {
+      // If types already exist (race condition), that's fine
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+      if (!errorMessage.includes('unique') && !errorCode.includes('23505')) {
+        console.error('Error creating leave types:', error)
+      }
+    }
+  }
+}
+
+/**
+ * Helper function to automatically create an employment cycle based on employee start date
+ */
+async function autoCreateEmploymentCycle(employeeId: number): Promise<boolean> {
   try {
-    const user = (req as any).user
+    // Ensure default leave types exist
+    await ensureDefaultLeaveTypes()
+
+    // Get team member with start date
+    const [member] = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.id, employeeId))
+      .limit(1)
+
+    if (!member || !member.startDate) {
+      return false // No start date available
+    }
+
+    // Check if cycle already exists
+    const existingCycles = await db
+      .select()
+      .from(employmentCycles)
+      .where(eq(employmentCycles.employeeId, employeeId))
+      .limit(1)
+
+    if (existingCycles.length > 0) {
+      return false // Cycle already exists
+    }
+
+    // Create cycle based on start date
+    const startDate = new Date(member.startDate)
+    const cycleStart = startDate.toISOString().split('T')[0]
+
+    // Calculate end date (1 year from start)
+    const endDate = new Date(startDate)
+    endDate.setFullYear(startDate.getFullYear() + 1)
+    const cycleEnd = endDate.toISOString().split('T')[0]
+
+    // Calculate midpoint (6 months from start) for 50/50 vacation split
+    const midpointDate = new Date(startDate)
+    midpointDate.setMonth(startDate.getMonth() + 6)
+    const cycleMidpoint = midpointDate.toISOString().split('T')[0]
+
+    // Determine if cycle should be active based on start date
+    // If start date is in the future, mark as inactive
+    const currentDate = new Date()
+    currentDate.setHours(0, 0, 0, 0) // Reset time to compare dates only
+    const startDateOnly = new Date(startDate)
+    startDateOnly.setHours(0, 0, 0, 0)
+    
+    const isActive = startDateOnly <= currentDate
+
+    // Create employment cycle
+    const [cycle] = await db
+      .insert(employmentCycles)
+      .values({
+        employeeId,
+        cycleStart,
+        cycleEnd,
+        cycleMidpoint,
+        isActive,
+      })
+      .returning()
+
+    // Get all leave types (should exist now after ensureDefaultLeaveTypes)
+    const allLeaveTypes = await db.select().from(leaveTypes)
+
+    // Get default allocation settings or use hardcoded defaults
+    const defaultSettings = await db
+      .select()
+      .from(leaveAllocationSettings)
+      .where(eq(leaveAllocationSettings.isDefault, true))
+      .limit(10)
+
+    // Create leave balances for each leave type
+    for (const leaveType of allLeaveTypes) {
+      // Try to find default setting for this leave type
+      const setting = defaultSettings.find(s => s.leaveTypeId === leaveType.id)
+      
+      // Default allocations if no setting found
+      const defaultAllocation: Record<string, number> = {
+        'Vacation': 20,
+        'Vacation Leave': 20,
+        'Sick Leave': 7,
+        'Sick': 7,
+        'Personal Leave': 5,
+        'Personal': 5,
+      }
+
+      const totalDays = setting 
+        ? parseFloat(setting.allocatedDays.toString())
+        : (defaultAllocation[leaveType.name] || 0)
+
+      await db.insert(leaveBalances).values({
+        employeeId,
+        employmentCycleId: cycle.id,
+        leaveTypeId: leaveType.id,
+        totalDays: totalDays.toString(),
+        adjustmentDays: '0',
+      })
+    }
+
+    console.log(`Auto-created employment cycle for employee ${employeeId} based on start date ${cycleStart}`)
+    return true
+  } catch (error) {
+    console.error('Error auto-creating employment cycle:', error)
+    return false
+  }
+}
+
+// Get vacation balance for current employee (50/50 milestone rule)
+router.get('/my-balance', auth, async (req: Request, res) => {
+  try {
+    const user = req.user
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+
+    // Ensure default leave types exist first
+    await ensureDefaultLeaveTypes()
 
     // Find team member by email
     const [member] = await db
@@ -76,13 +230,36 @@ router.get('/my-balance', auth, async (req, res) => {
       .limit(1)
 
     if (!member) {
+      console.log(`[GET /my-balance] Member not found for email: ${user.email}`)
       return res.status(404).json({ error: 'Employee profile not found' })
     }
 
+    // First, check if employee has any cycles at all
+    const existingCycles = await db
+      .select()
+      .from(employmentCycles)
+      .where(eq(employmentCycles.employeeId, member.id))
+      .limit(1)
+    
+    // If no cycles exist and employee has start date, try to auto-create cycle
+    if (existingCycles.length === 0 && member.startDate) {
+      await autoCreateEmploymentCycle(member.id)
+    }
+    
     const balance = await calculateVacationBalance(member.id)
 
     if (!balance) {
-      return res.status(404).json({ error: 'No active employment cycle found' })
+      // Provide a more helpful error message
+      if (member.startDate) {
+        const startDate = new Date(member.startDate)
+        const currentDate = new Date()
+        if (startDate > currentDate) {
+          return res.status(404).json({ 
+            error: `Your employment cycle starts on ${startDate.toLocaleDateString()}. Your vacation balance will be available once your employment begins.` 
+          })
+        }
+      }
+      return res.status(404).json({ error: 'Please contact an administrator to set up your employment cycle.' })
     }
 
     res.json(balance)
@@ -146,9 +323,12 @@ router.get('/balance/:employeeId', auth, async (req, res) => {
 })
 
 // Get current employee's vacation requests
-router.get('/my-requests', auth, async (req, res) => {
+router.get('/my-requests', auth, async (req: Request, res) => {
   try {
-    const user = (req as any).user
+    const user = req.user
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
 
     // Find team member by email
     const [member] = await db
@@ -168,27 +348,81 @@ router.get('/my-requests', auth, async (req, res) => {
       .where(eq(leaveRequests.employeeId, member.id))
       .orderBy(desc(leaveRequests.createdAt))
 
+    // Get all cycles for this employee to determine which cycle each request belongs to
+    const allCycles = await db
+      .select()
+      .from(employmentCycles)
+      .where(eq(employmentCycles.employeeId, member.id))
+      .orderBy(employmentCycles.cycleStart)
+
+    // Get current cycle (the one that contains today's date or the most recent)
+    const currentDate = new Date()
+    const currentCycle = allCycles.find(c => {
+      const cStart = new Date(c.cycleStart)
+      const cEnd = new Date(c.cycleEnd)
+      return currentDate >= cStart && currentDate <= cEnd
+    }) || allCycles[allCycles.length - 1]
+
     // Get leave types separately and map them
     const leaveTypesData = await db.select().from(leaveTypes)
     const leaveTypeMap = new Map(leaveTypesData.map(lt => [lt.id, lt.name]))
 
-    // Map requests to include leave type name
-    const requestsWithTypes = requests.map(req => ({
-      id: req.id,
-      employeeId: req.employeeId,
-      leaveTypeId: req.leaveTypeId,
-      startDate: req.startDate,
-      endDate: req.endDate,
-      halfDayStart: req.halfDayStart,
-      halfDayEnd: req.halfDayEnd,
-      totalDays: req.daysCount,
-      reason: req.reason,
-      status: req.status,
-      decisionNote: req.decisionReason,
-      createdAt: req.createdAt,
-      updatedAt: req.updatedAt,
-      type: leaveTypeMap.get(req.leaveTypeId) || 'Unknown'
-    }))
+    // Map requests to include leave type name and cycle information
+    const requestsWithTypes = requests.map(req => {
+      // Find which cycle this request belongs to
+      const requestDate = new Date(req.startDate)
+      const requestCycle = allCycles.find(c => {
+        const cStart = new Date(c.cycleStart)
+        const cEnd = new Date(c.cycleEnd)
+        return requestDate >= cStart && requestDate <= cEnd
+      })
+
+      // Determine if this request is from a different cycle than the current one
+      let isOldCycle = false
+      let isFutureCycle = false
+      
+      if (requestCycle && currentCycle) {
+        if (requestCycle.id !== currentCycle.id) {
+          const requestCycleEnd = new Date(requestCycle.cycleEnd)
+          const currentCycleStart = new Date(currentCycle.cycleStart)
+          const currentCycleEnd = new Date(currentCycle.cycleEnd)
+          
+          // Old cycle: request cycle ended before current cycle started
+          if (requestCycleEnd < currentCycleStart) {
+            isOldCycle = true
+          }
+          // Future cycle: request cycle starts after current cycle ends
+          else if (new Date(requestCycle.cycleStart) > currentCycleEnd) {
+            isFutureCycle = true
+          }
+        }
+      }
+
+      return {
+        id: req.id,
+        employeeId: req.employeeId,
+        leaveTypeId: req.leaveTypeId,
+        startDate: req.startDate,
+        endDate: req.endDate,
+        halfDayStart: req.halfDayStart,
+        halfDayEnd: req.halfDayEnd,
+        totalDays: req.daysCount,
+        reason: req.reason,
+        status: req.status,
+        decisionNote: req.decisionReason,
+        createdAt: req.createdAt,
+        updatedAt: req.updatedAt,
+        type: leaveTypeMap.get(req.leaveTypeId) || 'Unknown',
+        cycleId: requestCycle?.id || null,
+        isOldCycle: isOldCycle,
+        isFutureCycle: isFutureCycle,
+        cycleInfo: requestCycle ? {
+          cycleStart: requestCycle.cycleStart,
+          cycleEnd: requestCycle.cycleEnd,
+          isActive: requestCycle.isActive
+        } : null
+      }
+    })
 
     res.json(requestsWithTypes)
   } catch (error) {
@@ -465,8 +699,73 @@ router.get('/requests/:employeeId', auth, async (req, res) => {
       .orderBy(desc(leaveRequests.createdAt))
     
     const requests = await query
+
+    // Get all cycles for this employee to determine which cycle each request belongs to
+    const allCycles = await db
+      .select()
+      .from(employmentCycles)
+      .where(eq(employmentCycles.employeeId, parseInt(employeeId)))
+      .orderBy(employmentCycles.cycleStart)
+
+    // Get current cycle (the one that contains today's date or the most recent)
+    const currentDate = new Date()
+    const currentCycle = allCycles.find(c => {
+      const cStart = new Date(c.cycleStart)
+      const cEnd = new Date(c.cycleEnd)
+      return currentDate >= cStart && currentDate <= cEnd
+    }) || allCycles[allCycles.length - 1]
+
+    // Add cycle information to each request
+    interface RequestWithDetails {
+      request: typeof leaveRequests.$inferSelect
+      leaveType: typeof leaveTypes.$inferSelect
+      requestedBy: { id: number; username: string; fullName: string; email: string }
+      decisionBy: { id: number; username: string; fullName: string; email: string } | null
+    }
     
-    res.json(requests)
+    const requestsWithCycleInfo = requests.map((item: RequestWithDetails) => {
+      const requestDate = new Date(item.request.startDate)
+      const requestCycle = allCycles.find(c => {
+        const cStart = new Date(c.cycleStart)
+        const cEnd = new Date(c.cycleEnd)
+        return requestDate >= cStart && requestDate <= cEnd
+      })
+
+      // Determine if this request is from a different cycle than the current one
+      let isOldCycle = false
+      let isFutureCycle = false
+      
+      if (requestCycle && currentCycle) {
+        if (requestCycle.id !== currentCycle.id) {
+          const requestCycleEnd = new Date(requestCycle.cycleEnd)
+          const currentCycleStart = new Date(currentCycle.cycleStart)
+          const currentCycleEnd = new Date(currentCycle.cycleEnd)
+          
+          // Old cycle: request cycle ended before current cycle started
+          if (requestCycleEnd < currentCycleStart) {
+            isOldCycle = true
+          }
+          // Future cycle: request cycle starts after current cycle ends
+          else if (new Date(requestCycle.cycleStart) > currentCycleEnd) {
+            isFutureCycle = true
+          }
+        }
+      }
+
+      return {
+        ...item,
+        cycleId: requestCycle?.id || null,
+        isOldCycle: isOldCycle,
+        isFutureCycle: isFutureCycle,
+        cycleInfo: requestCycle ? {
+          cycleStart: requestCycle.cycleStart,
+          cycleEnd: requestCycle.cycleEnd,
+          isActive: requestCycle.isActive
+        } : null
+      }
+    })
+    
+    res.json(requestsWithCycleInfo)
   } catch (error) {
     console.error('Error fetching leave requests:', error)
     res.status(500).json({ error: 'Failed to fetch leave requests' })
@@ -665,6 +964,8 @@ router.post('/requests', auth, async (req, res) => {
     }
 
     // Check for overlapping requests
+    // Only check for pending or approved requests (exclude denied and cancelled)
+    // Two date ranges overlap if: start1 <= end2 AND start2 <= end1
     const overlapping = await db
       .select()
       .from(leaveRequests)
@@ -676,20 +977,9 @@ router.post('/requests', auth, async (req, res) => {
             eq(leaveRequests.status, 'pending'),
             eq(leaveRequests.status, 'approved')
           ),
-          or(
-            and(
-              lte(leaveRequests.startDate, startDate),
-              gte(leaveRequests.endDate, startDate)
-            ),
-            and(
-              lte(leaveRequests.startDate, endDate),
-              gte(leaveRequests.endDate, endDate)
-            ),
-            and(
-              gte(leaveRequests.startDate, startDate),
-              lte(leaveRequests.endDate, endDate)
-            )
-          )
+          // Simplified overlap check: (existing_start <= new_end) AND (existing_end >= new_start)
+          lte(leaveRequests.startDate, endDate),
+          gte(leaveRequests.endDate, startDate)
         )
       )
 
@@ -763,6 +1053,8 @@ router.post('/admin/create-and-approve', auth, async (req, res) => {
     )
     
     // Check for overlapping requests
+    // Only check for pending or approved requests (exclude denied and cancelled)
+    // Two date ranges overlap if: start1 <= end2 AND start2 <= end1
     const overlapping = await db
       .select()
       .from(leaveRequests)
@@ -774,20 +1066,9 @@ router.post('/admin/create-and-approve', auth, async (req, res) => {
             eq(leaveRequests.status, 'pending'),
             eq(leaveRequests.status, 'approved')
           ),
-          or(
-            and(
-              lte(leaveRequests.startDate, startDate),
-              gte(leaveRequests.endDate, startDate)
-            ),
-            and(
-              lte(leaveRequests.startDate, endDate),
-              gte(leaveRequests.endDate, endDate)
-            ),
-            and(
-              gte(leaveRequests.startDate, startDate),
-              lte(leaveRequests.endDate, endDate)
-            )
-          )
+          // Simplified overlap check: (existing_start <= new_end) AND (existing_end >= new_start)
+          lte(leaveRequests.startDate, endDate),
+          gte(leaveRequests.endDate, startDate)
         )
       )
     
@@ -866,6 +1147,37 @@ router.put('/requests/:requestId', auth, async (req, res) => {
     // Validate dates if provided
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       return res.status(400).json({ error: 'Start date must be before or equal to end date' })
+    }
+
+    // Use provided dates or existing dates
+    const finalStartDate = startDate || existing[0].startDate
+    const finalEndDate = endDate || existing[0].endDate
+    const finalLeaveTypeId = leaveTypeId !== undefined ? parseInt(leaveTypeId) : existing[0].leaveTypeId
+    const finalEmployeeId = employeeId !== undefined ? parseInt(employeeId) : existing[0].employeeId
+
+    // Check for overlapping requests (excluding the current request being updated)
+    const overlapping = await db
+      .select()
+      .from(leaveRequests)
+      .where(
+        and(
+          eq(leaveRequests.employeeId, finalEmployeeId),
+          eq(leaveRequests.leaveTypeId, finalLeaveTypeId),
+          ne(leaveRequests.id, parseInt(requestId)), // Exclude the current request
+          or(
+            eq(leaveRequests.status, 'pending'),
+            eq(leaveRequests.status, 'approved')
+          ),
+          // Simplified overlap check: (existing_start <= new_end) AND (existing_end >= new_start)
+          lte(leaveRequests.startDate, finalEndDate),
+          gte(leaveRequests.endDate, finalStartDate)
+        )
+      )
+
+    if (overlapping.length > 0) {
+      return res.status(400).json({
+        error: 'Overlapping leave request exists for the same dates and leave type'
+      })
     }
 
     // Calculate days if dates are provided
@@ -974,6 +1286,9 @@ router.put('/requests/:requestId/status', auth, async (req, res) => {
     
     // If approving, validate using 50/50 milestone rule
     if (status === 'approved') {
+      console.log(`[APPROVE REQUEST] Approving request ${requestId} for employee ${request.employeeId}`)
+      console.log(`[APPROVE REQUEST] Request details: ${request.startDate} - ${request.endDate}, ${request.daysCount} days`)
+      
       // Use the 50/50 validation function
       const validation = await validateVacationRequest(
         request.employeeId,
@@ -982,13 +1297,54 @@ router.put('/requests/:requestId/status', auth, async (req, res) => {
       )
 
       if (!validation.allowed) {
+        console.log(`[APPROVE REQUEST] Validation failed: ${validation.reason}`)
         return res.status(400).json({
           error: validation.reason || 'Insufficient leave balance'
         })
       }
+      
+      console.log(`[APPROVE REQUEST] Validation passed, updating request status to approved`)
+
+      // Find the cycle that contains the vacation date
+      const vacationDate = new Date(request.startDate)
+      const allCycles = await db
+        .select()
+        .from(employmentCycles)
+        .where(eq(employmentCycles.employeeId, request.employeeId))
+        .orderBy(employmentCycles.cycleStart)
+
+      const cycleForVacation = allCycles.find(c => {
+        const cStart = new Date(c.cycleStart)
+        const cEnd = new Date(c.cycleEnd)
+        return vacationDate >= cStart && vacationDate <= cEnd
+      })
+
+      // If the vacation is in a future cycle, activate that cycle and deactivate older ones
+      if (cycleForVacation && !cycleForVacation.isActive) {
+        const cycleStart = new Date(cycleForVacation.cycleStart)
+        const currentDate = new Date()
+        
+        // If cycle is in the future or starts today, activate it
+        if (cycleStart >= currentDate || cycleStart.toDateString() === currentDate.toDateString()) {
+          // Deactivate all other cycles for this employee
+          await db
+            .update(employmentCycles)
+            .set({ isActive: false })
+            .where(eq(employmentCycles.employeeId, request.employeeId))
+
+          // Activate the cycle for this vacation
+          await db
+            .update(employmentCycles)
+            .set({ isActive: true })
+            .where(eq(employmentCycles.id, cycleForVacation.id))
+
+          console.log(`Activated cycle ${cycleForVacation.id} for employee ${request.employeeId} due to approved vacation`)
+        }
+      }
     }
     
     // Update the request
+    console.log(`[APPROVE REQUEST] Updating request ${requestId} status to ${status}`)
     const [updatedRequest] = await db
       .update(leaveRequests)
       .set({
@@ -1001,12 +1357,35 @@ router.put('/requests/:requestId/status', auth, async (req, res) => {
       .where(eq(leaveRequests.id, parseInt(requestId)))
       .returning()
     
+    console.log(`[APPROVE REQUEST] Request updated successfully:`, {
+      id: updatedRequest.id,
+      status: updatedRequest.status,
+      employeeId: updatedRequest.employeeId,
+      startDate: updatedRequest.startDate,
+      daysCount: updatedRequest.daysCount
+    })
+    
     // Create audit event
     await db.insert(leaveRequestEvents).values({
       leaveRequestId: parseInt(requestId),
       status,
       actorId: user.id,
       note: decisionReason || `Request ${status}`,
+    })
+    
+    // Verify the request was actually updated by querying it again
+    const [verifiedRequest] = await db
+      .select()
+      .from(leaveRequests)
+      .where(eq(leaveRequests.id, parseInt(requestId)))
+      .limit(1)
+    
+    console.log(`[APPROVE REQUEST] Verified request status in DB:`, {
+      id: verifiedRequest.id,
+      status: verifiedRequest.status,
+      employeeId: verifiedRequest.employeeId,
+      startDate: verifiedRequest.startDate,
+      daysCount: verifiedRequest.daysCount
     })
     
     res.json(updatedRequest)

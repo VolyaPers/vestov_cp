@@ -196,17 +196,20 @@ export function TeamOverview() {
     try {
       setIsSubmitting(true)
       // Convert local TeamMember format to UpdateTeamMemberData
-      const updateData: UpdateTeamMemberData = {
+      // Include ALL fields that can be edited, especially startDate, phone, and isBillable
+      const updateData: UpdateTeamMemberData & { role?: string; startDate?: string; phone?: string; isBillable?: boolean } = {
         name: editingMember.name,
         email: editingMember.email,
-        position: editingMember.role,
+        role: editingMember.role,
         skills: editingMember.skills || [],
         hourlyRate: typeof editingMember.hourlyRate === 'string' ? parseFloat(editingMember.hourlyRate || '0') : editingMember.hourlyRate || 0,
-        experienceLevel: 'middle', // Should be selectable in UI
         status: editingMember.status as TeamMemberStatus,
         bio: editingMember.bio || undefined,
         location: editingMember.location || undefined,
-        clientId: editingMember.clientId
+        clientId: editingMember.clientId,
+        startDate: editingMember.startDate, // Include startDate
+        phone: editingMember.phone || undefined, // Include phone
+        isBillable: editingMember.isBillable, // Include isBillable
       }
       await api.updateTeamMember(editingMember.id.toString(), updateData)
       await loadTeamMembers()

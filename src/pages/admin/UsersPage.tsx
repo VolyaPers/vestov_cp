@@ -204,6 +204,7 @@ export function UsersPage() {
         email: string
         role: 'admin' | 'team_member' | 'client'
         position?: string
+        password?: string
       } = {
         username: userFormData.username,
         fullName: userFormData.fullName,
@@ -211,6 +212,9 @@ export function UsersPage() {
         role: userFormData.role,
       }
       if (userFormData.position) updateData.position = userFormData.position
+      if (userFormData.password && userFormData.password.trim() !== '') {
+        updateData.password = userFormData.password
+      }
 
       await api.updateUser(isEditingUser.id, updateData)
 

@@ -191,7 +191,12 @@ export interface CreateTeamMemberData {
   clientId?: number
 }
 
-export interface UpdateTeamMemberData extends Partial<CreateTeamMemberData> {}
+export interface UpdateTeamMemberData extends Partial<CreateTeamMemberData> {
+  role?: string // Alias for position in team members
+  startDate?: string
+  phone?: string
+  isBillable?: boolean
+}
 
 export interface CreateLeaveRequestData {
   employeeId: number
