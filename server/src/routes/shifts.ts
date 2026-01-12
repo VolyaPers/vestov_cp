@@ -54,11 +54,34 @@ router.get('/current', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' })
     }
 
-    console.log(`[GET /shifts/current] Request from user: ${req.user.email}, userId: ${req.user.id}`)
+    console.log(`[GET /shifts/current] Request from user: ${req.user.email}, userId: ${req.user.id}, teamMemberId: ${(req.user as any).teamMemberId}`)
 
-    const employee = await getEmployeeByUser(req.user.email!)
+    // Try to get employee by teamMemberId first (more reliable)
+    let employee
+    if ((req.user as any).teamMemberId) {
+      try {
+        const [member] = await db
+          .select()
+          .from(teamMembers)
+          .where(eq(teamMembers.id, (req.user as any).teamMemberId))
+          .limit(1)
+        employee = member
+        console.log(`[GET /shifts/current] Found employee by teamMemberId: ${employee?.id}, ${employee?.name}`)
+      } catch (error) {
+        console.error('[GET /shifts/current] Error fetching by teamMemberId:', error)
+      }
+    }
+
+    // Fallback to email lookup if teamMemberId didn't work
     if (!employee) {
-      console.log(`[GET /shifts/current] Employee not found for email: ${req.user.email}`)
+      employee = await getEmployeeByUser(req.user.email!)
+      if (employee) {
+        console.log(`[GET /shifts/current] Found employee by email: ${employee.id}, ${employee.name}`)
+      }
+    }
+
+    if (!employee) {
+      console.log(`[GET /shifts/current] Employee not found for email: ${req.user.email}, teamMemberId: ${(req.user as any).teamMemberId}`)
       const origin = req.headers.origin
       if (origin) {
         res.header('Access-Control-Allow-Origin', origin)

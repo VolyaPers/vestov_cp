@@ -224,20 +224,48 @@ router.get('/my-balance', auth, async (req: Request, res) => {
       return res.status(401).json({ error: 'Authentication required' })
     }
 
-    console.log(`[GET /my-balance] Request from user: ${user.email}, userId: ${user.id}`)
+    console.log(`[GET /my-balance] Request from user: ${user.email}, userId: ${user.id}, teamMemberId: ${(user as any).teamMemberId}`)
 
     // Ensure default leave types exist first
     await ensureDefaultLeaveTypes()
 
-    // Find team member by email
-    const [member] = await db
-      .select()
-      .from(teamMembers)
-      .where(eq(teamMembers.email, user.email))
-      .limit(1)
+    // Try to get team member by teamMemberId first (more reliable)
+    let member
+    if ((user as any).teamMemberId) {
+      try {
+        const [foundMember] = await db
+          .select()
+          .from(teamMembers)
+          .where(eq(teamMembers.id, (user as any).teamMemberId))
+          .limit(1)
+        member = foundMember
+        if (member) {
+          console.log(`[GET /my-balance] Found member by teamMemberId: ${member.id}, ${member.name}`)
+        }
+      } catch (error) {
+        console.error('[GET /my-balance] Error fetching by teamMemberId:', error)
+      }
+    }
+
+    // Fallback to email lookup if teamMemberId didn't work
+    if (!member) {
+      try {
+        const [foundMember] = await db
+          .select()
+          .from(teamMembers)
+          .where(eq(teamMembers.email, user.email))
+          .limit(1)
+        member = foundMember
+        if (member) {
+          console.log(`[GET /my-balance] Found member by email: ${member.id}, ${member.name}`)
+        }
+      } catch (error) {
+        console.error('[GET /my-balance] Error fetching by email:', error)
+      }
+    }
 
     if (!member) {
-      console.log(`[GET /my-balance] Member not found for email: ${user.email}`)
+      console.log(`[GET /my-balance] Member not found for email: ${user.email}, teamMemberId: ${(user as any).teamMemberId}`)
       const origin = req.headers.origin
       if (origin) {
         res.header('Access-Control-Allow-Origin', origin)
