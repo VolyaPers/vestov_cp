@@ -533,89 +533,195 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
     }
 
     const userId = Number(id)
+    console.log(`[HARD DELETE] Looking for user with ID: ${userId}`)
+    
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
     if (!user) {
+      console.log(`[HARD DELETE] User ${userId} not found`)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(404).json({ error: 'User not found' })
     }
 
-    await db.transaction(async (tx) => {
-      console.log(`[HARD DELETE] Starting deletion of user ${userId} (${user.email})`)
+    console.log(`[HARD DELETE] Found user: ${user.email}, teamMemberId: ${user.teamMemberId}`)
 
-      // Delete client assignments
-      const deletedAssignments = await tx.delete(clientUsers).where(eq(clientUsers.userId, userId))
-      console.log(`[HARD DELETE] Deleted client assignments`)
+    try {
+      await db.transaction(async (tx) => {
+        console.log(`[HARD DELETE] Starting deletion of user ${userId} (${user.email})`)
 
-      // Delete messages (sender or receiver)
-      await tx.delete(messages).where(
-        sql`${messages.senderId} = ${userId} OR ${messages.receiverId} = ${userId}`
-      )
+      try {
+        // Delete client assignments
+        await tx.delete(clientUsers).where(eq(clientUsers.userId, userId))
+        console.log(`[HARD DELETE] Deleted client assignments`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting client assignments:', error)
+        throw error
+      }
 
-      // Delete service requests
-      await tx.delete(serviceRequests).where(eq(serviceRequests.userId, userId))
-
-      // Delete financial data rows tied to user
-      await tx.delete(financialData).where(eq(financialData.userId, userId))
-
-      // Delete feedback linked to user
-      await tx
-        .delete(feedback)
-        .where(sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1}`)
-
-      // Delete time entries by user or team member
-      await tx
-        .delete(timeEntries)
-        .where(
-          sql`${timeEntries.userId} = ${userId} OR ${
-            user.teamMemberId ? sql`${timeEntries.teamMemberId} = ${user.teamMemberId}` : sql`false`
-          }`
+      try {
+        // Delete messages (sender or receiver)
+        await tx.delete(messages).where(
+          sql`${messages.senderId} = ${userId} OR ${messages.receiverId} = ${userId}`
         )
+        console.log(`[HARD DELETE] Deleted messages`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting messages:', error)
+        // Continue - messages might not exist
+      }
+
+      try {
+        // Delete service requests
+        await tx.delete(serviceRequests).where(eq(serviceRequests.userId, userId))
+        console.log(`[HARD DELETE] Deleted service requests`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting service requests:', error)
+        // Continue - service requests might not exist
+      }
+
+      try {
+        // Delete financial data rows tied to user
+        await tx.delete(financialData).where(eq(financialData.userId, userId))
+        console.log(`[HARD DELETE] Deleted financial data`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting financial data:', error)
+        // Continue - financial data might not exist
+      }
+
+      try {
+        // Delete feedback linked to user
+        await tx
+          .delete(feedback)
+          .where(sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1}`)
+        console.log(`[HARD DELETE] Deleted feedback`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting feedback:', error)
+        // Continue - feedback might not exist
+      }
+
+      try {
+        // Delete time entries by user or team member
+        await tx
+          .delete(timeEntries)
+          .where(
+            sql`${timeEntries.userId} = ${userId} OR ${
+              user.teamMemberId ? sql`${timeEntries.teamMemberId} = ${user.teamMemberId}` : sql`false`
+            }`
+          )
+        console.log(`[HARD DELETE] Deleted time entries`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting time entries:', error)
+        // Continue - time entries might not exist
+      }
 
       // If linked team member, delete related employment/leave/shift records
       if (user.teamMemberId) {
         const tmId = user.teamMemberId
+        console.log(`[HARD DELETE] Deleting team member data for teamMemberId: ${tmId}`)
 
-        // Delete leave balances/requests and employment cycles
-        await tx.delete(leaveBalances).where(eq(leaveBalances.employeeId, tmId))
-        await tx
-          .delete(leaveRequestEvents)
-          .where(
-            inArray(
-              leaveRequestEvents.leaveRequestId,
-              tx
-                .select({ id: leaveRequests.id })
-                .from(leaveRequests)
-                .where(eq(leaveRequests.employeeId, tmId))
-            )
-          )
-        await tx.delete(leaveRequests).where(eq(leaveRequests.employeeId, tmId))
-        await tx.delete(employmentCycles).where(eq(employmentCycles.employeeId, tmId))
-
-        // Delete shift schedules
-        await tx.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, tmId))
-
-        // Delete shifts and break records
-        const shiftIds = await tx
-          .select({ id: shifts.id })
-          .from(shifts)
-          .where(eq(shifts.employeeId, tmId))
-
-        if (shiftIds.length > 0) {
-          const ids = shiftIds.map((s) => s.id)
-          await tx.delete(shiftBreaks).where(inArray(shiftBreaks.shiftId, ids))
-          await tx.delete(shifts).where(inArray(shifts.id, ids))
-        } else {
-          await tx.delete(shifts).where(eq(shifts.employeeId, tmId))
+        try {
+          // Delete leave balances/requests and employment cycles
+          await tx.delete(leaveBalances).where(eq(leaveBalances.employeeId, tmId))
+          console.log(`[HARD DELETE] Deleted leave balances`)
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting leave balances:', error)
+          // Continue
         }
 
-        // Delete team member record
-        await tx.delete(teamMembers).where(eq(teamMembers.id, tmId))
-        console.log(`[HARD DELETE] Deleted team member ${tmId}`)
+        try {
+          await tx
+            .delete(leaveRequestEvents)
+            .where(
+              inArray(
+                leaveRequestEvents.leaveRequestId,
+                tx
+                  .select({ id: leaveRequests.id })
+                  .from(leaveRequests)
+                  .where(eq(leaveRequests.employeeId, tmId))
+              )
+            )
+          console.log(`[HARD DELETE] Deleted leave request events`)
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting leave request events:', error)
+          // Continue
+        }
+
+        try {
+          await tx.delete(leaveRequests).where(eq(leaveRequests.employeeId, tmId))
+          console.log(`[HARD DELETE] Deleted leave requests`)
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting leave requests:', error)
+          // Continue
+        }
+
+        try {
+          await tx.delete(employmentCycles).where(eq(employmentCycles.employeeId, tmId))
+          console.log(`[HARD DELETE] Deleted employment cycles`)
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting employment cycles:', error)
+          // Continue
+        }
+
+        try {
+          // Delete shift schedules
+          await tx.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, tmId))
+          console.log(`[HARD DELETE] Deleted shift schedules`)
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting shift schedules:', error)
+          // Continue
+        }
+
+        try {
+          // Delete shifts and break records
+          const shiftIds = await tx
+            .select({ id: shifts.id })
+            .from(shifts)
+            .where(eq(shifts.employeeId, tmId))
+
+          if (shiftIds.length > 0) {
+            const ids = shiftIds.map((s) => s.id)
+            await tx.delete(shiftBreaks).where(inArray(shiftBreaks.shiftId, ids))
+            await tx.delete(shifts).where(inArray(shifts.id, ids))
+            console.log(`[HARD DELETE] Deleted ${shiftIds.length} shift(s) and breaks`)
+          } else {
+            await tx.delete(shifts).where(eq(shifts.employeeId, tmId))
+            console.log(`[HARD DELETE] Deleted shifts (no breaks found)`)
+          }
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting shifts:', error)
+          // Continue
+        }
+
+        try {
+          // Delete team member record
+          await tx.delete(teamMembers).where(eq(teamMembers.id, tmId))
+          console.log(`[HARD DELETE] Deleted team member ${tmId}`)
+        } catch (error) {
+          console.error('[HARD DELETE] Error deleting team member:', error)
+          throw error // This is critical, so throw
+        }
       }
 
-      // Delete user - THIS MUST BE LAST to avoid foreign key issues
-      const deletedUsers = await tx.delete(users).where(eq(users.id, userId))
-      console.log(`[HARD DELETE] Deleted user ${userId} (${user.email})`)
-    })
+      try {
+        // Delete user - THIS MUST BE LAST to avoid foreign key issues
+        await tx.delete(users).where(eq(users.id, userId))
+        console.log(`[HARD DELETE] Deleted user ${userId} (${user.email})`)
+      } catch (error) {
+        console.error('[HARD DELETE] Error deleting user:', error)
+        throw error // This is critical, so throw
+      }
+      })
+      console.log(`[HARD DELETE] Transaction completed successfully`)
+    } catch (transactionError) {
+      const txErr = transactionError as Error
+      console.error('========================================')
+      console.error('[HARD DELETE] TRANSACTION ERROR:', txErr.message)
+      console.error('[HARD DELETE] Transaction error stack:', txErr.stack)
+      console.error('========================================')
+      throw transactionError // Re-throw to be caught by outer catch
+    }
 
     // Verify deletion - check by ID and email/username to be thorough
     const [verifyById] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
@@ -647,7 +753,13 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
     
     res.json({ message: 'User and related data deleted successfully' })
   } catch (error) {
-    console.error('[HARD DELETE] Error hard-deleting user:', error)
+    const err = error as Error
+    console.error('========================================')
+    console.error('[HARD DELETE] ERROR:', err.message)
+    console.error('[HARD DELETE] Stack:', err.stack)
+    console.error('[HARD DELETE] User ID:', req.params.id)
+    console.error('[HARD DELETE] Auth User:', req.user ? { id: req.user.id, role: req.user.role } : 'no user')
+    console.error('========================================')
     
     // Set CORS headers on error too
     const origin = req.headers.origin
@@ -656,7 +768,15 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
       res.header('Access-Control-Allow-Credentials', 'true')
     }
     
-    res.status(500).json({ error: 'Failed to delete user' })
+    // Provide more specific error message if possible
+    let errorMessage = 'Failed to delete user'
+    if (err.message.includes('foreign key') || err.message.includes('constraint')) {
+      errorMessage = 'Cannot delete user: user has related records that must be deleted first'
+    } else if (err.message) {
+      errorMessage = `Failed to delete user: ${err.message}`
+    }
+    
+    res.status(500).json({ error: errorMessage })
   }
 })
 
