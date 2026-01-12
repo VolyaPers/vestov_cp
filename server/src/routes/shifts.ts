@@ -36,13 +36,28 @@ async function getEmployeeByUser(email: string) {
 router.get('/current', async (req, res) => {
   try {
     if (!req.user) {
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(401).json({ error: 'Not authenticated' })
     }
 
+    console.log(`[GET /shifts/current] Request from user: ${req.user.email}, userId: ${req.user.id}`)
+
     const employee = await getEmployeeByUser(req.user.email!)
     if (!employee) {
-      return res.status(404).json({ error: 'Employee not found' })
+      console.log(`[GET /shifts/current] Employee not found for email: ${req.user.email}`)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
+      return res.json({ shift: null, hasActiveShift: false }) // Return empty instead of 404 for better UX
     }
+
+    console.log(`[GET /shifts/current] Found employee: ${employee.id}, ${employee.name}`)
 
     // Find active shift (status = 'active' or 'on_break', and end_time is null)
     const activeShifts = await db
@@ -60,6 +75,11 @@ router.get('/current', async (req, res) => {
     const activeShift = activeShifts[0]
 
     if (!activeShift) {
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.json({ shift: null, hasActiveShift: false })
     }
 
@@ -76,13 +96,25 @@ router.get('/current', async (req, res) => {
       .orderBy(desc(shiftBreaks.startTime))
       .limit(1)
 
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     return res.json({
       shift: activeShift,
       activeBreak: activeBreaks[0] || null,
       hasActiveShift: true
     })
   } catch (error) {
-    console.error('Error fetching current shift:', error)
+    console.error('[GET /shifts/current] Error fetching current shift:', error)
+    const err = error as Error
+    console.error('[GET /shifts/current] Error stack:', err.stack)
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.status(500).json({ error: 'Failed to fetch current shift' })
   }
 })
@@ -94,6 +126,11 @@ router.post('/start', async (req, res) => {
 
     if (!req.user) {
       console.log('[SHIFT START] Not authenticated')
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(401).json({ error: 'Not authenticated' })
     }
 
@@ -103,6 +140,11 @@ router.post('/start', async (req, res) => {
 
     if (!employee) {
       console.log('[SHIFT START] Employee not found for email:', req.user.email)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(404).json({ error: `Employee not found for email: ${req.user.email}. Please ensure you are linked to a team member.` })
     }
 
@@ -118,6 +160,11 @@ router.post('/start', async (req, res) => {
       )
 
     if (activeShifts.length > 0) {
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(400).json({ error: 'You already have an active shift' })
     }
 
@@ -170,9 +217,21 @@ router.post('/start', async (req, res) => {
       timestamp: now
     }).catch((err) => console.error('[SLACK] shift start notify failed:', err))
 
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.json({ shift: createdShift, message: 'Shift started successfully' })
   } catch (error) {
-    console.error('Error starting shift:', error)
+    console.error('[SHIFT START] Error starting shift:', error)
+    const err = error as Error
+    console.error('[SHIFT START] Error stack:', err.stack)
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.status(500).json({ error: 'Failed to start shift' })
   }
 })

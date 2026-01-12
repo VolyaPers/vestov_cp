@@ -216,8 +216,15 @@ router.get('/my-balance', auth, async (req: Request, res) => {
   try {
     const user = req.user
     if (!user) {
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(401).json({ error: 'Authentication required' })
     }
+
+    console.log(`[GET /my-balance] Request from user: ${user.email}, userId: ${user.id}`)
 
     // Ensure default leave types exist first
     await ensureDefaultLeaveTypes()
@@ -231,8 +238,15 @@ router.get('/my-balance', auth, async (req: Request, res) => {
 
     if (!member) {
       console.log(`[GET /my-balance] Member not found for email: ${user.email}`)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(404).json({ error: 'Employee profile not found' })
     }
+
+    console.log(`[GET /my-balance] Found member: ${member.id}, ${member.name}`)
 
     // First, check if employee has any cycles at all
     const existingCycles = await db
@@ -243,28 +257,52 @@ router.get('/my-balance', auth, async (req: Request, res) => {
     
     // If no cycles exist and employee has start date, try to auto-create cycle
     if (existingCycles.length === 0 && member.startDate) {
+      console.log(`[GET /my-balance] Auto-creating employment cycle for member ${member.id}`)
       await autoCreateEmploymentCycle(member.id)
     }
     
     const balance = await calculateVacationBalance(member.id)
 
     if (!balance) {
+      console.log(`[GET /my-balance] No balance calculated for member ${member.id}`)
       // Provide a more helpful error message
       if (member.startDate) {
         const startDate = new Date(member.startDate)
         const currentDate = new Date()
         if (startDate > currentDate) {
+          const origin = req.headers.origin
+          if (origin) {
+            res.header('Access-Control-Allow-Origin', origin)
+            res.header('Access-Control-Allow-Credentials', 'true')
+          }
           return res.status(404).json({ 
             error: `Your employment cycle starts on ${startDate.toLocaleDateString()}. Your vacation balance will be available once your employment begins.` 
           })
         }
       }
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(404).json({ error: 'Please contact an administrator to set up your employment cycle.' })
     }
 
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.json(balance)
   } catch (error) {
-    console.error('Error fetching vacation balance:', error)
+    console.error('[GET /my-balance] Error fetching vacation balance:', error)
+    const err = error as Error
+    console.error('[GET /my-balance] Error stack:', err.stack)
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.status(500).json({ error: 'Failed to fetch vacation balance' })
   }
 })
@@ -327,8 +365,15 @@ router.get('/my-requests', auth, async (req: Request, res) => {
   try {
     const user = req.user
     if (!user) {
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(401).json({ error: 'Authentication required' })
     }
+
+    console.log(`[GET /my-requests] Request from user: ${user.email}, userId: ${user.id}`)
 
     // Find team member by email
     const [member] = await db
@@ -338,7 +383,13 @@ router.get('/my-requests', auth, async (req: Request, res) => {
       .limit(1)
 
     if (!member) {
-      return res.status(404).json({ error: 'Team member not found' })
+      console.log(`[GET /my-requests] Member not found for email: ${user.email}`)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
+      return res.json([]) // Return empty array instead of 404 for better UX
     }
 
     // Get all leave requests for this employee
@@ -424,9 +475,21 @@ router.get('/my-requests', auth, async (req: Request, res) => {
       }
     })
 
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.json(requestsWithTypes)
   } catch (error) {
-    console.error('Error fetching leave requests:', error)
+    console.error('[GET /my-requests] Error fetching leave requests:', error)
+    const err = error as Error
+    console.error('[GET /my-requests] Error stack:', err.stack)
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.status(500).json({ error: 'Failed to fetch leave requests' })
   }
 })
@@ -436,6 +499,8 @@ router.get('/employment-cycle/:employeeId', auth, async (req, res) => {
   try {
     const { employeeId } = req.params
     const currentDate = new Date().toISOString().split('T')[0]
+
+    console.log(`[GET /employment-cycle/:employeeId] Request for employeeId: ${employeeId}`)
 
     const cycle = await db
       .select()
@@ -451,12 +516,30 @@ router.get('/employment-cycle/:employeeId', auth, async (req, res) => {
       .limit(1)
 
     if (cycle.length === 0) {
+      console.log(`[GET /employment-cycle/:employeeId] No active cycle found for employeeId: ${employeeId}`)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(404).json({ error: 'No active employment cycle found' })
     }
 
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.json(cycle[0])
   } catch (error) {
-    console.error('Error fetching employment cycle:', error)
+    console.error('[GET /employment-cycle/:employeeId] Error fetching employment cycle:', error)
+    const err = error as Error
+    console.error('[GET /employment-cycle/:employeeId] Error stack:', err.stack)
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.status(500).json({ error: 'Failed to fetch employment cycle' })
   }
 })
@@ -482,6 +565,12 @@ router.get('/balances/:employeeId', auth, async (req, res) => {
       .limit(1)
     
     if (cycle.length === 0) {
+      console.log(`[GET /balances/:employeeId] No active cycle found for employeeId: ${employeeId}`)
+      const origin = req.headers.origin
+      if (origin) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
       return res.status(404).json({ error: 'No active employment cycle found' })
     }
     
@@ -553,12 +642,24 @@ router.get('/balances/:employeeId', auth, async (req, res) => {
       })
     )
     
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.json({
       employmentCycle: cycle[0],
       balances: balancesWithUsage,
     })
   } catch (error) {
-    console.error('Error fetching leave balances:', error)
+    console.error('[GET /balances/:employeeId] Error fetching leave balances:', error)
+    const err = error as Error
+    console.error('[GET /balances/:employeeId] Error stack:', err.stack)
+    const origin = req.headers.origin
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin)
+      res.header('Access-Control-Allow-Credentials', 'true')
+    }
     res.status(500).json({ error: 'Failed to fetch leave balances' })
   }
 })
