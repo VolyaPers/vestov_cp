@@ -30,12 +30,12 @@ async function getEmployeeByUser(email: string | undefined | null) {
   }
   
   try {
-    const members = await db
-      .select()
-      .from(teamMembers)
+  const members = await db
+    .select()
+    .from(teamMembers)
       .where(eq(teamMembers.email, email))
 
-    return members[0]
+  return members[0]
   } catch (error) {
     console.error('[getEmployeeByUser] Error fetching employee:', error)
     throw error
@@ -96,16 +96,16 @@ router.get('/current', async (req, res) => {
     let activeShifts
     try {
       activeShifts = await db
-        .select()
-        .from(shifts)
-        .where(
-          and(
-            eq(shifts.employeeId, employee.id),
-            isNull(shifts.endTime)
-          )
+      .select()
+      .from(shifts)
+      .where(
+        and(
+          eq(shifts.employeeId, employee.id),
+          isNull(shifts.endTime)
         )
-        .orderBy(desc(shifts.startTime))
-        .limit(1)
+      )
+      .orderBy(desc(shifts.startTime))
+      .limit(1)
       console.log(`[GET /shifts/current] Found ${activeShifts.length} active shift(s)`)
     } catch (dbError) {
       console.error('[GET /shifts/current] Database error fetching shifts:', dbError)
@@ -127,16 +127,16 @@ router.get('/current', async (req, res) => {
     let activeBreaks
     try {
       activeBreaks = await db
-        .select()
-        .from(shiftBreaks)
-        .where(
-          and(
-            eq(shiftBreaks.shiftId, activeShift.id),
-            isNull(shiftBreaks.endTime)
-          )
+      .select()
+      .from(shiftBreaks)
+      .where(
+        and(
+          eq(shiftBreaks.shiftId, activeShift.id),
+          isNull(shiftBreaks.endTime)
         )
-        .orderBy(desc(shiftBreaks.startTime))
-        .limit(1)
+      )
+      .orderBy(desc(shiftBreaks.startTime))
+      .limit(1)
     } catch (dbError) {
       console.error('[GET /shifts/current] Database error fetching breaks:', dbError)
       // Don't fail if breaks query fails, just return empty

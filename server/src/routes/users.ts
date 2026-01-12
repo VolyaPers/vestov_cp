@@ -29,72 +29,66 @@ async function safeDelete(tableName: string, operation: () => Promise<any>): Pro
 }
 
 /**
- * Deletes all team member related data within a transaction
+ * Deletes optional team member related data (outside transaction to avoid aborting it)
  */
-async function deleteTeamMemberData(tx: any, teamMemberId: number): Promise<void> {
-  console.log(`[HARD DELETE] Deleting team member data for teamMemberId: ${teamMemberId}`)
+async function deleteOptionalTeamMemberData(teamMemberId: number): Promise<void> {
+  console.log(`[HARD DELETE] Deleting optional team member data for teamMemberId: ${teamMemberId}`)
 
-  const deleteOperations = [
-    { name: 'leave balances', operation: () => tx.delete(leaveBalances).where(eq(leaveBalances.employeeId, teamMemberId)) },
+  const optionalOperations = [
+    { name: 'leave balances', operation: () => db.delete(leaveBalances).where(eq(leaveBalances.employeeId, teamMemberId)) },
     {
       name: 'leave request events',
-      operation: () => tx
-        .delete(leaveRequestEvents)
-        .where(
-          inArray(
-            leaveRequestEvents.leaveRequestId,
-            tx
-              .select({ id: leaveRequests.id })
-              .from(leaveRequests)
-              .where(eq(leaveRequests.employeeId, teamMemberId))
-          )
-        )
+      operation: async () => {
+        const requestIds = await db
+          .select({ id: leaveRequests.id })
+          .from(leaveRequests)
+          .where(eq(leaveRequests.employeeId, teamMemberId))
+        
+        if (requestIds.length > 0) {
+          const ids = requestIds.map((r) => r.id)
+          await db.delete(leaveRequestEvents).where(inArray(leaveRequestEvents.leaveRequestId, ids))
+        }
+      }
     },
-    { name: 'leave requests', operation: () => tx.delete(leaveRequests).where(eq(leaveRequests.employeeId, teamMemberId)) },
-    { name: 'employment cycles', operation: () => tx.delete(employmentCycles).where(eq(employmentCycles.employeeId, teamMemberId)) },
-    { name: 'shift schedules', operation: () => tx.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, teamMemberId)) },
+    { name: 'leave requests', operation: () => db.delete(leaveRequests).where(eq(leaveRequests.employeeId, teamMemberId)) },
+    { name: 'employment cycles', operation: () => db.delete(employmentCycles).where(eq(employmentCycles.employeeId, teamMemberId)) },
+    { name: 'shift schedules', operation: () => db.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, teamMemberId)) },
+    {
+      name: 'shifts and breaks',
+      operation: async () => {
+        const shiftIds = await db
+          .select({ id: shifts.id })
+          .from(shifts)
+          .where(eq(shifts.employeeId, teamMemberId))
+
+        if (shiftIds.length > 0) {
+          const ids = shiftIds.map((s) => s.id)
+          await db.delete(shiftBreaks).where(inArray(shiftBreaks.shiftId, ids))
+          await db.delete(shifts).where(inArray(shifts.id, ids))
+          console.log(`[HARD DELETE] Deleted ${shiftIds.length} shift(s) and breaks`)
+        } else {
+          await db.delete(shifts).where(eq(shifts.employeeId, teamMemberId))
+          console.log(`[HARD DELETE] Deleted shifts (no breaks found)`)
+        }
+      }
+    }
   ]
 
-  // Execute all delete operations, continuing on error
-  for (const { name, operation } of deleteOperations) {
-    try {
-      await operation()
-      console.log(`[HARD DELETE] Deleted ${name}`)
-    } catch (error) {
-      console.error(`[HARD DELETE] Error deleting ${name}:`, error)
-      // Continue with other deletions
-    }
+  // Execute all optional operations
+  for (const { name, operation } of optionalOperations) {
+    await safeDelete(name, operation)
   }
+}
 
-  // Delete shifts and breaks (more complex logic)
-  try {
-    const shiftIds = await tx
-      .select({ id: shifts.id })
-      .from(shifts)
-      .where(eq(shifts.employeeId, teamMemberId))
-
-    if (shiftIds.length > 0) {
-      const ids = shiftIds.map((s: { id: number }) => s.id)
-      await tx.delete(shiftBreaks).where(inArray(shiftBreaks.shiftId, ids))
-      await tx.delete(shifts).where(inArray(shifts.id, ids))
-      console.log(`[HARD DELETE] Deleted ${shiftIds.length} shift(s) and breaks`)
-    } else {
-      await tx.delete(shifts).where(eq(shifts.employeeId, teamMemberId))
-      console.log(`[HARD DELETE] Deleted shifts (no breaks found)`)
-    }
-  } catch (error) {
-    console.error('[HARD DELETE] Error deleting shifts:', error)
-    // Continue
-  }
-
+/**
+ * Deletes critical team member data within a transaction
+ */
+async function deleteCriticalTeamMemberData(tx: any, teamMemberId: number): Promise<void> {
+  console.log(`[HARD DELETE] Deleting critical team member data for teamMemberId: ${teamMemberId}`)
+  
   // Delete team member record (critical - must succeed)
-  try {
-    await tx.delete(teamMembers).where(eq(teamMembers.id, teamMemberId))
-    console.log(`[HARD DELETE] Deleted team member ${teamMemberId}`)
-  } catch (error) {
-    console.error('[HARD DELETE] Error deleting team member:', error)
-    throw error // This is critical, so throw
-  }
+  await tx.delete(teamMembers).where(eq(teamMembers.id, teamMemberId))
+  console.log(`[HARD DELETE] Deleted team member ${teamMemberId}`)
 }
 
 // Get users with role='team_member' that don't have a team member linked yet
@@ -694,14 +688,19 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
 
     await Promise.all(optionalDeletions.map(({ name, operation }) => safeDelete(name, async () => { await operation() })))
 
+    // Delete optional team member data (outside transaction to prevent transaction abortion)
+    if (user.teamMemberId) {
+      await deleteOptionalTeamMemberData(user.teamMemberId)
+    }
+
     // Now do the critical deletions in a transaction
     try {
       await db.transaction(async (tx) => {
         console.log(`[HARD DELETE] Starting critical deletion of user ${userId} (${user.email})`)
 
-      // Delete team member related data if user has teamMemberId
+      // Delete critical team member data if user has teamMemberId
       if (user.teamMemberId) {
-        await deleteTeamMemberData(tx, user.teamMemberId)
+        await deleteCriticalTeamMemberData(tx, user.teamMemberId)
       }
 
       try {
