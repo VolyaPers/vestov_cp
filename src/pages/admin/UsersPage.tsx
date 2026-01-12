@@ -211,6 +211,31 @@ export function UsersPage() {
     }
   }
 
+  const handleDeleteUserPermanently = async (user: User) => {
+    const confirmMessage = `Are you sure you want to PERMANENTLY DELETE user "${user.fullName}" (${user.email})?\n\nThis action CANNOT be undone and will delete:\n- All user data\n- All related records\n- All assignments\n- All history\n\nThis is a destructive operation!`
+    
+    if (!confirm(confirmMessage)) {
+      return
+    }
+
+    const doubleConfirm = prompt(`Type "DELETE" to confirm permanent deletion of user "${user.fullName}":`)
+    if (doubleConfirm !== 'DELETE') {
+      if (doubleConfirm !== null) {
+        alert('Confirmation text did not match. Deletion cancelled.')
+      }
+      return
+    }
+
+    try {
+      await api.deleteUserHard(user.id)
+      await loadUsers()
+      alert('User permanently deleted successfully!')
+    } catch (error: any) {
+      console.error('Failed to delete user permanently:', error)
+      alert(error.message || 'Failed to delete user permanently')
+    }
+  }
+
   const resetUserForm = () => {
     setUserFormData({
       username: '',
@@ -454,6 +479,15 @@ export function UsersPage() {
                         title={user.isActive ? "Deactivate user" : "Activate user"}
                       >
                         {user.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteUserPermanently(user)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        title="Delete user permanently (cannot be undone)"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
