@@ -101,9 +101,18 @@ class ApiClient {
     }
 
     try {
-      return JSON.parse(text)
+      const parsed = JSON.parse(text)
+      console.log('[API REQUEST] Success:', { url, status: response.status, hasData: !!parsed })
+      return parsed
     } catch (error) {
-      console.error('[API REQUEST] Failed to parse JSON response:', { url, status: response.status, text: text.slice(0, 500) })
+      console.error('[API REQUEST] Failed to parse JSON response:', { 
+        url, 
+        status: response.status, 
+        contentType,
+        textLength: text.length,
+        textPreview: text.slice(0, 500),
+        error: error instanceof Error ? error.message : String(error)
+      })
       throw new Error('Invalid JSON response from server')
     }
   }

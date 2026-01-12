@@ -249,19 +249,40 @@ router.get('/my-balance', auth, async (req: Request, res) => {
     console.log(`[GET /my-balance] Found member: ${member.id}, ${member.name}`)
 
     // First, check if employee has any cycles at all
-    const existingCycles = await db
-      .select()
-      .from(employmentCycles)
-      .where(eq(employmentCycles.employeeId, member.id))
-      .limit(1)
+    let existingCycles
+    try {
+      existingCycles = await db
+        .select()
+        .from(employmentCycles)
+        .where(eq(employmentCycles.employeeId, member.id))
+        .limit(1)
+      console.log(`[GET /my-balance] Found ${existingCycles.length} existing cycle(s)`)
+    } catch (dbError) {
+      console.error('[GET /my-balance] Database error fetching cycles:', dbError)
+      throw dbError
+    }
     
     // If no cycles exist and employee has start date, try to auto-create cycle
     if (existingCycles.length === 0 && member.startDate) {
       console.log(`[GET /my-balance] Auto-creating employment cycle for member ${member.id}`)
-      await autoCreateEmploymentCycle(member.id)
+      try {
+        await autoCreateEmploymentCycle(member.id)
+      } catch (cycleError) {
+        console.error('[GET /my-balance] Error auto-creating cycle:', cycleError)
+        // Don't fail if cycle creation fails, just log it
+      }
     }
     
-    const balance = await calculateVacationBalance(member.id)
+    let balance
+    try {
+      balance = await calculateVacationBalance(member.id)
+      console.log(`[GET /my-balance] Balance calculated:`, balance ? 'success' : 'null')
+    } catch (calcError) {
+      console.error('[GET /my-balance] Error calculating balance:', calcError)
+      const err = calcError as Error
+      console.error('[GET /my-balance] Calculation error stack:', err.stack)
+      throw calcError
+    }
 
     if (!balance) {
       console.log(`[GET /my-balance] No balance calculated for member ${member.id}`)
@@ -295,9 +316,13 @@ router.get('/my-balance', auth, async (req: Request, res) => {
     }
     res.json(balance)
   } catch (error) {
-    console.error('[GET /my-balance] Error fetching vacation balance:', error)
     const err = error as Error
-    console.error('[GET /my-balance] Error stack:', err.stack)
+    console.error('========================================')
+    console.error('[GET /my-balance] ERROR:', err.message)
+    console.error('[GET /my-balance] Stack:', err.stack)
+    console.error('[GET /my-balance] User:', user ? { id: user.id, email: user.email } : 'no user')
+    console.error('========================================')
+    
     const origin = req.headers.origin
     if (origin) {
       res.header('Access-Control-Allow-Origin', origin)

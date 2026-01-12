@@ -297,7 +297,24 @@ app.get('/health', (req, res) => {
 
 app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
   const error = err as Error
-  console.error('Error:', error)
+  console.error('========================================')
+  console.error('[GLOBAL ERROR HANDLER] Unhandled error:')
+  console.error('[GLOBAL ERROR HANDLER] Message:', error.message)
+  console.error('[GLOBAL ERROR HANDLER] Stack:', error.stack)
+  console.error('[GLOBAL ERROR HANDLER] Request:', {
+    method: req.method,
+    path: req.path,
+    url: req.url,
+    origin: req.headers.origin,
+  })
+  console.error('========================================')
+  
+  const origin = req.headers.origin
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin)
+    res.header('Access-Control-Allow-Credentials', 'true')
+  }
+  
   res.status(500).json({ 
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message 
   })

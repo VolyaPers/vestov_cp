@@ -23,13 +23,23 @@ function checkIfLate(scheduleTime: string, actualTime: Date): { isLate: boolean;
 }
 
 // Helper function to get employee by user email
-async function getEmployeeByUser(email: string) {
-  const members = await db
-    .select()
-    .from(teamMembers)
-    .where(eq(teamMembers.email, email!))
+async function getEmployeeByUser(email: string | undefined | null) {
+  if (!email) {
+    console.error('[getEmployeeByUser] No email provided')
+    return undefined
+  }
+  
+  try {
+    const members = await db
+      .select()
+      .from(teamMembers)
+      .where(eq(teamMembers.email, email))
 
-  return members[0]
+    return members[0]
+  } catch (error) {
+    console.error('[getEmployeeByUser] Error fetching employee:', error)
+    throw error
+  }
 }
 
 // Get current active shift for logged-in employee
@@ -60,17 +70,24 @@ router.get('/current', async (req, res) => {
     console.log(`[GET /shifts/current] Found employee: ${employee.id}, ${employee.name}`)
 
     // Find active shift (status = 'active' or 'on_break', and end_time is null)
-    const activeShifts = await db
-      .select()
-      .from(shifts)
-      .where(
-        and(
-          eq(shifts.employeeId, employee.id),
-          isNull(shifts.endTime)
+    let activeShifts
+    try {
+      activeShifts = await db
+        .select()
+        .from(shifts)
+        .where(
+          and(
+            eq(shifts.employeeId, employee.id),
+            isNull(shifts.endTime)
+          )
         )
-      )
-      .orderBy(desc(shifts.startTime))
-      .limit(1)
+        .orderBy(desc(shifts.startTime))
+        .limit(1)
+      console.log(`[GET /shifts/current] Found ${activeShifts.length} active shift(s)`)
+    } catch (dbError) {
+      console.error('[GET /shifts/current] Database error fetching shifts:', dbError)
+      throw dbError
+    }
 
     const activeShift = activeShifts[0]
 
@@ -84,17 +101,24 @@ router.get('/current', async (req, res) => {
     }
 
     // Get active break if any
-    const activeBreaks = await db
-      .select()
-      .from(shiftBreaks)
-      .where(
-        and(
-          eq(shiftBreaks.shiftId, activeShift.id),
-          isNull(shiftBreaks.endTime)
+    let activeBreaks
+    try {
+      activeBreaks = await db
+        .select()
+        .from(shiftBreaks)
+        .where(
+          and(
+            eq(shiftBreaks.shiftId, activeShift.id),
+            isNull(shiftBreaks.endTime)
+          )
         )
-      )
-      .orderBy(desc(shiftBreaks.startTime))
-      .limit(1)
+        .orderBy(desc(shiftBreaks.startTime))
+        .limit(1)
+    } catch (dbError) {
+      console.error('[GET /shifts/current] Database error fetching breaks:', dbError)
+      // Don't fail if breaks query fails, just return empty
+      activeBreaks = []
+    }
 
     const origin = req.headers.origin
     if (origin) {
@@ -107,9 +131,13 @@ router.get('/current', async (req, res) => {
       hasActiveShift: true
     })
   } catch (error) {
-    console.error('[GET /shifts/current] Error fetching current shift:', error)
     const err = error as Error
-    console.error('[GET /shifts/current] Error stack:', err.stack)
+    console.error('========================================')
+    console.error('[GET /shifts/current] ERROR:', err.message)
+    console.error('[GET /shifts/current] Stack:', err.stack)
+    console.error('[GET /shifts/current] User:', req.user ? { id: req.user.id, email: req.user.email } : 'no user')
+    console.error('========================================')
+    
     const origin = req.headers.origin
     if (origin) {
       res.header('Access-Control-Allow-Origin', origin)
