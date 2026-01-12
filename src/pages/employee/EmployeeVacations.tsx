@@ -103,21 +103,46 @@ export function EmployeeVacations() {
   const [showCalendarModal, setShowCalendarModal] = useState(false)
 
   // Fetch vacation balance (50/50 rule)
-  const { data: vacationBalance50, isLoading: isLoadingBalance, error: balanceError } = useQuery({
+  interface VacationBalance {
+    totalAllocated: number
+    totalUsed: number
+    totalRemaining: number
+    firstHalfAvailable: number
+    firstHalfUsed: number
+    firstHalfRemaining: number
+    secondHalfAvailable: number
+    secondHalfUsed: number
+    secondHalfRemaining: number
+    currentlyAvailable: number
+    lockedUntilSecondHalf: number
+    cashableAtYearEnd: number
+    willExpire: number
+    isFirstHalf: boolean
+    daysUntilSecondHalf: number
+    cycleStartDate: string
+    cycleMidpointDate: string
+    cycleEndDate: string
+    cycleId: number
+    cycleNumber: number
+    careerYear: number
+    baseAllocation: number
+  }
+
+  const { data: vacationBalance50, isLoading: isLoadingBalance, error: balanceError } = useQuery<VacationBalance>({
     queryKey: ['myVacationBalance'],
     queryFn: async () => {
       console.log('[EmployeeVacations] Fetching vacation balance...')
       try {
         const result = await api.getMyVacationBalance()
         console.log('[EmployeeVacations] Vacation balance fetched:', result)
-        return result
+        return result as VacationBalance
       } catch (error) {
         console.error('[EmployeeVacations] Error fetching vacation balance:', error)
         throw error
       }
     },
     staleTime: 0, // Always consider data stale, so it refetches when invalidated
-    cacheTime: 0, // Don't cache, always fetch fresh data
+    gcTime: 0, // Don't cache, always fetch fresh data (renamed from cacheTime in v5)
     refetchOnWindowFocus: true, // Refetch when window gains focus
     refetchOnMount: true, // Refetch when component mounts
   })
@@ -382,7 +407,7 @@ export function EmployeeVacations() {
         <TabsContent value="balance" className="space-y-4">
           <VacationBalanceCard
             key={`vacation-balance-${vacationBalance50?.careerYear ?? 'loading'}-${vacationBalance50?.cycleId ?? 'none'}`}
-            balance={vacationBalance50}
+            balance={vacationBalance50 ?? null}
             isLoading={isLoadingBalance}
             error={balanceError as Error | null}
           />
