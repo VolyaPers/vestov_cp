@@ -18,6 +18,7 @@ interface User {
   role: 'admin' | 'team_member' | 'client'
   position?: string
   avatarUrl?: string
+  teamMemberId?: number
   isActive: boolean
   lastLoginAt?: string
   createdAt: string
@@ -161,6 +162,7 @@ export function UsersPage() {
       email: user.email,
       role: user.role,
       position: user.position || '',
+      teamMemberId: user.teamMemberId ? String(user.teamMemberId) : '',
     })
     setIsUserDialogOpen(true)
   }
