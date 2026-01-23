@@ -419,78 +419,93 @@ router.get('/evidence/:filename', async (req, res) => {
     }
 
     const filePath = path.join(process.cwd(), 'uploads', filename)
+    const absolutePath = path.resolve(filePath)
+
+    console.log(`[EVIDENCE] Request for filename: ${filename}`)
+    console.log(`[EVIDENCE] File path: ${filePath}`)
+    console.log(`[EVIDENCE] Absolute path: ${absolutePath}`)
+    console.log(`[EVIDENCE] Current working directory: ${process.cwd()}`)
 
     if (!fs.existsSync(filePath)) {
       console.error(`[EVIDENCE] File not found at path: ${filePath}`)
-      console.error(`[EVIDENCE] Current working directory: ${process.cwd()}`)
       console.error(`[EVIDENCE] Uploads directory exists: ${fs.existsSync(path.join(process.cwd(), 'uploads'))}`)
+      
+      // List files in uploads directory for debugging
+      const uploadsDir = path.join(process.cwd(), 'uploads')
+      if (fs.existsSync(uploadsDir)) {
+        try {
+          const files = fs.readdirSync(uploadsDir)
+          console.error(`[EVIDENCE] Files in uploads directory: ${files.slice(0, 10).join(', ')}`)
+        } catch (listError) {
+          console.error(`[EVIDENCE] Could not list uploads directory:`, listError)
+        }
+      }
+      
       return res.status(404).json({ error: 'File not found' })
     }
 
     // Verify the file belongs to a reimbursement request that the user has access to
-    // Try both with and without leading slash in evidenceUrl
+    // Try multiple patterns for evidenceUrl matching
+    // Select only necessary fields (excluding careerYear which may not exist in all environments)
     const requests = await db
       .select({
-        request: reimbursementRequests,
-        member: teamMembers
+        request: {
+          id: reimbursementRequests.id,
+          employeeId: reimbursementRequests.employeeId,
+          year: reimbursementRequests.year,
+          expenseAmount: reimbursementRequests.expenseAmount,
+          reimbursementAmount: reimbursementRequests.reimbursementAmount,
+          description: reimbursementRequests.description,
+          category: reimbursementRequests.category,
+          status: reimbursementRequests.status,
+          requestedBy: reimbursementRequests.requestedBy,
+          requestedAt: reimbursementRequests.requestedAt,
+          approvedBy: reimbursementRequests.approvedBy,
+          approvedAt: reimbursementRequests.approvedAt,
+          approvalNote: reimbursementRequests.approvalNote,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+          confirmedAt: reimbursementRequests.confirmedAt,
+          createdAt: reimbursementRequests.createdAt,
+          updatedAt: reimbursementRequests.updatedAt
+        },
+        member: {
+          id: teamMembers.id,
+          name: teamMembers.name,
+          email: teamMembers.email,
+          role: teamMembers.role,
+          status: teamMembers.status
+        }
       })
       .from(reimbursementRequests)
       .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
       .where(
         or(
           eq(reimbursementRequests.evidenceUrl, `/uploads/${filename}`),
-          eq(reimbursementRequests.evidenceUrl, `uploads/${filename}`)
+          eq(reimbursementRequests.evidenceUrl, `uploads/${filename}`),
+          like(reimbursementRequests.evidenceUrl, `%${filename}`)
         )
       )
       .limit(1)
 
     if (requests.length === 0) {
-      // If no exact match, try to find by filename only (more flexible)
-      const requestsByFilename = await db
-        .select({
-          request: reimbursementRequests,
-          member: teamMembers
-        })
-        .from(reimbursementRequests)
-        .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
-        .where(like(reimbursementRequests.evidenceUrl, `%${filename}`))
-        .limit(1)
-
-      if (requestsByFilename.length === 0) {
-        console.error(`[EVIDENCE] No reimbursement request found for filename: ${filename}`)
-        return res.status(404).json({ error: 'Reimbursement request not found' })
+      console.error(`[EVIDENCE] No reimbursement request found for filename: ${filename}`)
+      
+      // Debug: Check what evidenceUrl values exist in database
+      try {
+        const allRequests = await db
+          .select({
+            id: reimbursementRequests.id,
+            evidenceUrl: reimbursementRequests.evidenceUrl
+          })
+          .from(reimbursementRequests)
+          .where(sql`${reimbursementRequests.evidenceUrl} IS NOT NULL`)
+          .limit(5)
+        console.error(`[EVIDENCE] Sample evidenceUrl values in DB:`, allRequests.map(r => r.evidenceUrl))
+      } catch (dbError) {
+        console.error(`[EVIDENCE] Could not query evidenceUrl samples:`, dbError)
       }
-
-      const request = requestsByFilename[0]
-
-      // Check if user has access: either they are the employee who requested it, or they are an admin
-      const hasAccess = req.user.role === 'admin' || request.member.email === req.user.email
-
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'Not authorized to view this evidence' })
-      }
-
-      // Set appropriate content type based on file extension
-      const ext = path.extname(filename).toLowerCase()
-      let contentType = 'application/octet-stream'
-
-      switch (ext) {
-        case '.jpg':
-        case '.jpeg':
-          contentType = 'image/jpeg'
-          break
-        case '.png':
-          contentType = 'image/png'
-          break
-        case '.pdf':
-          contentType = 'application/pdf'
-          break
-      }
-
-      res.setHeader('Content-Type', contentType)
-      res.setHeader('Content-Disposition', `inline; filename="${filename}"`)
-      res.sendFile(path.resolve(filePath))
-      return
+      
+      return res.status(404).json({ error: 'Reimbursement request not found' })
     }
 
     const request = requests[0]
@@ -499,6 +514,7 @@ router.get('/evidence/:filename', async (req, res) => {
     const hasAccess = req.user.role === 'admin' || request.member.email === req.user.email
 
     if (!hasAccess) {
+      console.error(`[EVIDENCE] Access denied for user ${req.user.email} to file ${filename}`)
       return res.status(403).json({ error: 'Not authorized to view this evidence' })
     }
 
@@ -519,12 +535,43 @@ router.get('/evidence/:filename', async (req, res) => {
         break
     }
 
+    console.log(`[EVIDENCE] Serving file: ${absolutePath} with content-type: ${contentType}`)
+
+    // Set headers
     res.setHeader('Content-Type', contentType)
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`)
-    res.sendFile(path.resolve(filePath))
+    
+    // Use stream for more reliable file serving
+    const fileStream = fs.createReadStream(absolutePath)
+    
+    fileStream.on('error', (streamErr) => {
+      console.error(`[EVIDENCE] Stream error:`, streamErr)
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: 'Failed to serve evidence file',
+          details: streamErr.message 
+        })
+      }
+    })
+    
+    fileStream.on('end', () => {
+      console.log(`[EVIDENCE] Successfully served file: ${filename}`)
+    })
+    
+    fileStream.pipe(res)
   } catch (error) {
-    console.error('Error serving evidence file:', error)
-    res.status(500).json({ error: 'Failed to serve evidence file' })
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    console.error('[EVIDENCE] Error serving evidence file:', errorMessage)
+    if (errorStack) {
+      console.error('[EVIDENCE] Stack trace:', errorStack)
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to serve evidence file',
+        details: errorMessage 
+      })
+    }
   }
 })
 
