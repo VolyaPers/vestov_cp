@@ -418,33 +418,10 @@ router.get('/evidence/:filename', async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' })
     }
 
-    const filePath = path.join(process.cwd(), 'uploads', filename)
-    const absolutePath = path.resolve(filePath)
-
     console.log(`[EVIDENCE] Request for filename: ${filename}`)
-    console.log(`[EVIDENCE] File path: ${filePath}`)
-    console.log(`[EVIDENCE] Absolute path: ${absolutePath}`)
     console.log(`[EVIDENCE] Current working directory: ${process.cwd()}`)
 
-    if (!fs.existsSync(filePath)) {
-      console.error(`[EVIDENCE] File not found at path: ${filePath}`)
-      console.error(`[EVIDENCE] Uploads directory exists: ${fs.existsSync(path.join(process.cwd(), 'uploads'))}`)
-      
-      // List files in uploads directory for debugging
-      const uploadsDir = path.join(process.cwd(), 'uploads')
-      if (fs.existsSync(uploadsDir)) {
-        try {
-          const files = fs.readdirSync(uploadsDir)
-          console.error(`[EVIDENCE] Files in uploads directory: ${files.slice(0, 10).join(', ')}`)
-        } catch (listError) {
-          console.error(`[EVIDENCE] Could not list uploads directory:`, listError)
-        }
-      }
-      
-      return res.status(404).json({ error: 'File not found' })
-    }
-
-    // Verify the file belongs to a reimbursement request that the user has access to
+    // First, verify the file belongs to a reimbursement request that the user has access to
     // Try multiple patterns for evidenceUrl matching
     // Select only necessary fields (excluding careerYear which may not exist in all environments)
     const requests = await db
@@ -499,8 +476,16 @@ router.get('/evidence/:filename', async (req, res) => {
           })
           .from(reimbursementRequests)
           .where(sql`${reimbursementRequests.evidenceUrl} IS NOT NULL`)
-          .limit(5)
-        console.error(`[EVIDENCE] Sample evidenceUrl values in DB:`, allRequests.map(r => r.evidenceUrl))
+          .limit(10)
+        console.error(`[EVIDENCE] Sample evidenceUrl values in DB:`, allRequests.map(r => ({ id: r.id, url: r.evidenceUrl })))
+        
+        // Try to find any request with this filename in the URL
+        const matchingRequests = allRequests.filter(r => 
+          r.evidenceUrl && r.evidenceUrl.includes(filename)
+        )
+        if (matchingRequests.length > 0) {
+          console.error(`[EVIDENCE] Found requests with filename in URL:`, matchingRequests)
+        }
       } catch (dbError) {
         console.error(`[EVIDENCE] Could not query evidenceUrl samples:`, dbError)
       }
@@ -516,6 +501,72 @@ router.get('/evidence/:filename', async (req, res) => {
     if (!hasAccess) {
       console.error(`[EVIDENCE] Access denied for user ${req.user.email} to file ${filename}`)
       return res.status(403).json({ error: 'Not authorized to view this evidence' })
+    }
+
+    // Now check if file exists - use the evidenceUrl from DB to construct the correct path
+    let filePath: string
+    let absolutePath: string
+    
+    // Try to extract filename from evidenceUrl if it's different
+    const evidenceUrl = request.request.evidenceUrl
+    console.log(`[EVIDENCE] Found request with evidenceUrl: ${evidenceUrl}`)
+    
+    // Extract filename from evidenceUrl (handle both /uploads/filename and uploads/filename)
+    let actualFilename = filename
+    if (evidenceUrl) {
+      const urlFilename = evidenceUrl.replace(/^\/uploads\//, '').replace(/^uploads\//, '')
+      if (urlFilename && urlFilename !== filename) {
+        console.log(`[EVIDENCE] Using filename from evidenceUrl: ${urlFilename} (original: ${filename})`)
+        actualFilename = urlFilename
+      }
+    }
+    
+    filePath = path.join(process.cwd(), 'uploads', actualFilename)
+    absolutePath = path.resolve(filePath)
+    
+    console.log(`[EVIDENCE] File path: ${filePath}`)
+    console.log(`[EVIDENCE] Absolute path: ${absolutePath}`)
+
+    if (!fs.existsSync(filePath)) {
+      console.error(`[EVIDENCE] File not found at path: ${filePath}`)
+      console.error(`[EVIDENCE] Uploads directory exists: ${fs.existsSync(path.join(process.cwd(), 'uploads'))}`)
+      
+      // List files in uploads directory for debugging
+      const uploadsDir = path.join(process.cwd(), 'uploads')
+      if (fs.existsSync(uploadsDir)) {
+        try {
+          const files = fs.readdirSync(uploadsDir)
+          console.error(`[EVIDENCE] Total files in uploads directory: ${files.length}`)
+          console.error(`[EVIDENCE] Files in uploads directory (first 20): ${files.slice(0, 20).join(', ')}`)
+          
+          // Check if filename exists with different case or similar
+          const matchingFiles = files.filter(f => 
+            f.toLowerCase().includes(actualFilename.toLowerCase()) || 
+            actualFilename.toLowerCase().includes(f.toLowerCase())
+          )
+          if (matchingFiles.length > 0) {
+            console.error(`[EVIDENCE] Found similar filenames: ${matchingFiles.join(', ')}`)
+            // Try using the matching file
+            const matchedFile = matchingFiles[0]
+            filePath = path.join(process.cwd(), 'uploads', matchedFile)
+            absolutePath = path.resolve(filePath)
+            console.log(`[EVIDENCE] Trying matched file: ${filePath}`)
+            if (fs.existsSync(filePath)) {
+              console.log(`[EVIDENCE] Using matched file: ${matchedFile}`)
+            } else {
+              return res.status(404).json({ error: 'File not found' })
+            }
+          } else {
+            return res.status(404).json({ error: 'File not found' })
+          }
+        } catch (listError) {
+          console.error(`[EVIDENCE] Could not list uploads directory:`, listError)
+          return res.status(404).json({ error: 'File not found' })
+        }
+      } else {
+        console.error(`[EVIDENCE] Uploads directory does not exist at: ${uploadsDir}`)
+        return res.status(404).json({ error: 'File not found' })
+      }
     }
 
     // Set appropriate content type based on file extension
