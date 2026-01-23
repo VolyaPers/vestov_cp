@@ -145,7 +145,7 @@ const normalizeUrl = (url: string | undefined): string | false => {
 const corsOriginRaw = process.env.CORS_ORIGIN || process.env.FRONTEND_URL
 const corsOrigin = corsOriginRaw 
   ? normalizeUrl(corsOriginRaw) 
-  : (process.env.NODE_ENV === 'production' ? false : 'http://vestovcp.local:5173')
+  : (process.env.NODE_ENV === 'production' ? false : ['http://localhost:5173', 'http://vestovcp.local:5173'])
 
 console.log('[SERVER INIT] CORS Origin:', corsOrigin)
 console.log('[SERVER INIT] CORS Environment variables:', {
@@ -170,10 +170,21 @@ app.use((req, res, next) => {
   // Ensure CORS headers are set on all responses
   if (origin && corsOrigin) {
     const normalizedOrigin = normalizeUrl(origin)
-    const normalizedCorsOrigin = typeof corsOrigin === 'string' ? corsOrigin : false
-    if (normalizedCorsOrigin && (normalizedOrigin === normalizedCorsOrigin || origin === normalizedCorsOrigin)) {
-      res.header('Access-Control-Allow-Origin', origin)
-      res.header('Access-Control-Allow-Credentials', 'true')
+    
+    // Handle array of allowed origins
+    if (Array.isArray(corsOrigin)) {
+      const normalizedOrigins = corsOrigin.map(o => normalizeUrl(o)).filter((o): o is string => typeof o === 'string')
+      if (normalizedOrigins.some(allowed => normalizedOrigin === allowed || origin === allowed)) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
+    } else {
+      // Handle single origin
+      const normalizedCorsOrigin = typeof corsOrigin === 'string' ? corsOrigin : false
+      if (normalizedCorsOrigin && (normalizedOrigin === normalizedCorsOrigin || origin === normalizedCorsOrigin)) {
+        res.header('Access-Control-Allow-Origin', origin)
+        res.header('Access-Control-Allow-Credentials', 'true')
+      }
     }
   }
   
@@ -189,15 +200,26 @@ app.use(cors({
     }
     
     const normalizedOrigin = normalizeUrl(origin)
-    const normalizedCorsOrigin = typeof corsOrigin === 'string' ? corsOrigin : false
     
-    if (normalizedCorsOrigin && (normalizedOrigin === normalizedCorsOrigin || origin === normalizedCorsOrigin)) {
-      console.log('[CORS] Allowing origin:', origin)
-      callback(null, true)
+    // Handle array of allowed origins (for development)
+    if (Array.isArray(corsOrigin)) {
+      const normalizedOrigins = corsOrigin.map(o => normalizeUrl(o)).filter((o): o is string => typeof o === 'string')
+      if (normalizedOrigins.some(allowed => normalizedOrigin === allowed || origin === allowed)) {
+        console.log('[CORS] Allowing origin:', origin)
+        return callback(null, true)
+      }
     } else {
-      console.log('[CORS] Rejecting origin:', origin, 'Expected:', normalizedCorsOrigin)
-      callback(new Error('Not allowed by CORS'))
+      // Handle single origin (string or false)
+      const normalizedCorsOrigin = typeof corsOrigin === 'string' ? corsOrigin : false
+      
+      if (normalizedCorsOrigin && (normalizedOrigin === normalizedCorsOrigin || origin === normalizedCorsOrigin)) {
+        console.log('[CORS] Allowing origin:', origin)
+        return callback(null, true)
+      }
     }
+    
+    console.log('[CORS] Rejecting origin:', origin, 'Expected:', corsOrigin)
+    callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

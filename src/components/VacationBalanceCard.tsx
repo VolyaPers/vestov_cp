@@ -169,7 +169,10 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
                 today.setHours(0, 0, 0, 0)
                 const cycleEnd = new Date(balance.cycleEndDate)
                 cycleEnd.setHours(0, 0, 0, 0)
-                const daysRemaining = Math.ceil((cycleEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                // Next cycle starts the day after cycleEnd, so add 1 day
+                const nextCycleStart = new Date(cycleEnd)
+                nextCycleStart.setDate(nextCycleStart.getDate() + 1)
+                const daysRemaining = Math.ceil((nextCycleStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
                 return Math.max(0, daysRemaining)
               })()}
             </p>

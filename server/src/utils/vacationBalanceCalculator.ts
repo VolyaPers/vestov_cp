@@ -67,54 +67,6 @@ export async function calculateVacationBalance(
 ): Promise<VacationBalance | null> {
   console.log(`[calculateVacationBalance] Called for employee ${employeeId}, currentDate: ${currentDate.toISOString().split('T')[0]}`)
   
-  // Get all cycles for this employee to find the most appropriate one
-  const allCycles = await db
-    .select()
-    .from(employmentCycles)
-    .where(eq(employmentCycles.employeeId, employeeId))
-    .orderBy(employmentCycles.cycleStart)
-
-  console.log(`[calculateVacationBalance] Found ${allCycles.length} cycles for employee ${employeeId}`)
-  allCycles.forEach(c => {
-    console.log(`[calculateVacationBalance] - Cycle ${c.id}: ${c.cycleStart} - ${c.cycleEnd}, isActive: ${c.isActive}`)
-  })
-
-  if (allCycles.length === 0) {
-    console.log(`[calculateVacationBalance] No cycles found for employee ${employeeId}`)
-    return null // No cycles found
-  }
-
-  // Find the cycle that contains the current date (prefer active, but accept inactive if it contains current date)
-  let cycle = allCycles.find(c => {
-    const cStart = new Date(c.cycleStart)
-    const cEnd = new Date(c.cycleEnd)
-    return currentDate >= cStart && currentDate <= cEnd
-  })
-
-  // If no cycle contains current date, find the most recent cycle that starts before or on current date
-  // This handles cases where we're in a gap between cycles
-  if (!cycle) {
-    cycle = allCycles
-      .filter(c => {
-        const cStart = new Date(c.cycleStart)
-        return currentDate >= cStart
-      })
-      .sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime())[0]
-  }
-
-  // If still no cycle, use the most recent cycle overall (even if in the future)
-  // This allows employees with future start dates to see their upcoming balance
-  if (!cycle) {
-    cycle = allCycles[allCycles.length - 1]
-  }
-
-  if (!cycle) {
-    return null // No cycle found
-  }
-  const cycleStart = new Date(cycle.cycleStart)
-  const cycleMidpoint = new Date(cycle.cycleMidpoint)
-  const cycleEnd = new Date(cycle.cycleEnd)
-
   // Get team member to access startDate for career year calculation
   const [member] = await db
     .select()
@@ -129,6 +81,95 @@ export async function calculateVacationBalance(
   // Calculate career year using the same logic as dashboard/roadmap (365-day calculation)
   const employment = calculateEmploymentMetrics(member.startDate)
   const careerYear = employment.careerYear
+
+  // Calculate the current cycle based on employment anniversary (same logic as Dashboard)
+  // This ensures we use the correct cycle that matches the career year
+  const startDate = new Date(member.startDate)
+  const currentYear = currentDate.getFullYear()
+  const startYear = startDate.getFullYear()
+  const startMonth = startDate.getMonth()
+  const startDay = startDate.getDate()
+  
+  // Calculate how many full years since start date
+  let yearsEmployed = currentYear - startYear
+  const monthDiff = currentDate.getMonth() - startMonth
+  const dayDiff = currentDate.getDate() - startDay
+
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    yearsEmployed--
+  }
+
+  // Calculate current cycle dates based on employment anniversary
+  const expectedCycleStart = new Date(startDate)
+  expectedCycleStart.setFullYear(startYear + yearsEmployed)
+
+  const expectedCycleEnd = new Date(expectedCycleStart)
+  expectedCycleEnd.setFullYear(expectedCycleStart.getFullYear() + 1)
+  expectedCycleEnd.setDate(expectedCycleEnd.getDate() - 1) // End day before next cycle starts
+
+  // Get all cycles for this employee
+  const allCycles = await db
+    .select()
+    .from(employmentCycles)
+    .where(eq(employmentCycles.employeeId, employeeId))
+    .orderBy(employmentCycles.cycleStart)
+
+  console.log(`[calculateVacationBalance] Found ${allCycles.length} cycles for employee ${employeeId}`)
+  allCycles.forEach(c => {
+    console.log(`[calculateVacationBalance] - Cycle ${c.id}: ${c.cycleStart} - ${c.cycleEnd}, isActive: ${c.isActive}`)
+  })
+
+  // Find the cycle that matches the expected cycle start date (based on anniversary)
+  let cycle = allCycles.find(c => {
+    const cStart = new Date(c.cycleStart)
+    return cStart.getTime() === expectedCycleStart.getTime()
+  })
+
+  // If no exact match, try to create the cycle for the current date
+  if (!cycle) {
+    console.log(`[calculateVacationBalance] Expected cycle (${expectedCycleStart.toISOString().split('T')[0]}) not found, attempting to create it`)
+    cycle = await createCycleForDate(employeeId, currentDate)
+    if (cycle) {
+      console.log(`[calculateVacationBalance] Successfully created cycle ${cycle.id} for date ${currentDate.toISOString().split('T')[0]}`)
+    }
+  }
+
+  // If still no cycle, find the cycle that contains the current date
+  if (!cycle) {
+    cycle = allCycles.find(c => {
+      const cStart = new Date(c.cycleStart)
+      const cEnd = new Date(c.cycleEnd)
+      return currentDate >= cStart && currentDate <= cEnd
+    })
+  }
+
+  // If still no cycle, try to find the most recent cycle that starts before or on current date
+  if (!cycle) {
+    cycle = allCycles
+      .filter(c => {
+        const cStart = new Date(c.cycleStart)
+        return currentDate >= cStart
+      })
+      .sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime())[0]
+  }
+
+  // If still no cycle, use the most recent cycle overall (even if in the future)
+  // This allows employees with future start dates to see their upcoming balance
+  if (!cycle) {
+    if (allCycles.length === 0) {
+      console.log(`[calculateVacationBalance] No cycles found for employee ${employeeId}`)
+      return null // No cycles found
+    }
+    cycle = allCycles[allCycles.length - 1]
+  }
+
+  if (!cycle) {
+    return null // No cycle found
+  }
+  
+  const cycleStart = new Date(cycle.cycleStart)
+  const cycleMidpoint = new Date(cycle.cycleMidpoint)
+  const cycleEnd = new Date(cycle.cycleEnd)
 
   // Determine which cycle number this is (for metadata purposes only)
   const allEmployeeCycles = await db
