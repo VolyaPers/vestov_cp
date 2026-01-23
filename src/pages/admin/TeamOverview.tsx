@@ -449,11 +449,11 @@ export function TeamOverview() {
             </p>
           </div>
           <div className="hidden sm:flex items-center gap-3">
-            <div className="stripe-badge-success">
+            <div className="stripe-badge-success rounded-lg px-4 py-2">
               <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: 'var(--stripe-success)' }}></div>
               {billableMembers.filter(m => m.status === 'active' && m.clientId).length} Active
             </div>
-            <div className="stripe-badge-warning">
+            <div className="stripe-badge-warning rounded-lg px-4 py-2">
               <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: 'var(--stripe-warning)' }}></div>
               {billableMembers.filter(m => m.status === 'bench' || !m.clientId).length} Available
             </div>
@@ -465,7 +465,7 @@ export function TeamOverview() {
       <div className="grid gap-4 md:grid-cols-4">
         <div className="stripe-card-hover p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Users className="h-6 w-6 stripe-text-muted" />
             </div>
             <div className="text-right">
@@ -478,7 +478,7 @@ export function TeamOverview() {
 
         <div className="stripe-card-hover p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <DollarSign className="h-6 w-6 stripe-text-muted" />
             </div>
             <div className="text-right">

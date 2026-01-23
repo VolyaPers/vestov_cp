@@ -20,6 +20,7 @@ import {
 import { requireAuth as auth } from '../middleware/auth.js'
 import { calculateVacationBalance, validateVacationRequest } from '../utils/vacationBalanceCalculator.js'
 import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator.js'
+import { notifyVacationRequest } from '../utils/slack.js'
 
 const router = Router()
 
@@ -1167,6 +1168,33 @@ router.post('/requests', auth, async (req, res) => {
       actorId: user.id,
       note: 'Request submitted',
     })
+    
+    // Get leave type name and employee info for Slack notification
+    const leaveType = await db
+      .select({ name: leaveTypes.name })
+      .from(leaveTypes)
+      .where(eq(leaveTypes.id, leaveTypeId))
+      .limit(1)
+
+    const employee = await db
+      .select({ name: teamMembers.name, email: teamMembers.email })
+      .from(teamMembers)
+      .where(eq(teamMembers.id, employeeId))
+      .limit(1)
+
+    // Notify Slack about new vacation request
+    if (leaveType.length > 0 && employee.length > 0) {
+      notifyVacationRequest({
+        employeeName: employee[0].name || null,
+        employeeEmail: employee[0].email,
+        requestId: newRequest.id,
+        leaveTypeName: leaveType[0].name,
+        startDate,
+        endDate,
+        daysCount: daysCount.toString(),
+        reason: reason || null
+      }).catch((err) => console.error('[SLACK] vacation notify failed:', err))
+    }
     
     res.json(newRequest)
   } catch (error) {

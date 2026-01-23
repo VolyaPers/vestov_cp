@@ -108,11 +108,11 @@ export function AdminDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="stripe-badge-success">
+            <div className="stripe-badge-success rounded-lg px-4 py-2">
               <CheckCircle className="h-4 w-4 mr-2" />
               All Systems Online
             </div>
-            <button className="stripe-btn-primary">
+            <button className="stripe-btn-primary rounded-lg">
               <BarChart3 className="h-4 w-4 mr-2" />
               View Reports
             </button>
@@ -121,20 +121,18 @@ export function AdminDashboard() {
       </div>
 
       {/* Key Metrics - Stripe style cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Building className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{stats.totalClients || 0}</div>
-              <div className="text-sm stripe-text-secondary">Active Clients</div>
-            </div>
+            <div className="text-3xl font-bold stripe-text-primary">{stats.totalClients || 0}</div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Active partnerships</div>
-            <div className="stripe-badge-success">
+          <div className="text-sm stripe-text-secondary mb-3">Active Clients</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Active partnerships</div>
+            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
               <TrendingUp className="h-3 w-3 mr-1" />
               +0%
             </div>
@@ -142,18 +140,16 @@ export function AdminDashboard() {
         </div>
 
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Users className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{stats.totalTeamMembers || 0}</div>
-              <div className="text-sm stripe-text-secondary">Team Members</div>
-            </div>
+            <div className="text-3xl font-bold stripe-text-primary">{stats.totalTeamMembers || 0}</div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Total workforce</div>
-            <div className="stripe-badge-success">
+          <div className="text-sm stripe-text-secondary mb-3">Team Members</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Total workforce</div>
+            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
               <TrendingUp className="h-3 w-3 mr-1" />
               +0%
             </div>
@@ -161,18 +157,16 @@ export function AdminDashboard() {
         </div>
 
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <UserCheck className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{stats.activeTeamMembers || 0}</div>
-              <div className="text-sm stripe-text-secondary">Active Members</div>
-            </div>
+            <div className="text-3xl font-bold stripe-text-primary">{stats.activeTeamMembers || 0}</div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Currently assigned</div>
-            <div className="stripe-badge-success">
+          <div className="text-sm stripe-text-secondary mb-3">Active Members</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Currently assigned</div>
+            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
               <Target className="h-3 w-3 mr-1" />
               {stats.activeTeamMembers && stats.totalTeamMembers
                 ? Math.round((stats.activeTeamMembers / stats.totalTeamMembers) * 100)
@@ -183,18 +177,16 @@ export function AdminDashboard() {
         </div>
 
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Clock className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{stats.pendingLeaveRequests || 0}</div>
-              <div className="text-sm stripe-text-secondary">Pending Requests</div>
-            </div>
+            <div className="text-3xl font-bold stripe-text-primary">{stats.pendingLeaveRequests || 0}</div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Awaiting approval</div>
-            <div className="stripe-badge-neutral">
+          <div className="text-sm stripe-text-secondary mb-3">Pending Requests</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Awaiting approval</div>
+            <div className="stripe-badge-neutral whitespace-nowrap flex-shrink-0">
               <Calendar className="h-3 w-3 mr-1" />
               Leave
             </div>
@@ -202,18 +194,16 @@ export function AdminDashboard() {
         </div>
 
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Activity className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{stats.employeesOnShift || 0}</div>
-              <div className="text-sm stripe-text-secondary">On Shift Now</div>
-            </div>
+            <div className="text-3xl font-bold stripe-text-primary">{stats.employeesOnShift || 0}</div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Currently working</div>
-            <div className="stripe-badge-success">
+          <div className="text-sm stripe-text-secondary mb-3">On Shift Now</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Currently working</div>
+            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
               <Zap className="h-3 w-3 mr-1" />
               Live
             </div>
@@ -221,20 +211,18 @@ export function AdminDashboard() {
         </div>
 
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Receipt className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">
-                ${(stats.paidInvoicesTotal || 0).toLocaleString()}
-              </div>
-              <div className="text-sm stripe-text-secondary">Paid This Month</div>
+            <div className="text-3xl font-bold stripe-text-primary">
+              ${(stats.paidInvoicesTotal || 0).toLocaleString()}
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Invoice payments</div>
-            <div className="stripe-badge-success">
+          <div className="text-sm stripe-text-secondary mb-3">Paid This Month</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Invoice payments</div>
+            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
               <DollarSign className="h-3 w-3 mr-1" />
               {stats.paidInvoicesCount || 0}
             </div>
@@ -242,18 +230,16 @@ export function AdminDashboard() {
         </div>
 
         <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
               <Briefcase className="h-6 w-6 stripe-text-muted" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{stats.activeProjects || 0}</div>
-              <div className="text-sm stripe-text-secondary">Active Projects</div>
-            </div>
+            <div className="text-3xl font-bold stripe-text-primary">{stats.activeProjects || 0}</div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm stripe-text-muted">Running projects</div>
-            <div className="stripe-badge-success">
+          <div className="text-sm stripe-text-secondary mb-3">Active Projects</div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm stripe-text-muted truncate flex-shrink">Running projects</div>
+            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
               <TrendingUp className="h-3 w-3 mr-1" />
               {stats.totalClients ? Math.round((stats.activeProjects / stats.totalClients) * 100) : 0}%
             </div>

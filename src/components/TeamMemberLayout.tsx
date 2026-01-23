@@ -114,8 +114,8 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
         </div>
 
         <main className="flex-1">
-          <div className="p-6 lg:p-8">
-            <div className="max-w-7xl mx-auto">
+          <div className="p-4 lg:p-6">
+            <div className="max-w-[95%] mx-auto">
               <Switch>
                 <Route path="/employee/dashboard" component={EmployeeDashboard} />
                 <Route path="/employee/profile" component={EmployeeProfile} />

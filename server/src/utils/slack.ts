@@ -1,12 +1,50 @@
 import https from 'node:https'
 
-interface SlackPayload {
+// Slack Block Kit types
+interface SlackTextBlock {
+  type: 'plain_text' | 'mrkdwn'
   text: string
+}
+
+interface SlackHeaderBlock {
+  type: 'header'
+  text: SlackTextBlock
+}
+
+interface SlackField {
+  type: 'mrkdwn'
+  text: string
+}
+
+interface SlackSectionBlock {
+  type: 'section'
+  text?: SlackTextBlock
+  fields?: SlackField[]
+}
+
+interface SlackButtonElement {
+  type: 'button'
+  text: SlackTextBlock
+  url: string
+  style?: 'primary' | 'danger'
+}
+
+interface SlackActionsBlock {
+  type: 'actions'
+  elements: SlackButtonElement[]
+}
+
+type SlackBlock = SlackHeaderBlock | SlackSectionBlock | SlackActionsBlock
+
+interface SlackPayload {
+  text?: string
   channel: string
+  blocks?: SlackBlock[]
 }
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN
 const SLACK_CHANNEL = process.env.SLACK_CHANNEL_ID
+const SLACK_ADMIN_CHANNEL = process.env.SLACK_ADMIN_CHANNEL_ID || process.env.SLACK_CHANNEL_ID
 const SLACK_ENABLED = process.env.SLACK_NOTIFICATIONS_ENABLED === 'true'
 
 const isConfigured = () => SLACK_ENABLED && !!SLACK_TOKEN && !!SLACK_CHANNEL
@@ -97,9 +135,14 @@ export async function notifyShiftEvent(options: NotifyShiftEventOptions) {
     break_ended: `↩️ ${actor} Ended the Break`
   }
 
+  if (!SLACK_CHANNEL) {
+    console.warn('[SLACK] SLACK_CHANNEL_ID not configured')
+    return
+  }
+
   await postToSlack({
     text: textByEvent[event],
-    channel: SLACK_CHANNEL as string
+    channel: SLACK_CHANNEL
   })
 }
 
@@ -120,5 +163,173 @@ function formatTimestamp(date: Date) {
     return `${parts[0]} - ${parts[1]}`
   }
   return cleaned
+}
+
+function getFrontendUrl(): string {
+  return process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
+}
+
+interface NotifyReimbursementRequestOptions {
+  employeeName?: string | null
+  employeeEmail: string
+  requestId: number
+  description: string
+  amount: string
+}
+
+export async function notifyReimbursementRequest(options: NotifyReimbursementRequestOptions) {
+  if (!isConfigured()) return
+
+  if (!SLACK_ADMIN_CHANNEL) {
+    console.warn('[SLACK] SLACK_ADMIN_CHANNEL_ID not configured, falling back to SLACK_CHANNEL_ID')
+  }
+
+  const { employeeName, employeeEmail, requestId, description, amount } = options
+  const actor = employeeName || employeeEmail
+  const frontendUrl = getFrontendUrl()
+  const adminUrl = `${frontendUrl}/admin/reimbursements`
+
+  const text = `💰 New Reimbursement Request from ${actor}`
+
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: '💰 New Reimbursement Request'
+      }
+    },
+    {
+      type: 'section',
+      fields: [
+        {
+          type: 'mrkdwn',
+          text: `*👤 Employee:*\n${actor}`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*💵 Amount:*\n$${amount}`
+        }
+      ]
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*📝 Description:*\n${description}`
+      }
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: 'Review in Portal'
+          },
+          url: adminUrl,
+          style: 'primary'
+        }
+      ]
+    }
+  ]
+
+  await postToSlack({
+    text,
+    channel: SLACK_ADMIN_CHANNEL || SLACK_CHANNEL || '',
+    blocks
+  })
+}
+
+interface NotifyVacationRequestOptions {
+  employeeName?: string | null
+  employeeEmail: string
+  requestId: number
+  leaveTypeName: string
+  startDate: string
+  endDate: string
+  daysCount: string
+  reason?: string | null
+}
+
+export async function notifyVacationRequest(options: NotifyVacationRequestOptions) {
+  if (!isConfigured()) return
+
+  if (!SLACK_ADMIN_CHANNEL) {
+    console.warn('[SLACK] SLACK_ADMIN_CHANNEL_ID not configured, falling back to SLACK_CHANNEL_ID')
+  }
+
+  const { employeeName, employeeEmail, requestId, leaveTypeName, startDate, endDate, daysCount, reason } = options
+  const actor = employeeName || employeeEmail
+  const frontendUrl = getFrontendUrl()
+  const adminUrl = `${frontendUrl}/admin/vacation`
+
+  const startDateFormatted = new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const endDateFormatted = new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+  const text = `🏖️ New Vacation Request from ${actor}`
+
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: '🏖️ New Vacation Request'
+      }
+    },
+    {
+      type: 'section',
+      fields: [
+        {
+          type: 'mrkdwn',
+          text: `*👤 Employee:*\n${actor}`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*📅 Type:*\n${leaveTypeName}`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*📆 Period:*\n${startDateFormatted} to ${endDateFormatted}`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*⏱️ Days:*\n${daysCount}`
+        }
+      ]
+    }
+  ]
+
+  if (reason) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*📄 Reason:*\n${reason}`
+      }
+    })
+  }
+
+  blocks.push({
+    type: 'actions',
+    elements: [
+      {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Review in Portal'
+        },
+        url: adminUrl,
+        style: 'primary'
+      }
+    ]
+  })
+
+  await postToSlack({
+    text,
+    channel: SLACK_ADMIN_CHANNEL || SLACK_CHANNEL || '',
+    blocks
+  })
 }
 

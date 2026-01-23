@@ -126,8 +126,8 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
         </div>
 
         <main className="flex-1">
-          <div className="p-6 lg:p-8">
-            <div className="max-w-7xl mx-auto">
+          <div className="p-4 lg:p-6">
+            <div className="max-w-[95%] mx-auto">
               <Switch>
                 <Route path="/admin/dashboard" component={AdminDashboard} />
                 <Route path="/admin/services" component={ServicesPage} />

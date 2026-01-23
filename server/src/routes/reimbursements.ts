@@ -1,8 +1,9 @@
 import express from 'express'
 import { db, pool } from '../db/index.js'
 import { reimbursementRequests, teamMembers, users } from '../db/schema.js'
-import { eq, and, sql, desc } from 'drizzle-orm'
+import { eq, and, or, sql, desc, like } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from '../utils/employment.js'
+import { notifyReimbursementRequest } from '../utils/slack.js'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
@@ -335,6 +336,15 @@ router.post('/', async (req, res) => {
         })
       const request = result[0]
 
+      // Notify Slack about new reimbursement request (fire and forget)
+      notifyReimbursementRequest({
+        employeeName: member.name || null,
+        employeeEmail: member.email,
+        requestId: request.id,
+        description,
+        amount: reimbursementAmount.toFixed(2)
+      }).catch((err) => console.error('[SLACK] reimbursement notify failed:', err))
+
       res.status(201).json({
         request,
         limits: {
@@ -343,9 +353,10 @@ router.post('/', async (req, res) => {
           availableAmount: availableAmount - reimbursementAmount
         }
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If careerYear column doesn't exist, insert using raw SQL
-      if (error?.code === '42703' && (error?.message?.includes('career_year') || error?.message?.includes('careerYear'))) {
+      const dbError = error as { code?: string; message?: string }
+      if (dbError?.code === '42703' && (dbError?.message?.includes('career_year') || dbError?.message?.includes('careerYear'))) {
         const result = await pool.query(
           `INSERT INTO reimbursement_requests 
            (employee_id, year, expense_amount, reimbursement_amount, description, category, status, requested_by, requested_at, created_at, updated_at)
@@ -364,6 +375,15 @@ router.post('/', async (req, res) => {
         )
 
         const request = result.rows[0]
+
+        // Notify Slack about new reimbursement request (fire and forget)
+        notifyReimbursementRequest({
+          employeeName: member.name || null,
+          employeeEmail: member.email,
+          requestId: request.id,
+          description,
+          amount: reimbursementAmount.toFixed(2)
+        }).catch((err) => console.error('[SLACK] reimbursement notify failed:', err))
 
         res.status(201).json({
           request,
@@ -401,10 +421,14 @@ router.get('/evidence/:filename', async (req, res) => {
     const filePath = path.join(process.cwd(), 'uploads', filename)
 
     if (!fs.existsSync(filePath)) {
+      console.error(`[EVIDENCE] File not found at path: ${filePath}`)
+      console.error(`[EVIDENCE] Current working directory: ${process.cwd()}`)
+      console.error(`[EVIDENCE] Uploads directory exists: ${fs.existsSync(path.join(process.cwd(), 'uploads'))}`)
       return res.status(404).json({ error: 'File not found' })
     }
 
     // Verify the file belongs to a reimbursement request that the user has access to
+    // Try both with and without leading slash in evidenceUrl
     const requests = await db
       .select({
         request: reimbursementRequests,
@@ -412,11 +436,61 @@ router.get('/evidence/:filename', async (req, res) => {
       })
       .from(reimbursementRequests)
       .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
-      .where(eq(reimbursementRequests.evidenceUrl, `/uploads/${filename}`))
+      .where(
+        or(
+          eq(reimbursementRequests.evidenceUrl, `/uploads/${filename}`),
+          eq(reimbursementRequests.evidenceUrl, `uploads/${filename}`)
+        )
+      )
       .limit(1)
 
     if (requests.length === 0) {
-      return res.status(404).json({ error: 'Reimbursement request not found' })
+      // If no exact match, try to find by filename only (more flexible)
+      const requestsByFilename = await db
+        .select({
+          request: reimbursementRequests,
+          member: teamMembers
+        })
+        .from(reimbursementRequests)
+        .innerJoin(teamMembers, eq(reimbursementRequests.employeeId, teamMembers.id))
+        .where(like(reimbursementRequests.evidenceUrl, `%${filename}`))
+        .limit(1)
+
+      if (requestsByFilename.length === 0) {
+        console.error(`[EVIDENCE] No reimbursement request found for filename: ${filename}`)
+        return res.status(404).json({ error: 'Reimbursement request not found' })
+      }
+
+      const request = requestsByFilename[0]
+
+      // Check if user has access: either they are the employee who requested it, or they are an admin
+      const hasAccess = req.user.role === 'admin' || request.member.email === req.user.email
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Not authorized to view this evidence' })
+      }
+
+      // Set appropriate content type based on file extension
+      const ext = path.extname(filename).toLowerCase()
+      let contentType = 'application/octet-stream'
+
+      switch (ext) {
+        case '.jpg':
+        case '.jpeg':
+          contentType = 'image/jpeg'
+          break
+        case '.png':
+          contentType = 'image/png'
+          break
+        case '.pdf':
+          contentType = 'application/pdf'
+          break
+      }
+
+      res.setHeader('Content-Type', contentType)
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`)
+      res.sendFile(path.resolve(filePath))
+      return
     }
 
     const request = requests[0]
