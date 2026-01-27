@@ -51,6 +51,8 @@ interface LocalTeamMember {
   status: string
   startDate: string
   location?: string
+  position?: string
+  isDeveloper: boolean
   avatarUrl?: string
   clientId?: number
   clientName?: string
@@ -210,6 +212,8 @@ export function TeamOverview() {
         startDate: editingMember.startDate, // Include startDate
         phone: editingMember.phone || undefined, // Include phone
         isBillable: editingMember.isBillable, // Include isBillable
+        position: editingMember.position,
+        isDeveloper: editingMember.isDeveloper,
       }
       await api.updateTeamMember(editingMember.id.toString(), updateData)
       await loadTeamMembers()
@@ -242,7 +246,7 @@ export function TeamOverview() {
 
   const getFilteredMembers = (members: LocalTeamMember[]) => {
     if (!searchTerm) return members
-    
+
     return members.filter(member =>
       member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -278,16 +282,15 @@ export function TeamOverview() {
                 </AvatarFallback>
               </Avatar>
             </Link>
-            <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-2 ring-white ${
-              member.status === 'active' ? 'bg-green-400' :
+            <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-2 ring-white ${member.status === 'active' ? 'bg-green-400' :
               member.status === 'bench' ? 'bg-yellow-400' : 'bg-gray-400'
-            }`} />
+              }`} />
           </div>
           <div className="flex-1 min-w-0">
             <Link href={`/admin/team-detail/${member.id}`}>
               <h3 className="font-semibold text-gray-900 text-lg leading-tight hover:text-blue-600 cursor-pointer transition-colors">{member.name}</h3>
             </Link>
-            <p className="text-gray-600 text-sm mt-0.5">{member.role}</p>
+            <p className="text-gray-600 text-sm mt-0.5">{member.position || member.role}</p>
             {member.location && (
               <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
                 <MapPin className="h-3 w-3" />
@@ -352,7 +355,7 @@ export function TeamOverview() {
         <div className="mb-4">
           <div className="flex flex-wrap gap-1.5">
             {member.skills.slice(0, 4).map((skill, index) => (
-              <span 
+              <span
                 key={index}
                 className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700"
               >
@@ -387,7 +390,7 @@ export function TeamOverview() {
                 </div>
               )}
             </div>
-            
+
             <div className="flex items-center gap-2">
               {member.clientName && (
                 <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded-md">
@@ -395,14 +398,13 @@ export function TeamOverview() {
                   <span className="text-xs font-medium text-blue-700">{member.clientName}</span>
                 </div>
               )}
-              <div className={`px-2 py-1 rounded-md text-xs font-medium ${
-                member.status === 'active' && member.clientId ? 'bg-green-50 text-green-700' :
+              <div className={`px-2 py-1 rounded-md text-xs font-medium ${member.status === 'active' && member.clientId ? 'bg-green-50 text-green-700' :
                 member.status === 'bench' || !member.clientId ? 'bg-yellow-50 text-yellow-700' :
-                'bg-gray-50 text-gray-700'
-              }`}>
+                  'bg-gray-50 text-gray-700'
+                }`}>
                 {member.status === 'active' && member.clientId ? 'Assigned' :
-                 member.status === 'bench' || !member.clientId ? 'Available' : 
-                 member.status}
+                  member.status === 'bench' || !member.clientId ? 'Available' :
+                    member.status}
               </div>
             </div>
           </div>
@@ -533,8 +535,8 @@ export function TeamOverview() {
           <div className="relative team-member-dropdown" style={{ display: 'block' }}>
             <button
               type="button"
-            onClick={() => {
-              if (availableUsers.length === 0) {
+              onClick={() => {
+                if (availableUsers.length === 0) {
                   alert('No users available with role "team_member". Please create a user with this role first.')
                   return
                 }
@@ -595,33 +597,30 @@ export function TeamOverview() {
           <nav className="flex space-x-8 px-6" aria-label="Tabs">
             <button
               onClick={() => setActiveTab('all')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === 'all'
-                  ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
-                  : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
-              }`}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'all'
+                ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
+                : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
+                }`}
             >
               <Users className="h-4 w-4 mr-2 inline" />
               All Team Members! ({teamMembers.length})
             </button>
             <button
               onClick={() => setActiveTab('billable')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === 'billable'
-                  ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
-                  : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
-              }`}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'billable'
+                ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
+                : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
+                }`}
             >
               <DollarSign className="h-4 w-4 mr-2 inline" />
               Billable Resources ({billableMembers.length})
             </button>
             <button
               onClick={() => setActiveTab('internal')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === 'internal'
-                  ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
-                  : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
-              }`}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'internal'
+                ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
+                : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
+                }`}
             >
               <UserCheck className="h-4 w-4 mr-2 inline" />
               Internal Staff ({internalStaff.length})

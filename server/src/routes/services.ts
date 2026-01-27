@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { Pool } from 'pg'
 import { eq, desc, and, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { serviceTypes, clientServices, clients, teamMembers, users, developers, clientServiceDevelopers, clientUsers } from '../db/schema.js'
+import { serviceTypes, clientServices, clients, teamMembers, users, clientServiceTeamMembers, clientUsers } from '../db/schema.js'
 import * as schema from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 
@@ -22,7 +22,7 @@ router.get('/service-types', requireAuth, async (req, res) => {
       .select()
       .from(serviceTypes)
       .orderBy(desc(serviceTypes.createdAt))
-    
+
     console.log('Found', services.length, 'service types')
     res.json(services)
   } catch (error) {
@@ -100,10 +100,10 @@ router.delete('/service-types/:id', requireAuth, async (req, res) => {
         eq(clientServices.serviceTypeId, parseInt(id)),
         eq(clientServices.isActive, true)
       ))
-    
+
     console.log('Active service usage count:', usage[0]?.count)
-    
-    if (usage[0]?.count > 0) {
+
+    if (Number(usage[0]?.count) > 0) {
       console.log('Service is actively in use, cannot delete')
       return res.status(400).json({ error: 'Cannot delete service type that is in use' })
     }
@@ -139,6 +139,7 @@ router.get('/client-services', requireAuth, async (req, res) => {
         serviceCategory: serviceTypes.category,
         billingModel: serviceTypes.billingModel,
         rate: clientServices.rate,
+        serviceTitle: clientServices.serviceTitle,
         startDate: clientServices.startDate,
         endDate: clientServices.endDate,
         isActive: clientServices.isActive,
@@ -170,7 +171,8 @@ router.post('/client-services', requireAuth, async (req, res) => {
       .values({
         clientId: parseInt(clientId),
         serviceTypeId: parseInt(serviceTypeId),
-        rate: rate ? parseFloat(rate) : null,
+        serviceTitle: req.body.serviceTitle || null,
+        rate: rate ? rate.toString() : null,
         startDate,
         endDate: endDate || null,
       })
@@ -192,7 +194,8 @@ router.put('/client-services/:id', requireAuth, async (req, res) => {
     const [updatedService] = await db
       .update(clientServices)
       .set({
-        rate: rate ? parseFloat(rate) : null,
+        serviceTitle: req.body.serviceTitle !== undefined ? req.body.serviceTitle : undefined,
+        rate: rate ? rate.toString() : null,
         endDate: endDate || null,
         isActive: isActive !== undefined ? isActive : true,
       })
@@ -391,6 +394,7 @@ router.get('/clients', requireAuth, async (req, res) => {
             serviceCategory: serviceTypes.category,
             billingModel: serviceTypes.billingModel,
             rate: clientServices.rate,
+            serviceTitle: clientServices.serviceTitle,
             serviceLevelPrice: clientServices.serviceLevelPrice,
             startDate: clientServices.startDate,
             endDate: clientServices.endDate,
@@ -448,13 +452,13 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params
     console.log('Fetching client details for ID:', id)
-    
+
     // Validate that id is a valid number
     const clientId = parseInt(id)
     if (isNaN(clientId)) {
       return res.status(400).json({ error: 'Invalid client ID format' })
     }
-    
+
     // Check if user has access to this client
     if (req.user?.role === 'client') {
       // Client users can only access clients they are assigned to
@@ -492,10 +496,12 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
         serviceCategory: serviceTypes.category,
         billingModel: serviceTypes.billingModel,
         rate: clientServices.rate,
+        serviceTitle: clientServices.serviceTitle,
         serviceLevelPrice: clientServices.serviceLevelPrice,
         startDate: clientServices.startDate,
         endDate: clientServices.endDate,
         isActive: clientServices.isActive,
+        slackChannelId: clientServices.slackChannelId,
         createdAt: clientServices.createdAt,
       })
       .from(clientServices)
@@ -599,7 +605,9 @@ router.post('/clients/:clientId/services', requireAuth, async (req, res) => {
       .values({
         clientId: parseInt(clientId),
         serviceTypeId: parseInt(serviceTypeId),
-        rate: rate ? parseFloat(rate) : null,
+        serviceTitle: req.body.serviceTitle || null,
+        slackChannelId: req.body.slackChannelId || null,
+        rate: rate ? rate.toString() : null,
         startDate,
         isActive: true,
       })
@@ -616,18 +624,18 @@ router.post('/clients/:clientId/services', requireAuth, async (req, res) => {
 // Create new client
 router.post('/clients', requireAuth, async (req, res) => {
   try {
-    const { 
-      name, 
-      industry, 
-      contactPerson, 
-      email, 
-      phone, 
-      address, 
-      contractType, 
-      contractStart, 
-      contractEnd, 
-      billingCycle, 
-      teamSize 
+    const {
+      name,
+      industry,
+      contactPerson,
+      email,
+      phone,
+      address,
+      contractType,
+      contractStart,
+      contractEnd,
+      billingCycle,
+      teamSize
     } = req.body
     console.log('Creating new client:', name)
 
@@ -669,19 +677,19 @@ router.post('/clients', requireAuth, async (req, res) => {
 router.put('/clients/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params
-    const { 
-      name, 
-      industry, 
-      contactPerson, 
-      email, 
-      phone, 
-      address, 
+    const {
+      name,
+      industry,
+      contactPerson,
+      email,
+      phone,
+      address,
       status,
-      contractType, 
-      contractStart, 
-      contractEnd, 
-      billingCycle, 
-      teamSize 
+      contractType,
+      contractStart,
+      contractEnd,
+      billingCycle,
+      teamSize
     } = req.body
     console.log('Updating client:', id)
 
@@ -723,9 +731,10 @@ router.get('/developers', requireAuth, async (req, res) => {
     console.log('Fetching developers for user:', req.user?.username)
     const devs = await db
       .select()
-      .from(developers)
-      .orderBy(desc(developers.createdAt))
-    
+      .from(teamMembers)
+      .where(eq(teamMembers.isDeveloper, true))
+      .orderBy(desc(teamMembers.createdAt))
+
     console.log('Found', devs.length, 'developers')
     res.json(devs)
   } catch (error) {
@@ -742,22 +751,22 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
 
     const assignedDevelopers = await db
       .select({
-        id: clientServiceDevelopers.id,
-        developerId: clientServiceDevelopers.developerId,
-        name: developers.name,
-        email: developers.email,
-        skills: developers.skills,
-        hourlyRate: clientServiceDevelopers.hourlyRate,
-        fixedPrice: clientServiceDevelopers.fixedPrice,
-        workSchedule: clientServiceDevelopers.workSchedule,
-        employmentType: clientServiceDevelopers.employmentType,
-        isActive: clientServiceDevelopers.isActive,
-        startDate: clientServiceDevelopers.startDate,
-        endDate: clientServiceDevelopers.endDate,
+        id: clientServiceTeamMembers.id,
+        teamMemberId: clientServiceTeamMembers.teamMemberId,
+        name: teamMembers.name,
+        email: teamMembers.email,
+        skills: teamMembers.skills,
+        hourlyRate: clientServiceTeamMembers.hourlyRate,
+        fixedPrice: clientServiceTeamMembers.fixedPrice,
+        workSchedule: clientServiceTeamMembers.workSchedule,
+        employmentType: clientServiceTeamMembers.employmentType,
+        isActive: clientServiceTeamMembers.isActive,
+        startDate: clientServiceTeamMembers.startDate,
+        endDate: clientServiceTeamMembers.endDate,
       })
-      .from(clientServiceDevelopers)
-      .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
-      .leftJoin(clientServices, eq(clientServiceDevelopers.clientServiceId, clientServices.id))
+      .from(clientServiceTeamMembers)
+      .leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
+      .leftJoin(clientServices, eq(clientServiceTeamMembers.clientServiceId, clientServices.id))
       .where(and(
         eq(clientServices.clientId, parseInt(clientId)),
         eq(clientServices.id, parseInt(serviceId))
@@ -774,10 +783,10 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
 router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, async (req, res) => {
   try {
     const { clientId, serviceId } = req.params
-    const { developerId, employmentType, hourlyRate, fixedPrice, startDate } = req.body
-    console.log(`Adding developer ${developerId} to client ${clientId}, service ${serviceId}`)
+    const { teamMemberId, employmentType, hourlyRate, fixedPrice, startDate } = req.body
+    console.log(`Adding developer ${teamMemberId} to client ${clientId}, service ${serviceId}`)
 
-    if (!developerId || !employmentType || !startDate) {
+    if (!teamMemberId || !employmentType || !startDate) {
       return res.status(400).json({ error: 'Developer, employment type, and start date are required' })
     }
 
@@ -800,13 +809,13 @@ router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, as
     }
 
     const [newAssignment] = await db
-      .insert(clientServiceDevelopers)
+      .insert(clientServiceTeamMembers)
       .values({
         clientServiceId: parseInt(serviceId),
-        developerId: parseInt(developerId),
+        teamMemberId: parseInt(teamMemberId),
         employmentType,
-        hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
-        fixedPrice: fixedPrice ? parseFloat(fixedPrice) : null,
+        hourlyRate: hourlyRate ? hourlyRate.toString() : null,
+        fixedPrice: fixedPrice ? fixedPrice.toString() : null,
         startDate,
         isActive: true,
       })
@@ -829,8 +838,8 @@ router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId',
 
     if (permanent === 'true') {
       const [deletedAssignment] = await db
-        .delete(clientServiceDevelopers)
-        .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+        .delete(clientServiceTeamMembers)
+        .where(eq(clientServiceTeamMembers.id, parseInt(assignmentId)))
         .returning()
 
       if (!deletedAssignment) {
@@ -841,12 +850,12 @@ router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId',
       res.json({ message: 'Developer assignment permanently removed', assignment: deletedAssignment })
     } else {
       const [updatedAssignment] = await db
-        .update(clientServiceDevelopers)
+        .update(clientServiceTeamMembers)
         .set({
           isActive: false,
           endDate: new Date().toISOString().split('T')[0],
         })
-        .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+        .where(eq(clientServiceTeamMembers.id, parseInt(assignmentId)))
         .returning()
 
       if (!updatedAssignment) {
@@ -870,14 +879,14 @@ router.patch('/clients/:clientId/services/:serviceId/developers/:assignmentId', 
     console.log(`Updating developer assignment ${assignmentId}`)
 
     const updateData: any = {}
-    if (hourlyRate !== undefined) updateData.hourlyRate = hourlyRate ? parseFloat(hourlyRate) : null
-    if (fixedPrice !== undefined) updateData.fixedPrice = fixedPrice ? parseFloat(fixedPrice) : null
+    if (hourlyRate !== undefined) updateData.hourlyRate = hourlyRate ? hourlyRate.toString() : null
+    if (fixedPrice !== undefined) updateData.fixedPrice = fixedPrice ? fixedPrice.toString() : null
     if (workSchedule !== undefined) updateData.workSchedule = workSchedule
 
     const [updatedAssignment] = await db
-      .update(clientServiceDevelopers)
+      .update(clientServiceTeamMembers)
       .set(updateData)
-      .where(eq(clientServiceDevelopers.id, parseInt(assignmentId)))
+      .where(eq(clientServiceTeamMembers.id, parseInt(assignmentId)))
       .returning()
 
     if (!updatedAssignment) {
@@ -900,11 +909,13 @@ router.put('/clients/:clientId/services/:serviceId', requireAuth, async (req, re
     console.log(`Updating client service ${serviceId} for client ${clientId}`)
 
     const updateData: any = {}
-    if (rate !== undefined) updateData.rate = rate ? parseFloat(rate) : null
-    if (serviceLevelPrice !== undefined) updateData.serviceLevelPrice = serviceLevelPrice ? parseFloat(serviceLevelPrice) : null
+    if (rate !== undefined) updateData.rate = rate ? rate.toString() : null
+    if (serviceLevelPrice !== undefined) updateData.serviceLevelPrice = serviceLevelPrice ? serviceLevelPrice.toString() : null
     if (startDate !== undefined) updateData.startDate = startDate
     if (endDate !== undefined) updateData.endDate = endDate
     if (isActive !== undefined) updateData.isActive = isActive
+    if (req.body.serviceTitle !== undefined) updateData.serviceTitle = req.body.serviceTitle
+    if (req.body.slackChannelId !== undefined) updateData.slackChannelId = req.body.slackChannelId
 
     const [updatedService] = await db
       .update(clientServices)
@@ -937,7 +948,7 @@ router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async 
     const [updatedService] = await db
       .update(clientServices)
       .set({
-        serviceLevelPrice: serviceLevelPrice ? parseFloat(serviceLevelPrice) : null,
+        serviceLevelPrice: serviceLevelPrice ? serviceLevelPrice.toString() : null,
       })
       .where(and(
         eq(clientServices.clientId, parseInt(clientId)),
@@ -961,20 +972,21 @@ router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async 
 // Create developer
 router.post('/developers', requireAuth, async (req, res) => {
   try {
-    const { name, email, skills, hourlyRate, experienceLevel, status, bio, location } = req.body
+    const { name, email, skills, hourlyRate, experienceLevel, status, bio, location, position, isDeveloper } = req.body
     console.log('Creating new developer:', name)
 
     const [newDeveloper] = await db
-      .insert(developers)
+      .insert(teamMembers)
       .values({
-        name,
-        email,
+        name: name || '',
+        email: email || '',
+        role: 'developer', // Default role for legacy /developers route
         skills: skills || [],
-        hourlyRate: hourlyRate ? parseFloat(hourlyRate.toString()) : null,
-        experienceLevel,
+        hourlyRate: hourlyRate ? hourlyRate.toString() : null,
         status: status || 'available',
-        bio,
-        location,
+        startDate: new Date().toISOString().slice(0, 10), // Required field
+        position,
+        isDeveloper: isDeveloper ?? true, // Default to true for this route
       })
       .returning()
 
@@ -997,19 +1009,16 @@ router.put('/developers/:id', requireAuth, async (req, res) => {
     console.log('Updating developer:', id)
 
     const [updatedDeveloper] = await db
-      .update(developers)
+      .update(teamMembers)
       .set({
         name,
         email,
         skills: skills || [],
-        hourlyRate: hourlyRate ? parseFloat(hourlyRate.toString()) : null,
-        experienceLevel,
+        hourlyRate: hourlyRate ? hourlyRate.toString() : null,
         status,
-        bio,
-        location,
         updatedAt: new Date(),
       })
-      .where(eq(developers.id, parseInt(id)))
+      .where(eq(teamMembers.id, parseInt(id)))
       .returning()
 
     if (!updatedDeveloper) {
@@ -1036,23 +1045,23 @@ router.delete('/developers/:id', requireAuth, async (req, res) => {
     // Check if developer is assigned to any active services
     const assignments = await db
       .select({ count: sql`count(*)` })
-      .from(clientServiceDevelopers)
+      .from(clientServiceTeamMembers)
       .where(and(
-        eq(clientServiceDevelopers.developerId, parseInt(id)),
-        eq(clientServiceDevelopers.isActive, true)
+        eq(clientServiceTeamMembers.teamMemberId, parseInt(id)),
+        eq(clientServiceTeamMembers.isActive, true)
       ))
 
     const assignmentCount = parseInt(assignments[0]?.count as string || '0')
-    
+
     if (assignmentCount > 0) {
-      return res.status(400).json({ 
-        error: `Cannot delete developer who is currently assigned to ${assignmentCount} active service(s). Please remove all assignments first.` 
+      return res.status(400).json({
+        error: `Cannot delete developer who is currently assigned to ${assignmentCount} active service(s). Please remove all assignments first.`
       })
     }
 
     const [deletedDeveloper] = await db
-      .delete(developers)
-      .where(eq(developers.id, parseInt(id)))
+      .delete(teamMembers)
+      .where(eq(teamMembers.id, parseInt(id)))
       .returning()
 
     if (!deletedDeveloper) {

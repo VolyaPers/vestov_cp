@@ -40,7 +40,7 @@ async function setupVacationData() {
             employeeId: member.id,
             cycleStart,
             cycleEnd,
-            cycleNumber: 1,
+            cycleMidpoint: new Date(new Date(cycleStart).getTime() + (new Date(cycleEnd).getTime() - new Date(cycleStart).getTime()) / 2).toISOString().split('T')[0],
             isActive: true,
           })
           .returning()

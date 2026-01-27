@@ -39,6 +39,9 @@ interface TeamMember {
   id: number
   name: string
   role: string
+  position?: string
+  isDeveloper: boolean
+  experienceLevel?: string
   email: string
   phone?: string
   skills?: string[]
@@ -324,6 +327,7 @@ export function TeamMemberDetails() {
     if (member) {
       setEditingMember({
         ...member,
+        isDeveloper: member.isDeveloper || false,
         hourlyRate: member.hourlyRate ? String(member.hourlyRate) : undefined,
       })
       setIsEditModalOpen(true)
@@ -486,10 +490,9 @@ export function TeamMemberDetails() {
                     {member.name.split(' ').map(n => n[0]).join('')}
                   </AvatarFallback>
                 </Avatar>
-                <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full ring-2 ring-white ${
-                  member.status === 'active' ? 'bg-green-400' :
-                  member.status === 'bench' ? 'bg-yellow-400' : 'bg-gray-400'
-                }`} />
+                <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full ring-2 ring-white ${member.status === 'active' ? 'bg-green-400' :
+                    member.status === 'bench' ? 'bg-yellow-400' : 'bg-gray-400'
+                  }`} />
               </div>
 
               <div className="flex-1">
@@ -863,13 +866,13 @@ export function TeamMemberDetails() {
                   ? 'Update the employment cycle dates and status'
                   : allEmploymentCycles.length > 0
                     ? `Create cycle ${allEmploymentCycles.length + 1} starting ${(() => {
-                        const lastCycle = allEmploymentCycles.sort((a, b) =>
-                          new Date(b.cycleEnd).getTime() - new Date(a.cycleEnd).getTime()
-                        )[0]
-                        const nextStartDate = new Date(lastCycle.cycleEnd)
-                        nextStartDate.setDate(nextStartDate.getDate() + 1)
-                        return nextStartDate.toLocaleDateString()
-                      })()} with automatic leave allocations`
+                      const lastCycle = allEmploymentCycles.sort((a, b) =>
+                        new Date(b.cycleEnd).getTime() - new Date(a.cycleEnd).getTime()
+                      )[0]
+                      const nextStartDate = new Date(lastCycle.cycleEnd)
+                      nextStartDate.setDate(nextStartDate.getDate() + 1)
+                      return nextStartDate.toLocaleDateString()
+                    })()} with automatic leave allocations`
                     : 'Create the first employment cycle with default leave allocations'
                 }
               </p>

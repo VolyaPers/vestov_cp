@@ -16,7 +16,7 @@ import type {
 } from '../types/common'
 
 const envApiUrl = import.meta.env.VITE_API_URL
-const API_BASE = envApiUrl 
+const API_BASE = envApiUrl
   ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
   : '/api'
 
@@ -47,7 +47,7 @@ class ApiClient {
         envApiUrl: import.meta.env.VITE_API_URL,
         isCorsError: errorMessage.includes('CORS') || errorMessage.includes('Failed to fetch'),
       })
-      
+
       // Provide more helpful error message
       if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
         const helpfulMessage = !import.meta.env.VITE_API_URL
@@ -57,17 +57,17 @@ class ApiClient {
       }
       throw error
     }
-    
+
     // Handle 304 Not Modified (cached response)
     if (response.status === 304) {
       // Return empty object for 304 - caller should handle cached data
       return {}
     }
-    
+
     // Read response body once - can only be read once
     const contentType = response.headers.get('content-type')
     const text = await response.text()
-    
+
     if (!response.ok) {
       let errorMessage = `API Error: ${response.status}`
       try {
@@ -105,9 +105,9 @@ class ApiClient {
       console.log('[API REQUEST] Success:', { url, status: response.status, hasData: !!parsed })
       return parsed
     } catch (error) {
-      console.error('[API REQUEST] Failed to parse JSON response:', { 
-        url, 
-        status: response.status, 
+      console.error('[API REQUEST] Failed to parse JSON response:', {
+        url,
+        status: response.status,
         contentType,
         textLength: text.length,
         textPreview: text.slice(0, 500),
@@ -161,7 +161,7 @@ class ApiClient {
     }
 
     const response = await fetch(url, config)
-    
+
     if (!response.ok) {
       let errorMessage = `API Error: ${response.status}`
       try {
@@ -365,7 +365,7 @@ class ApiClient {
   }
 
   async addDeveloperToService(clientId: number, serviceId: number, data: {
-    developerId: number
+    teamMemberId: number
     employmentType: 'fulltime' | 'part_time'
     hourlyRate?: number
     fixedPrice?: number
@@ -400,6 +400,8 @@ class ApiClient {
     startDate?: string
     endDate?: string
     isActive?: boolean
+    serviceTitle?: string | null
+    slackChannelId?: string | null
   }) {
     return this.request(`/services/clients/${clientId}/services/${serviceId}`, {
       method: 'PUT',
@@ -498,10 +500,11 @@ class ApiClient {
     })
   }
 
-  async addServiceToClient(clientId: number, data: { 
-    serviceTypeId: number; 
-    rate?: number; 
-    startDate: string 
+  async addServiceToClient(clientId: number, data: {
+    serviceTypeId: number;
+    rate?: number;
+    serviceTitle?: string;
+    startDate: string
   }) {
     return this.request(`/services/clients/${clientId}/services`, {
       method: 'POST',
@@ -548,7 +551,7 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     }) as { user?: User } | User
-    
+
     // Backend returns { user: ... }, extract it
     if (response && typeof response === 'object' && 'user' in response) {
       return response.user as User
@@ -620,13 +623,28 @@ class ApiClient {
   }
 
   // Shift Management
+  async getMyServices() {
+    return this.request('/shifts/my-services') as Promise<{
+      services: Array<{
+        serviceId: number
+        serviceName: string
+        clientName: string
+        employmentType: 'fulltime' | 'part_time'
+        workSchedule: Record<string, string>
+        serviceTitle: string | null
+        slackChannelId: string | null
+      }>
+    }>
+  }
+
   async getCurrentShift() {
     return this.request('/shifts/current')
   }
 
-  async startShift() {
+  async startShift(serviceId?: number) {
     return this.request('/shifts/start', {
       method: 'POST',
+      body: JSON.stringify({ serviceId }),
     })
   }
 

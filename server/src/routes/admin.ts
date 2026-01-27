@@ -4,12 +4,12 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import { db } from '../db/index.js'
-import { 
-  clients, 
-  teamMembers, 
-  leaveRequests, 
-  leaveBalances, 
-  leaveTypes, 
+import {
+  clients,
+  teamMembers,
+  leaveRequests,
+  leaveBalances,
+  leaveTypes,
   employmentCycles,
   leaveRequestEvents,
   users,
@@ -31,15 +31,15 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
     }
 
     const memberId = parseInt(req.params.id)
-    
+
     // Get the team member to check ownership
     const existingMembers = await db
       .select()
       .from(teamMembers)
       .where(eq(teamMembers.id, memberId))
-    
+
     const existingMember = existingMembers[0]
-    
+
     if (!existingMember) {
       return res.status(404).json({ error: 'Team member not found' })
     }
@@ -54,15 +54,16 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
 
     // Prepare update data - restrict fields if not admin
     const updateData: any = { updatedAt: new Date() }
-    
+
     if (isAdmin) {
       // Admins can update all fields - explicitly process each field to ensure proper handling
       const allowedFields = [
-        'name', 'role', 'email', 'phone', 'skills', 'bio', 
-        'hourlyRate', 'monthlyRate', 'isBillable', 'status', 
-        'clientId', 'startDate', 'location', 'avatarUrl'
+        'name', 'role', 'email', 'phone', 'skills', 'bio',
+        'hourlyRate', 'monthlyRate', 'isBillable', 'status',
+        'clientId', 'startDate', 'location', 'avatarUrl',
+        'position', 'isDeveloper'
       ]
-      
+
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           // Handle date fields
@@ -70,13 +71,13 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
             updateData[field] = req.body[field] // Date string will be converted by Drizzle
           }
           // Handle boolean fields
-          else if (field === 'isBillable') {
+          else if (field === 'isBillable' || field === 'isDeveloper') {
             updateData[field] = Boolean(req.body[field])
           }
           // Handle numeric fields
           else if (field === 'hourlyRate' || field === 'monthlyRate') {
-            updateData[field] = req.body[field] !== null && req.body[field] !== '' 
-              ? req.body[field] 
+            updateData[field] = req.body[field] !== null && req.body[field] !== ''
+              ? req.body[field]
               : null
           }
           // Handle array fields
@@ -104,7 +105,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
       .set(updateData)
       .where(eq(teamMembers.id, memberId))
       .returning()
-    
+
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' })
     }
@@ -269,7 +270,7 @@ router.put('/clients/:id', async (req, res) => {
       .set({ ...req.body, updatedAt: new Date() })
       .where(eq(clients.id, parseInt(req.params.id)))
       .returning()
-    
+
     if (!client) {
       return res.status(404).json({ error: 'Client not found' })
     }
@@ -379,6 +380,8 @@ router.get('/team-members', async (req, res) => {
         startDate: teamMembers.startDate,
         location: teamMembers.location,
         avatarUrl: teamMembers.avatarUrl,
+        position: teamMembers.position,
+        isDeveloper: teamMembers.isDeveloper,
         clientId: teamMembers.clientId,
         clientName: clients.name,
       })
@@ -411,13 +414,15 @@ router.get('/team-members/:id', async (req, res) => {
         startDate: teamMembers.startDate,
         location: teamMembers.location,
         avatarUrl: teamMembers.avatarUrl,
+        position: teamMembers.position,
+        isDeveloper: teamMembers.isDeveloper,
         clientId: teamMembers.clientId,
         clientName: clients.name,
       })
       .from(teamMembers)
       .leftJoin(clients, eq(teamMembers.clientId, clients.id))
       .where(eq(teamMembers.id, parseInt(req.params.id)))
-    
+
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' })
     }
@@ -467,6 +472,8 @@ router.post('/team-members', async (req, res) => {
         startDate: today,
         status: 'active',
         isBillable: true,
+        position: user.position,
+        isDeveloper: true, // Default to true for team members created this way
       })
       .returning()
 
@@ -575,7 +582,7 @@ router.get('/leave-requests', async (req, res) => {
       .leftJoin(teamMembers, eq(leaveRequests.employeeId, teamMembers.id))
       .leftJoin(leaveTypes, eq(leaveRequests.leaveTypeId, leaveTypes.id))
       .orderBy(desc(leaveRequests.createdAt))
-    
+
     res.json(requests)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch leave requests' })
@@ -585,10 +592,10 @@ router.get('/leave-requests', async (req, res) => {
 router.post('/leave-requests', async (req, res) => {
   try {
     const { employeeId, leaveTypeId, startDate, endDate, halfDayStart, halfDayEnd, reason } = req.body
-    
+
     // Calculate days count
     const daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd)
-    
+
     const [request] = await db.insert(leaveRequests).values({
       employeeId,
       leaveTypeId,
@@ -600,7 +607,7 @@ router.post('/leave-requests', async (req, res) => {
       reason,
       requestedBy: req.user!.id,
     }).returning()
-    
+
     // Create audit trail event
     await db.insert(leaveRequestEvents).values({
       leaveRequestId: request.id,
@@ -608,7 +615,7 @@ router.post('/leave-requests', async (req, res) => {
       actorId: req.user!.id,
       note: 'Leave request created',
     })
-    
+
     res.json(request)
   } catch (error) {
     console.error('Create leave request error:', error)
@@ -619,23 +626,23 @@ router.post('/leave-requests', async (req, res) => {
 router.patch('/leave-requests/:id', async (req, res) => {
   try {
     const { startDate, endDate, halfDayStart, halfDayEnd, reason } = req.body
-    
+
     // Recalculate days if dates changed
     let updateData = req.body
     if (startDate && endDate) {
       updateData.daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd).toString()
     }
-    
+
     const [request] = await db
       .update(leaveRequests)
       .set({ ...updateData, updatedAt: new Date() })
       .where(eq(leaveRequests.id, parseInt(req.params.id)))
       .returning()
-    
+
     if (!request) {
       return res.status(404).json({ error: 'Leave request not found' })
     }
-    
+
     res.json(request)
   } catch (error) {
     res.status(500).json({ error: 'Failed to update leave request' })
@@ -645,7 +652,7 @@ router.patch('/leave-requests/:id', async (req, res) => {
 router.patch('/leave-requests/:id/approve', async (req, res) => {
   try {
     const { reason } = req.body
-    
+
     const [request] = await db
       .update(leaveRequests)
       .set({
@@ -657,11 +664,11 @@ router.patch('/leave-requests/:id/approve', async (req, res) => {
       })
       .where(eq(leaveRequests.id, parseInt(req.params.id)))
       .returning()
-    
+
     if (!request) {
       return res.status(404).json({ error: 'Leave request not found' })
     }
-    
+
     // Create audit trail event
     await db.insert(leaveRequestEvents).values({
       leaveRequestId: request.id,
@@ -669,7 +676,7 @@ router.patch('/leave-requests/:id/approve', async (req, res) => {
       actorId: req.user!.id,
       note: reason || 'Leave request approved',
     })
-    
+
     res.json(request)
   } catch (error) {
     res.status(500).json({ error: 'Failed to approve leave request' })
@@ -679,7 +686,7 @@ router.patch('/leave-requests/:id/approve', async (req, res) => {
 router.patch('/leave-requests/:id/deny', async (req, res) => {
   try {
     const { reason } = req.body
-    
+
     const [request] = await db
       .update(leaveRequests)
       .set({
@@ -691,11 +698,11 @@ router.patch('/leave-requests/:id/deny', async (req, res) => {
       })
       .where(eq(leaveRequests.id, parseInt(req.params.id)))
       .returning()
-    
+
     if (!request) {
       return res.status(404).json({ error: 'Leave request not found' })
     }
-    
+
     // Create audit trail event
     await db.insert(leaveRequestEvents).values({
       leaveRequestId: request.id,
@@ -703,7 +710,7 @@ router.patch('/leave-requests/:id/deny', async (req, res) => {
       actorId: req.user!.id,
       note: reason || 'Leave request denied',
     })
-    
+
     res.json(request)
   } catch (error) {
     res.status(500).json({ error: 'Failed to deny leave request' })
@@ -713,7 +720,7 @@ router.patch('/leave-requests/:id/deny', async (req, res) => {
 router.patch('/leave-requests/:id/cancel', async (req, res) => {
   try {
     const { reason } = req.body
-    
+
     const [request] = await db
       .update(leaveRequests)
       .set({
@@ -722,11 +729,11 @@ router.patch('/leave-requests/:id/cancel', async (req, res) => {
       })
       .where(eq(leaveRequests.id, parseInt(req.params.id)))
       .returning()
-    
+
     if (!request) {
       return res.status(404).json({ error: 'Leave request not found' })
     }
-    
+
     // Create audit trail event
     await db.insert(leaveRequestEvents).values({
       leaveRequestId: request.id,
@@ -734,7 +741,7 @@ router.patch('/leave-requests/:id/cancel', async (req, res) => {
       actorId: req.user!.id,
       note: reason || 'Leave request canceled',
     })
-    
+
     res.json(request)
   } catch (error) {
     res.status(500).json({ error: 'Failed to cancel leave request' })
@@ -757,7 +764,7 @@ router.get('/leave-balances', async (req, res) => {
       .from(leaveBalances)
       .leftJoin(teamMembers, eq(leaveBalances.employeeId, teamMembers.id))
       .leftJoin(leaveTypes, eq(leaveBalances.leaveTypeId, leaveTypes.id))
-    
+
     res.json(balances)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch leave balances' })

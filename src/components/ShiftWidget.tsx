@@ -15,6 +15,16 @@ interface ShiftBreak {
   startTime: string
 }
 
+interface UserService {
+  serviceId: number
+  serviceName: string
+  clientName: string
+  employmentType: 'fulltime' | 'part_time'
+  workSchedule: Record<string, string>
+  serviceTitle: string | null
+  slackChannelId: string | null
+}
+
 type ConfirmAction = 'startShift' | 'endShift' | 'startBreak' | 'endBreak'
 
 export function ShiftWidget() {
@@ -30,6 +40,9 @@ export function ShiftWidget() {
   const [showInfoCard, setShowInfoCard] = useState(true)
   const progressInterval = useRef<number | null>(null)
   const holdStartTime = useRef<number | null>(null)
+  const [myServices, setMyServices] = useState<UserService[]>([])
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
+  const [isFullTime, setIsFullTime] = useState(false)
 
   useEffect(() => {
     const fetchCurrentShift = async () => {
@@ -38,6 +51,10 @@ export function ShiftWidget() {
         if (response.hasActiveShift) {
           setCurrentShift(response.shift)
           setActiveBreak(response.activeBreak)
+          // If shift has a service, set it as selected
+          if (response.shift?.serviceId) {
+            setSelectedServiceId(response.shift.serviceId)
+          }
         } else {
           setCurrentShift(null)
           setActiveBreak(null)
@@ -47,7 +64,34 @@ export function ShiftWidget() {
       }
     }
 
+    const fetchMyServices = async () => {
+      try {
+        const response = await api.getMyServices()
+        setMyServices(response.services)
+
+        if (response.services.length === 1) {
+          setSelectedServiceId(response.services[0].serviceId)
+          setIsFullTime(response.services[0].employmentType === 'fulltime')
+        } else if (response.services.length > 1) {
+          // Detect current day and pre-select based on schedule
+          const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+          const today = dayNames[new Date().getDay()]
+
+          const scheduledService = response.services.find(s =>
+            s.workSchedule && s.workSchedule[today] && s.workSchedule[today] !== 'off'
+          )
+
+          if (scheduledService) {
+            setSelectedServiceId(scheduledService.serviceId)
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching my services:', err)
+      }
+    }
+
     fetchCurrentShift()
+    fetchMyServices()
     const interval = setInterval(fetchCurrentShift, 30000)
     return () => {
       clearInterval(interval)
@@ -58,8 +102,14 @@ export function ShiftWidget() {
 
   const handleStartShift = async () => {
     setLoading(true)
+    if (!selectedServiceId && myServices.length > 0) {
+      alert('Please select a service first')
+      setLoading(false)
+      return
+    }
+
     try {
-      const response = await api.startShift()
+      const response = await api.startShift(selectedServiceId || undefined)
       setCurrentShift(response.shift)
       setConfirmAction(null)
     } catch (err) {
@@ -145,14 +195,14 @@ export function ShiftWidget() {
     setHoldProgress(0)
     const startTime = Date.now()
     holdStartTime.current = startTime
-    
+
     // Update progress every 50ms for smooth animation
     progressInterval.current = window.setInterval(() => {
       const elapsed = Date.now() - startTime
       const progress = Math.min((elapsed / 3000) * 100, 100)
       setHoldProgress(progress)
     }, 50)
-    
+
     holdTimer.current = window.setTimeout(async () => {
       holdTriggered.current = true
       setHoldAction(null)
@@ -252,15 +302,59 @@ export function ShiftWidget() {
         </div>
       )}
 
+      {/* Service Selection */}
+      {!currentShift && myServices.length > 0 && (
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Service Context
+          </label>
+          {myServices.length > 1 ? (
+            <select
+              value={selectedServiceId || ''}
+              onChange={(e) => setSelectedServiceId(Number(e.target.value))}
+              disabled={loading}
+              className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+            >
+              <option value="" disabled>Choose a service...</option>
+              {myServices.map((service) => (
+                <option key={service.serviceId} value={service.serviceId}>
+                  {service.clientName} - {service.serviceTitle || service.serviceName} {service.serviceTitle ? `(${service.serviceName})` : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="font-medium text-gray-900">{myServices[0].clientName}</span>
+              <span className="text-gray-500">- {myServices[0].serviceName}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentShift && selectedServiceId && (
+        <div className="px-1 py-0.5">
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-tight">
+            Active Context: <span className="text-blue-600">
+              {(() => {
+                const s = myServices.find(s => s.serviceId === selectedServiceId);
+                if (!s) return 'Unknown';
+                const title = s.serviceTitle || s.serviceName;
+                return `${s.clientName} - ${title}${s.serviceTitle ? ` (${s.serviceName})` : ''}`;
+              })()}
+            </span>
+          </p>
+        </div>
+      )}
+
       {/* Status Bar (only when on shift) */}
       {currentShift && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div
-                className={`w-2 h-2 rounded-full ${
-                  activeBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500 animate-pulse'
-                }`}
+                className={`w-2 h-2 rounded-full ${activeBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500 animate-pulse'
+                  }`}
               />
               <span className="text-sm font-semibold text-gray-700">
                 {activeBreak ? 'On Break' : 'Working'}
@@ -299,7 +393,7 @@ export function ShiftWidget() {
             }}
             onTouchStart={() => startHold(mainAction)}
             onTouchEnd={() => cancelHold(mainAction)}
-            disabled={loading}
+            disabled={loading || (!currentShift && !selectedServiceId)}
             aria-label={
               holdAction === mainAction
                 ? `Holding to ${currentShift ? (activeBreak ? 'end break' : 'start break') : 'start shift'}... ${Math.round(holdProgress)}%`
@@ -309,13 +403,12 @@ export function ShiftWidget() {
                     : 'Start break'
                   : 'Start shift'
             }
-            className={`flex-1 py-2 rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden ${
-              activeBreak
-                ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                : currentShift
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                  : 'bg-green-500 hover:bg-green-600 text-white'
-            }`}
+            className={`flex-1 py-2 rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden ${activeBreak
+              ? 'bg-blue-500 hover:bg-blue-600 text-white'
+              : currentShift
+                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
           >
             {holdAction === mainAction && (
               <div

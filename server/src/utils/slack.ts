@@ -111,6 +111,7 @@ interface NotifyShiftEventOptions {
   breakType?: string | null
   breakNote?: string | null
   timestamp?: Date
+  channelId?: string // Optional: service-specific Slack channel ID
 }
 
 export async function notifyShiftEvent(options: NotifyShiftEventOptions) {
@@ -122,7 +123,8 @@ export async function notifyShiftEvent(options: NotifyShiftEventOptions) {
     employeeEmail,
     shiftId,
     breakType,
-    breakNote
+    breakNote,
+    channelId // Extract channelId from options
   } = options
 
   const actor = employeeName || employeeEmail
@@ -135,14 +137,17 @@ export async function notifyShiftEvent(options: NotifyShiftEventOptions) {
     break_ended: `↩️ ${actor} Ended the Break`
   }
 
-  if (!SLACK_CHANNEL) {
-    console.warn('[SLACK] SLACK_CHANNEL_ID not configured')
+  // Use provided channelId, fallback to default SLACK_CHANNEL
+  const targetChannel = channelId || SLACK_CHANNEL
+
+  if (!targetChannel) {
+    console.warn('[SLACK] No channel configured for notification')
     return
   }
 
   await postToSlack({
     text: textByEvent[event],
-    channel: SLACK_CHANNEL
+    channel: targetChannel
   })
 }
 

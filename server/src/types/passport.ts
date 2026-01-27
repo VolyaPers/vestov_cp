@@ -9,9 +9,10 @@ export interface UserWithPassword {
   avatarUrl?: string | null
   isActive?: boolean | null
   teamMemberId?: number | null
+  clientId?: number | null
 }
 
-export interface UserWithoutPassword extends Omit<UserWithPassword, 'password'> {}
+export interface UserWithoutPassword extends Omit<UserWithPassword, 'password'> { }
 
 export interface SessionData {
   id: number

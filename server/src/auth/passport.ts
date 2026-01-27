@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { sql } from 'drizzle-orm'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { users, teamMembers } from '../db/schema.js'
 import * as schema from '../db/schema.js'
 import type { UserWithPassword, UserWithoutPassword, SessionData, UserWithImpersonation } from '../types/passport.js'
@@ -28,7 +28,7 @@ export function setupPassport(pool: Pool) {
     new LocalStrategy(async (username, password, done) => {
       try {
         let user: UserWithPassword | null = null
-        
+
         try {
           const [selectedUser] = await db
             .select({
@@ -93,7 +93,7 @@ export function setupPassport(pool: Pool) {
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
   const backendURL = process.env.BACKEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:3001'
   const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL || `${backendURL}/api/google/callback`
-  
+
   if (googleClientId && googleClientSecret) {
     console.log('[PASSPORT] Google OAuth configured with callback:', googleCallbackURL)
   }
@@ -136,7 +136,7 @@ export function setupPassport(pool: Pool) {
               console.log('[GOOGLE OAUTH] ===== USER NOT FOUND - RETURNING USER_NOT_FOUND =====')
               console.log('[GOOGLE OAUTH] Email:', email)
               console.log('[GOOGLE OAUTH] Google ID:', googleId)
-              const authInfo = { 
+              const authInfo = {
                 message: 'USER_NOT_FOUND',
                 googleData: {
                   email,
@@ -148,7 +148,7 @@ export function setupPassport(pool: Pool) {
               console.log('[GOOGLE OAUTH] Auth info being returned:', JSON.stringify(authInfo, null, 2))
               return done(null, false, authInfo)
             }
-            
+
             console.log('[GOOGLE OAUTH] ===== USER EXISTS - PROCEEDING WITH LOGIN =====')
             console.log('[GOOGLE OAUTH] User ID:', existingUser.id)
             console.log('[GOOGLE OAUTH] User email:', existingUser.email)
@@ -242,6 +242,8 @@ export function setupPassport(pool: Pool) {
       }
 
       let avatarUrl = user.avatarUrl
+      let clientId: number | null = null
+
       if (user.role === 'team_member' && user.teamMemberId) {
         const [teamMember] = await db
           .select({
@@ -256,23 +258,39 @@ export function setupPassport(pool: Pool) {
         if (teamMember) {
           avatarUrl = teamMember.avatarUrl || user.avatarUrl
         }
+      } else if (user.role === 'client') {
+        const [clientUser] = await db
+          .select({
+            clientId: schema.clientUsers.clientId,
+          })
+          .from(schema.clientUsers)
+          .where(and(
+            eq(schema.clientUsers.userId, user.id),
+            eq(schema.clientUsers.isActive, true)
+          ))
+          .limit(1)
+
+        if (clientUser) {
+          clientId = clientUser.clientId
+        }
       }
 
-      const userWithAvatar: UserWithoutPassword = {
+      const userWithDetails: UserWithoutPassword = {
         ...user,
-        avatarUrl
+        avatarUrl,
+        clientId
       }
 
       if (typeof data === 'object' && data.originalUserId) {
         const userWithImpersonation = {
-          ...userWithAvatar,
+          ...userWithDetails,
           originalUserId: data.originalUserId,
           originalUsername: data.originalUsername,
           originalEmail: data.originalEmail
         }
         done(null, userWithImpersonation as UserWithImpersonation)
       } else {
-        done(null, userWithAvatar)
+        done(null, userWithDetails)
       }
     } catch (error) {
       done(error)

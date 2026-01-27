@@ -16,19 +16,7 @@ export interface ClientDetails {
   teamSize?: number
   logoUrl?: string
   createdAt: string
-  services: Array<{
-    id: number
-    serviceTypeName: string
-    serviceDescription?: string
-    serviceCategory: string
-    billingModel: string
-    rate?: number
-    serviceLevelPrice?: number
-    startDate: string
-    endDate?: string
-    isActive: boolean
-    createdAt: string
-  }>
+  services: Array<ClientService>
 }
 
 /**
@@ -38,18 +26,21 @@ export interface ClientDetails {
 export function convertClientToClientDetails(client: Client): ClientDetails {
   return {
     ...client,
-    services: (client.services || []).map((service: ClientService) => ({
+    services: (client.services || []).map((service) => ({
       id: service.id,
-      serviceTypeName: service.serviceType?.name || '',
-      serviceDescription: undefined,
-      serviceCategory: service.serviceType?.category || 'outstaffing',
-      billingModel: service.serviceType?.billingModel || 'hourly',
+      serviceTypeId: service.serviceTypeId,
+      serviceTypeName: service.serviceTypeName || service.serviceType?.name || '',
+      serviceDescription: service.serviceDescription || service.serviceType?.description,
+      serviceCategory: service.serviceCategory || (service.serviceType?.category as any) || 'outstaffing',
+      billingModel: service.billingModel || (service.serviceType?.billingModel as any) || 'hourly',
       rate: service.rate,
+      serviceTitle: service.serviceTitle,
       serviceLevelPrice: service.serviceLevelPrice,
       startDate: service.startDate,
       endDate: service.endDate,
       isActive: service.isActive,
-      createdAt: service.startDate, // Fallback if createdAt not available
+      slackChannelId: service.slackChannelId,
+      createdAt: service.createdAt || service.startDate,
     })),
   }
 }

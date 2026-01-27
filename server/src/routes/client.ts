@@ -1,9 +1,9 @@
 import { Router } from 'express'
 import { eq, desc, and } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { 
-  clients, 
-  teamMembers, 
+import {
+  clients,
+  teamMembers,
   serviceRequests,
   documents,
   feedback,
@@ -26,7 +26,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Get client info
     const [client] = await db.select().from(clients).where(eq(clients.id, clientId))
-    
+
     // Get assigned team members
     const assignedTeam = await db
       .select()
@@ -48,7 +48,7 @@ router.get('/dashboard', async (req, res) => {
       recentRequests,
       stats: {
         totalTeamMembers: assignedTeam.length,
-        activeServices: client?.activeServices?.length || 0,
+        activeServices: (client?.activeServices as any[])?.length || 0,
         pendingRequests: recentRequests.filter(r => r.status === 'pending').length,
       }
     })
@@ -61,7 +61,7 @@ router.get('/dashboard', async (req, res) => {
 // Team Members (assigned to client)
 router.get('/team', async (req, res) => {
   try {
-    const clientId = req.user!.clientId
+    const clientId = (req.user as any)?.clientId
     if (!clientId) {
       return res.status(400).json({ error: 'No client associated with user' })
     }
@@ -83,7 +83,7 @@ router.get('/team', async (req, res) => {
       .from(teamMembers)
       .where(eq(teamMembers.clientId, clientId))
       .orderBy(teamMembers.name)
-    
+
     res.json(team)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch team members' })
@@ -98,7 +98,7 @@ router.get('/service-requests', async (req, res) => {
       .from(serviceRequests)
       .where(eq(serviceRequests.userId, req.user!.id))
       .orderBy(desc(serviceRequests.requestDate))
-    
+
     res.json(requests)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch service requests' })
@@ -108,13 +108,13 @@ router.get('/service-requests', async (req, res) => {
 router.post('/service-requests', async (req, res) => {
   try {
     const { title, description } = req.body
-    
+
     const [request] = await db.insert(serviceRequests).values({
       title,
       description,
       userId: req.user!.id,
     }).returning()
-    
+
     res.json(request)
   } catch (error) {
     res.status(500).json({ error: 'Failed to create service request' })
@@ -134,7 +134,7 @@ router.get('/documents', async (req, res) => {
       .from(documents)
       .where(eq(documents.clientId, clientId))
       .orderBy(desc(documents.lastUpdated))
-    
+
     res.json(clientDocuments)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch documents' })
@@ -164,7 +164,7 @@ router.get('/feedback', async (req, res) => {
       .leftJoin(teamMembers, eq(feedback.teamMemberId, teamMembers.id))
       .where(eq(feedback.clientId, clientId))
       .orderBy(desc(feedback.createdAt))
-    
+
     res.json(clientFeedback)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch feedback' })
@@ -179,7 +179,7 @@ router.post('/feedback', async (req, res) => {
     }
 
     const { teamMemberId, rating, comments, feedbackType } = req.body
-    
+
     const [newFeedback] = await db.insert(feedback).values({
       userId: req.user!.id,
       clientId,
@@ -188,7 +188,7 @@ router.post('/feedback', async (req, res) => {
       comments,
       feedbackType: feedbackType || 'client_feedback',
     }).returning()
-    
+
     res.json(newFeedback)
   } catch (error) {
     res.status(500).json({ error: 'Failed to submit feedback' })
@@ -208,7 +208,7 @@ router.get('/messages', async (req, res) => {
         )
       )
       .orderBy(desc(messages.createdAt))
-    
+
     res.json(userMessages)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch messages' })

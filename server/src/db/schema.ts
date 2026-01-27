@@ -69,6 +69,8 @@ export const teamMembers = pgTable('team_members', {
   startDate: date('start_date').notNull(),
   location: text('location'),
   avatarUrl: text('avatar_url'),
+  position: text('position'),
+  isDeveloper: boolean('is_developer').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -91,6 +93,8 @@ export const clientServices = pgTable('client_services', {
   serviceTypeId: integer('service_type_id').references(() => serviceTypes.id).notNull(),
   rate: decimal('rate', { precision: 10, scale: 2 }),
   serviceLevelPrice: decimal('service_level_price', { precision: 10, scale: 2 }), // Optional service-level pricing
+  serviceTitle: text('service_title'), // Optional friendly name for the service
+  slackChannelId: varchar('slack_channel_id', { length: 255 }), // Slack channel ID for shift notifications
   startDate: date('start_date').notNull(),
   endDate: date('end_date'),
   isActive: boolean('is_active').default(true),
@@ -271,27 +275,11 @@ export const reimbursementRequests = pgTable('reimbursement_requests', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-// Developers table
-export const developers = pgTable('developers', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull(),
-  email: varchar('email', { length: 255 }).unique().notNull(),
-  skills: jsonb('skills'), // array of strings
-  hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
-  experienceLevel: varchar('experience_level', { length: 20 }), // 'junior' | 'middle' | 'senior' | 'lead'
-  status: varchar('status', { length: 20 }).notNull().default('available'), // 'available' | 'busy' | 'on_leave'
-  bio: text('bio'),
-  location: text('location'),
-  avatarUrl: text('avatar_url'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
-
-// Client Service Developers junction table
-export const clientServiceDevelopers = pgTable('client_service_developers', {
+// Client Service Team Members junction table (formerly clientServiceDevelopers)
+export const clientServiceTeamMembers = pgTable('client_service_team_members', {
   id: serial('id').primaryKey(),
   clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
-  developerId: integer('developer_id').references(() => developers.id).notNull(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
   employmentType: varchar('employment_type', { length: 20 }).notNull(), // 'fulltime' | 'part_time'
   hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
   fixedPrice: decimal('fixed_price', { precision: 10, scale: 2 }),
@@ -335,7 +323,7 @@ export const invoiceServices = pgTable('invoice_services', {
 export const invoiceDevelopers = pgTable('invoice_developers', {
   id: serial('id').primaryKey(),
   invoiceServiceId: integer('invoice_service_id').references(() => invoiceServices.id).notNull(),
-  clientServiceDeveloperId: integer('client_service_developer_id').references(() => clientServiceDevelopers.id).notNull(),
+  clientServiceTeamMemberId: integer('client_service_team_member_id').references(() => clientServiceTeamMembers.id).notNull(),
   hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
   fixedPrice: decimal('fixed_price', { precision: 10, scale: 2 }),
   hoursWorked: decimal('hours_worked', { precision: 8, scale: 2 }),
@@ -384,6 +372,7 @@ export const shifts = pgTable('shifts', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
   scheduleId: integer('schedule_id').references(() => shiftSchedules.id), // Optional reference to expected schedule
+  serviceId: integer('service_id').references(() => clientServices.id), // Service this shift is for (determines Slack channel)
   startTime: timestamp('start_time').notNull(),
   endTime: timestamp('end_time'), // Null if shift is still active
   status: varchar('status', { length: 20 }).notNull().default('active'), // 'active' | 'on_break' | 'completed'

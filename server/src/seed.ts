@@ -14,7 +14,7 @@ async function seed() {
       { name: 'Maternity Leave', isDeductible: false, halfDaySupported: false },
       { name: 'Emergency Leave', isDeductible: true, halfDaySupported: true },
     ]
-    
+
     await db.insert(leaveTypes).values(leaveTypesData).onConflictDoNothing()
     console.log('✓ Leave types created')
 
@@ -26,7 +26,7 @@ async function seed() {
       { name: 'Project Management', description: 'End-to-end project delivery', category: 'outsourcing', billingModel: 'fixed' },
       { name: 'Quality Assurance', description: 'Testing and quality assurance services', category: 'outstaffing', billingModel: 'hourly' },
     ]
-    
+
     await db.insert(serviceTypes).values(serviceTypesData).onConflictDoNothing()
     console.log('✓ Service types created')
 
@@ -70,7 +70,6 @@ async function seed() {
       email: 'john.smith@techcorp.com',
       role: 'client',
       position: 'Technical Director',
-      clientId: sampleClient.id,
     }).onConflictDoNothing()
     console.log('✓ Client user created (username: client, password: client123)')
 
@@ -132,12 +131,12 @@ async function seed() {
         location: 'Remote',
       },
     ]
-    
+
     await db.insert(teamMembers).values(teamMembersData)
     console.log('✓ Sample team members created')
 
     console.log('🎉 Database seeding completed successfully!')
-    
+
   } catch (error) {
     console.error('❌ Seeding failed:', error)
     throw error

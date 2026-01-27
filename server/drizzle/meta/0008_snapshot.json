@@ -1,10 +1,8 @@
 {
-  "id": "6f7ab75b-f6bc-4406-80e2-6bb97ef01f2d",
-  "prevId": "e2a9989f-2589-4886-bf25-195545d38e3a",
-  "version": "5",
-  "dialect": "pg",
+  "version": "7",
+  "dialect": "postgresql",
   "tables": {
-    "client_service_developers": {
+    "public.client_service_developers": {
       "name": "client_service_developers",
       "schema": "",
       "columns": {
@@ -76,34 +74,37 @@
         "client_service_developers_client_service_id_client_services_id_fk": {
           "name": "client_service_developers_client_service_id_client_services_id_fk",
           "tableFrom": "client_service_developers",
-          "tableTo": "client_services",
           "columnsFrom": [
             "client_service_id"
           ],
+          "tableTo": "client_services",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "client_service_developers_developer_id_developers_id_fk": {
           "name": "client_service_developers_developer_id_developers_id_fk",
           "tableFrom": "client_service_developers",
-          "tableTo": "developers",
           "columnsFrom": [
             "developer_id"
           ],
+          "tableTo": "developers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "client_services": {
+    "public.client_services": {
       "name": "client_services",
       "schema": "",
       "columns": {
@@ -169,34 +170,37 @@
         "client_services_client_id_clients_id_fk": {
           "name": "client_services_client_id_clients_id_fk",
           "tableFrom": "client_services",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "client_services_service_type_id_service_types_id_fk": {
           "name": "client_services_service_type_id_service_types_id_fk",
           "tableFrom": "client_services",
-          "tableTo": "service_types",
           "columnsFrom": [
             "service_type_id"
           ],
+          "tableTo": "service_types",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "clients": {
+    "public.clients": {
       "name": "clients",
       "schema": "",
       "columns": {
@@ -310,9 +314,12 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "developers": {
+    "public.developers": {
       "name": "developers",
       "schema": "",
       "columns": {
@@ -398,14 +405,17 @@
       "uniqueConstraints": {
         "developers_email_unique": {
           "name": "developers_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "documents": {
+    "public.documents": {
       "name": "documents",
       "schema": "",
       "columns": {
@@ -471,34 +481,37 @@
         "documents_user_id_users_id_fk": {
           "name": "documents_user_id_users_id_fk",
           "tableFrom": "documents",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "documents_client_id_clients_id_fk": {
           "name": "documents_client_id_clients_id_fk",
           "tableFrom": "documents",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "employment_cycles": {
+    "public.employment_cycles": {
       "name": "employment_cycles",
       "schema": "",
       "columns": {
@@ -546,21 +559,24 @@
         "employment_cycles_employee_id_team_members_id_fk": {
           "name": "employment_cycles_employee_id_team_members_id_fk",
           "tableFrom": "employment_cycles",
-          "tableTo": "team_members",
           "columnsFrom": [
             "employee_id"
           ],
+          "tableTo": "team_members",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "feedback": {
+    "public.feedback": {
       "name": "feedback",
       "schema": "",
       "columns": {
@@ -626,47 +642,50 @@
         "feedback_user_id_users_id_fk": {
           "name": "feedback_user_id_users_id_fk",
           "tableFrom": "feedback",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "feedback_client_id_clients_id_fk": {
           "name": "feedback_client_id_clients_id_fk",
           "tableFrom": "feedback",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "feedback_team_member_id_team_members_id_fk": {
           "name": "feedback_team_member_id_team_members_id_fk",
           "tableFrom": "feedback",
-          "tableTo": "team_members",
           "columnsFrom": [
             "team_member_id"
           ],
+          "tableTo": "team_members",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "financial_data": {
+    "public.financial_data": {
       "name": "financial_data",
       "schema": "",
       "columns": {
@@ -731,34 +750,37 @@
         "financial_data_user_id_users_id_fk": {
           "name": "financial_data_user_id_users_id_fk",
           "tableFrom": "financial_data",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "financial_data_client_id_clients_id_fk": {
           "name": "financial_data_client_id_clients_id_fk",
           "tableFrom": "financial_data",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "invoice_developers": {
+    "public.invoice_developers": {
       "name": "invoice_developers",
       "schema": "",
       "columns": {
@@ -817,34 +839,37 @@
         "invoice_developers_invoice_service_id_invoice_services_id_fk": {
           "name": "invoice_developers_invoice_service_id_invoice_services_id_fk",
           "tableFrom": "invoice_developers",
-          "tableTo": "invoice_services",
           "columnsFrom": [
             "invoice_service_id"
           ],
+          "tableTo": "invoice_services",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "invoice_developers_client_service_developer_id_client_service_developers_id_fk": {
           "name": "invoice_developers_client_service_developer_id_client_service_developers_id_fk",
           "tableFrom": "invoice_developers",
-          "tableTo": "client_service_developers",
           "columnsFrom": [
             "client_service_developer_id"
           ],
+          "tableTo": "client_service_developers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "invoice_services": {
+    "public.invoice_services": {
       "name": "invoice_services",
       "schema": "",
       "columns": {
@@ -891,34 +916,37 @@
         "invoice_services_invoice_id_invoices_id_fk": {
           "name": "invoice_services_invoice_id_invoices_id_fk",
           "tableFrom": "invoice_services",
-          "tableTo": "invoices",
           "columnsFrom": [
             "invoice_id"
           ],
+          "tableTo": "invoices",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "invoice_services_client_service_id_client_services_id_fk": {
           "name": "invoice_services_client_service_id_client_services_id_fk",
           "tableFrom": "invoice_services",
-          "tableTo": "client_services",
           "columnsFrom": [
             "client_service_id"
           ],
+          "tableTo": "client_services",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "invoices": {
+    "public.invoices": {
       "name": "invoices",
       "schema": "",
       "columns": {
@@ -1021,42 +1049,45 @@
         "invoices_client_id_clients_id_fk": {
           "name": "invoices_client_id_clients_id_fk",
           "tableFrom": "invoices",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "invoices_created_by_users_id_fk": {
           "name": "invoices_created_by_users_id_fk",
           "tableFrom": "invoices",
-          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "invoices_invoice_number_unique": {
           "name": "invoices_invoice_number_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "invoice_number"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "leave_allocation_settings": {
+    "public.leave_allocation_settings": {
       "name": "leave_allocation_settings",
       "schema": "",
       "columns": {
@@ -1111,21 +1142,24 @@
         "leave_allocation_settings_leave_type_id_leave_types_id_fk": {
           "name": "leave_allocation_settings_leave_type_id_leave_types_id_fk",
           "tableFrom": "leave_allocation_settings",
-          "tableTo": "leave_types",
           "columnsFrom": [
             "leave_type_id"
           ],
+          "tableTo": "leave_types",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "leave_balances": {
+    "public.leave_balances": {
       "name": "leave_balances",
       "schema": "",
       "columns": {
@@ -1187,47 +1221,50 @@
         "leave_balances_employee_id_team_members_id_fk": {
           "name": "leave_balances_employee_id_team_members_id_fk",
           "tableFrom": "leave_balances",
-          "tableTo": "team_members",
           "columnsFrom": [
             "employee_id"
           ],
+          "tableTo": "team_members",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "leave_balances_employment_cycle_id_employment_cycles_id_fk": {
           "name": "leave_balances_employment_cycle_id_employment_cycles_id_fk",
           "tableFrom": "leave_balances",
-          "tableTo": "employment_cycles",
           "columnsFrom": [
             "employment_cycle_id"
           ],
+          "tableTo": "employment_cycles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "leave_balances_leave_type_id_leave_types_id_fk": {
           "name": "leave_balances_leave_type_id_leave_types_id_fk",
           "tableFrom": "leave_balances",
-          "tableTo": "leave_types",
           "columnsFrom": [
             "leave_type_id"
           ],
+          "tableTo": "leave_types",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "leave_request_events": {
+    "public.leave_request_events": {
       "name": "leave_request_events",
       "schema": "",
       "columns": {
@@ -1274,34 +1311,37 @@
         "leave_request_events_leave_request_id_leave_requests_id_fk": {
           "name": "leave_request_events_leave_request_id_leave_requests_id_fk",
           "tableFrom": "leave_request_events",
-          "tableTo": "leave_requests",
           "columnsFrom": [
             "leave_request_id"
           ],
+          "tableTo": "leave_requests",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "leave_request_events_actor_id_users_id_fk": {
           "name": "leave_request_events_actor_id_users_id_fk",
           "tableFrom": "leave_request_events",
-          "tableTo": "users",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "leave_requests": {
+    "public.leave_requests": {
       "name": "leave_requests",
       "schema": "",
       "columns": {
@@ -1412,60 +1452,63 @@
         "leave_requests_employee_id_team_members_id_fk": {
           "name": "leave_requests_employee_id_team_members_id_fk",
           "tableFrom": "leave_requests",
-          "tableTo": "team_members",
           "columnsFrom": [
             "employee_id"
           ],
+          "tableTo": "team_members",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "leave_requests_leave_type_id_leave_types_id_fk": {
           "name": "leave_requests_leave_type_id_leave_types_id_fk",
           "tableFrom": "leave_requests",
-          "tableTo": "leave_types",
           "columnsFrom": [
             "leave_type_id"
           ],
+          "tableTo": "leave_types",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "leave_requests_requested_by_users_id_fk": {
           "name": "leave_requests_requested_by_users_id_fk",
           "tableFrom": "leave_requests",
-          "tableTo": "users",
           "columnsFrom": [
             "requested_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "leave_requests_decision_by_users_id_fk": {
           "name": "leave_requests_decision_by_users_id_fk",
           "tableFrom": "leave_requests",
-          "tableTo": "users",
           "columnsFrom": [
             "decision_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "leave_types": {
+    "public.leave_types": {
       "name": "leave_types",
       "schema": "",
       "columns": {
@@ -1509,14 +1552,17 @@
       "uniqueConstraints": {
         "leave_types_name_unique": {
           "name": "leave_types_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "messages": {
+    "public.messages": {
       "name": "messages",
       "schema": "",
       "columns": {
@@ -1564,34 +1610,37 @@
         "messages_sender_id_users_id_fk": {
           "name": "messages_sender_id_users_id_fk",
           "tableFrom": "messages",
-          "tableTo": "users",
           "columnsFrom": [
             "sender_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "messages_receiver_id_users_id_fk": {
           "name": "messages_receiver_id_users_id_fk",
           "tableFrom": "messages",
-          "tableTo": "users",
           "columnsFrom": [
             "receiver_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "service_requests": {
+    "public.service_requests": {
       "name": "service_requests",
       "schema": "",
       "columns": {
@@ -1658,21 +1707,24 @@
         "service_requests_user_id_users_id_fk": {
           "name": "service_requests_user_id_users_id_fk",
           "tableFrom": "service_requests",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "service_types": {
+    "public.service_types": {
       "name": "service_types",
       "schema": "",
       "columns": {
@@ -1724,9 +1776,12 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "team_members": {
+    "public.team_members": {
       "name": "team_members",
       "schema": "",
       "columns": {
@@ -1842,29 +1897,32 @@
         "team_members_client_id_clients_id_fk": {
           "name": "team_members_client_id_clients_id_fk",
           "tableFrom": "team_members",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "team_members_email_unique": {
           "name": "team_members_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "time_entries": {
+    "public.time_entries": {
       "name": "time_entries",
       "schema": "",
       "columns": {
@@ -1931,34 +1989,37 @@
         "time_entries_user_id_users_id_fk": {
           "name": "time_entries_user_id_users_id_fk",
           "tableFrom": "time_entries",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "time_entries_team_member_id_team_members_id_fk": {
           "name": "time_entries_team_member_id_team_members_id_fk",
           "tableFrom": "time_entries",
-          "tableTo": "team_members",
           "columnsFrom": [
             "team_member_id"
           ],
+          "tableTo": "team_members",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "users": {
+    "public.users": {
       "name": "users",
       "schema": "",
       "columns": {
@@ -2037,41 +2098,50 @@
         "users_client_id_clients_id_fk": {
           "name": "users_client_id_clients_id_fk",
           "tableFrom": "users",
-          "tableTo": "clients",
           "columnsFrom": [
             "client_id"
           ],
+          "tableTo": "clients",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "users_username_unique": {
           "name": "users_username_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "username"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "users_email_unique": {
           "name": "users_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     }
   },
   "enums": {},
   "schemas": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
-  }
+    "tables": {},
+    "columns": {}
+  },
+  "id": "6f7ab75b-f6bc-4406-80e2-6bb97ef01f2d",
+  "prevId": "e2a9989f-2589-4886-bf25-195545d38e3a",
+  "sequences": {},
+  "policies": {},
+  "views": {},
+  "roles": {}
 }

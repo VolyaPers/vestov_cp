@@ -1,0 +1,2 @@
+ALTER TABLE team_members ADD COLUMN position TEXT;
+ALTER TABLE team_members ADD COLUMN is_developer BOOLEAN NOT NULL DEFAULT FALSE;

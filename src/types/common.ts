@@ -11,6 +11,13 @@ export type LeaveRequestStatus = 'pending' | 'approved' | 'denied' | 'cancelled'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
 export type ShiftStatus = 'active' | 'on_break'
 
+export interface LeaveType {
+  id: number
+  name: string
+  maxDays?: number
+  description?: string
+}
+
 export interface User {
   id: number
   username: string
@@ -64,12 +71,21 @@ export interface ClientService {
     name: string
     category: 'outstaffing' | 'outsourcing'
     billingModel: 'hourly' | 'monthly' | 'fixed'
+    description?: string
   }
+  // Flattened fields from joins (frequently used by backend API)
+  serviceTypeName?: string
+  serviceDescription?: string
+  serviceCategory?: 'outstaffing' | 'outsourcing'
+  billingModel?: 'hourly' | 'monthly' | 'fixed'
   rate?: number
+  serviceTitle?: string
   serviceLevelPrice?: number
   startDate: string
   endDate?: string
+  slackChannelId?: string
   isActive: boolean
+  createdAt?: string
 }
 
 export interface TeamMember {
@@ -77,6 +93,7 @@ export interface TeamMember {
   name: string
   email: string
   position?: string
+  isDeveloper: boolean
   skills: string[]
   hourlyRate: number
   experienceLevel: 'junior' | 'middle' | 'senior' | 'lead'
@@ -97,21 +114,21 @@ export interface LeaveRequest {
     id: number
     name: string
     maxDays?: number
+    description?: string
   }
+  status: LeaveRequestStatus
   startDate: string
   endDate: string
+  halfDayStart: boolean
+  halfDayEnd: boolean
+  daysCount: string
   reason?: string
-  status: LeaveRequestStatus
+  requestedBy: number
+  decisionBy?: number
+  decisionAt?: string
   decisionReason?: string
   createdAt: string
   updatedAt: string
-}
-
-export interface LeaveType {
-  id: number
-  name: string
-  maxDays?: number
-  description?: string
 }
 
 export interface ClientAssignment {
@@ -147,7 +164,7 @@ export interface ShiftBreak {
 
 export interface ServiceDeveloper {
   id: number
-  developerId: number
+  teamMemberId: number
   developer?: TeamMember
   employmentType: EmploymentType
   hourlyRate?: number
@@ -181,18 +198,23 @@ export interface CreateTeamMemberData {
   userId?: number // Optional: if provided, links to existing user with role='team_member'
   name: string
   email: string
-  position?: string
-  skills: string[]
-  hourlyRate: number
-  experienceLevel: 'junior' | 'middle' | 'senior' | 'lead'
-  status: TeamMemberStatus
+  role?: string
+  phone?: string
+  skills?: string[]
   bio?: string
+  hourlyRate?: number
+  monthlyRate?: number
+  isBillable: boolean
+  status: TeamMemberStatus
+  startDate: string
   location?: string
-  clientId?: number
+  position?: string
+  isDeveloper?: boolean
+  experienceLevel?: 'junior' | 'middle' | 'senior' | 'lead'
+  clientId?: number | null
 }
 
 export interface UpdateTeamMemberData extends Partial<CreateTeamMemberData> {
-  role?: string // Alias for position in team members
   startDate?: string
   phone?: string
   isBillable?: boolean
@@ -225,7 +247,7 @@ export interface CreateInvoiceData {
   serviceIds?: number[]
 }
 
-export interface UpdateInvoiceData extends Partial<CreateInvoiceData> {}
+export interface UpdateInvoiceData extends Partial<CreateInvoiceData> { }
 
 export interface CreateUserData {
   username: string
@@ -241,4 +263,3 @@ export interface CreateUserData {
 export interface UpdateUserData extends Partial<CreateUserData> {
   isActive?: boolean
 }
-

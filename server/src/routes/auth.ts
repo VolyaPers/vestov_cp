@@ -51,18 +51,18 @@ router.post('/register', async (req, res) => {
       origin: req.headers.origin,
       body: { firstName: req.body?.firstName, lastName: req.body?.lastName, email: req.body?.email, role: req.body?.role, hasPassword: !!req.body?.password, hasGoogleId: !!req.body?.googleId },
     })
-    
+
     const body = req.body as RegisterRequestBody
     const { firstName, lastName, email, password, role, googleId, avatarUrl } = body || {}
     const isGoogleSignup = !!googleId
-    
+
     console.log('[REGISTER] Processing registration for:', { email, role, isGoogleSignup })
 
     // For Google signup, password is optional
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
-    
+
     if (!isGoogleSignup && !password) {
       return res.status(400).json({ error: 'Password is required for email/password registration' })
     }
@@ -92,6 +92,7 @@ router.post('/register', async (req, res) => {
       avatarUrl: string | null
       isActive: boolean
       teamMemberId: number | null
+      clientId: number | null
     }
 
     let userResponse: UserResponse
@@ -162,6 +163,7 @@ router.post('/register', async (req, res) => {
         avatarUrl: updated.avatarUrl,
         isActive: updated.isActive,
         teamMemberId: updated.teamMemberId ?? null,
+        clientId: null // Will be populated by deserializeUser on next request
       }
     } else {
       const position =
@@ -201,7 +203,7 @@ router.post('/register', async (req, res) => {
       const { user: newUser } = await createUserAccount({
         email: normalizedEmail,
         fullName,
-        role,
+        role: role as 'admin' | 'team_member' | 'client',
         username,
         password: isGoogleSignup ? undefined : password,
         position,
@@ -209,7 +211,7 @@ router.post('/register', async (req, res) => {
         avatarUrl: isGoogleSignup ? avatarUrl : undefined,
         source: isGoogleSignup ? 'google_register' : 'self_register',
       })
-      
+
       // If Google signup, link the Google account
       let finalUser = newUser
       if (isGoogleSignup && googleId) {
@@ -221,14 +223,14 @@ router.post('/register', async (req, res) => {
             updatedAt: new Date(),
           })
           .where(eq(users.id, newUser.id))
-        
+
         // Refresh user data
         const [updatedUser] = await db
           .select()
           .from(users)
           .where(eq(users.id, newUser.id))
           .limit(1)
-        
+
         if (updatedUser) {
           finalUser = updatedUser
         }
@@ -244,6 +246,7 @@ router.post('/register', async (req, res) => {
         avatarUrl: finalUser.avatarUrl,
         isActive: finalUser.isActive,
         teamMemberId: teamMemberId ?? finalUser.teamMemberId ?? null,
+        clientId: null // Default for new users, will be linked via clientUsers if needed
       }
     }
 
@@ -256,28 +259,28 @@ router.post('/register', async (req, res) => {
 
       console.log('[REGISTER] New user registered successfully:', userResponse.email)
       console.log('[REGISTER] Sending response:', { status: 201, userId: userResponse.id, email: userResponse.email })
-      
+
       // Set CORS headers explicitly
       const origin = req.headers.origin
       if (origin) {
         res.header('Access-Control-Allow-Origin', origin)
         res.header('Access-Control-Allow-Credentials', 'true')
       }
-      
+
       return res.status(201).json({ user: userResponse })
     })
   } catch (error) {
     console.error('[REGISTER] Registration error:', error)
     const message =
       (error as Error)?.message || 'Failed to register user'
-    
+
     // Set CORS headers explicitly on error
     const origin = req.headers.origin
     if (origin) {
       res.header('Access-Control-Allow-Origin', origin)
       res.header('Access-Control-Allow-Credentials', 'true')
     }
-    
+
     return res.status(500).json({ error: message })
   }
 })
@@ -291,7 +294,7 @@ router.post('/login', loginLimiter, (req, res, next) => {
       console.error('Login error:', err)
       return res.status(500).json({ error: 'Internal server error' })
     }
-    
+
     if (!user) {
       console.log('Login failed:', info?.message)
       return res.status(401).json({ error: info?.message || 'Invalid credentials' })
@@ -302,7 +305,7 @@ router.post('/login', loginLimiter, (req, res, next) => {
         console.error('Session login error:', err)
         return res.status(500).json({ error: 'Login failed' })
       }
-      
+
       console.log('Login successful for user:', user.username)
       return res.json({
         user: {
@@ -525,11 +528,11 @@ router.get('/auth/google', handleGoogleOAuthInit)
 
 router.get('/google/callback', (req, res, next) => {
   const frontendUrl = getFrontendUrl()
-  
+
   if (!frontendUrl || frontendUrl === 'http://localhost:5173') {
     console.error('[GOOGLE OAUTH] WARNING: Frontend URL not properly configured! Using fallback.')
   }
-  
+
   passport.authenticate('google', {
     failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
     session: true
@@ -538,10 +541,10 @@ router.get('/google/callback', (req, res, next) => {
       const error = err as Error
       console.error('[GOOGLE OAUTH] Authentication error:', error.message)
       console.error('[GOOGLE OAUTH] Error stack:', error.stack)
-      
+
       const errorMessage = error.message || 'Authentication failed'
-      const errorParam = error.message.includes('inactive') 
-        ? 'google_auth_inactive' 
+      const errorParam = error.message.includes('inactive')
+        ? 'google_auth_inactive'
         : 'google_auth_error'
       const errorUrl = `${frontendUrl}/?error=${errorParam}&message=${encodeURIComponent(errorMessage)}`
       console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
@@ -557,7 +560,7 @@ router.get('/google/callback', (req, res, next) => {
       const errorMessage = info?.message || 'Authentication failed'
       console.error('[GOOGLE OAUTH] No user returned:', errorMessage)
       console.log('[GOOGLE OAUTH] Info object:', JSON.stringify(info, null, 2))
-      
+
       // Check if user doesn't exist (needs registration)
       if (errorMessage === 'USER_NOT_FOUND' && info?.googleData) {
         const googleData = info.googleData
@@ -566,9 +569,9 @@ router.get('/google/callback', (req, res, next) => {
         console.log('[GOOGLE OAUTH] Registration URL:', registerUrl)
         return res.redirect(registerUrl)
       }
-      
+
       console.log('[GOOGLE OAUTH] Not a USER_NOT_FOUND case, treating as regular error')
-      
+
       const errorParam = errorMessage.includes('inactive')
         ? 'google_auth_inactive'
         : 'google_auth_failed'

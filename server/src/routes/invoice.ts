@@ -1,15 +1,15 @@
 import { Router } from 'express'
 import { eq, desc, and, sql, ne } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { 
-  invoices, 
-  clients, 
-  clientServices, 
-  serviceTypes, 
-  clientServiceDevelopers, 
-  developers,
+import {
+  invoices,
+  clients,
+  clientServices,
+  serviceTypes,
+  clientServiceTeamMembers,
+  teamMembers,
   invoiceServices,
-  invoiceDevelopers 
+  invoiceDevelopers
 } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 
@@ -19,7 +19,7 @@ const router = Router()
 router.get('/test-totals/:clientId', async (req, res) => {
   try {
     const { clientId } = req.params
-    
+
     const totals = await db
       .select({
         totalInvoiced: sql<number>`COALESCE(SUM(CAST(${invoices.amount} as DECIMAL)), 0)`,
@@ -29,7 +29,7 @@ router.get('/test-totals/:clientId', async (req, res) => {
       .where(eq(invoices.clientId, parseInt(clientId)))
 
     const result = totals[0] || { totalInvoiced: 0, totalPaid: 0 }
-    
+
     res.json({
       totalInvoiced: parseFloat(result.totalInvoiced.toString()),
       totalPaid: parseFloat(result.totalPaid.toString())
@@ -63,7 +63,7 @@ router.get('/test-service-totals/:clientId', async (req, res) => {
       serviceTypeName: total.serviceTypeName,
       totalAmount: parseFloat(total.totalAmount.toString())
     }))
-    
+
     res.json(result)
   } catch (error) {
     console.error('Test service totals error:', error)
@@ -131,7 +131,7 @@ router.get('/', async (req, res) => {
 router.get('/client/:clientId', async (req, res) => {
   try {
     const clientId = parseInt(req.params.clientId)
-    
+
     // Check if user has access to this client's data
     if (req.user!.role !== 'admin' && req.user!.clientId !== clientId) {
       return res.status(403).json({ error: 'Access denied' })
@@ -157,7 +157,7 @@ router.get('/client/:clientId', async (req, res) => {
       .from(invoices)
       .where(eq(invoices.clientId, clientId))
       .orderBy(desc(invoices.createdAt))
-    
+
     res.json(clientInvoices)
   } catch (error) {
     console.error('Get client invoices error:', error)
@@ -192,7 +192,7 @@ router.get('/:id', async (req, res) => {
       .from(invoices)
       .leftJoin(clients, eq(invoices.clientId, clients.id))
       .where(eq(invoices.id, invoiceId))
-    
+
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' })
     }
@@ -201,7 +201,7 @@ router.get('/:id', async (req, res) => {
     if (req.user!.role !== 'admin' && req.user!.clientId !== invoice.clientId) {
       return res.status(403).json({ error: 'Access denied' })
     }
-    
+
     res.json(invoice)
   } catch (error) {
     console.error('Get invoice error:', error)
@@ -217,12 +217,12 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' })
     }
 
-    const { 
-      clientId, 
-      amount, 
-      invoiceDate, 
-      periodStart, 
-      periodEnd, 
+    const {
+      clientId,
+      amount,
+      invoiceDate,
+      periodStart,
+      periodEnd,
       description,
       dueDate,
       notes,
@@ -301,19 +301,19 @@ router.post('/', async (req, res) => {
 
         // Calculate service amount
         let serviceAmount = 0
-        
+
         // Get assigned developers
         const assignedDevelopers = await db
           .select({
-            id: clientServiceDevelopers.id,
-            developerId: clientServiceDevelopers.developerId,
-            hourlyRate: clientServiceDevelopers.hourlyRate,
-            fixedPrice: clientServiceDevelopers.fixedPrice,
+            id: clientServiceTeamMembers.id,
+            teamMemberId: clientServiceTeamMembers.teamMemberId,
+            hourlyRate: clientServiceTeamMembers.hourlyRate,
+            fixedPrice: clientServiceTeamMembers.fixedPrice,
           })
-          .from(clientServiceDevelopers)
+          .from(clientServiceTeamMembers)
           .where(and(
-            eq(clientServiceDevelopers.clientServiceId, serviceId),
-            eq(clientServiceDevelopers.isActive, true)
+            eq(clientServiceTeamMembers.clientServiceId, serviceId),
+            eq(clientServiceTeamMembers.isActive, true)
           ))
 
         // Create invoice_services record
@@ -326,7 +326,7 @@ router.post('/', async (req, res) => {
         // Create invoice_developers records and calculate total
         let developerTotal = 0
         for (const developer of assignedDevelopers) {
-          const devRates = developerRates?.[developer.developerId] || {}
+          const devRates = developerRates?.[developer.teamMemberId] || {}
           const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
           const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
           const hoursWorked = devRates.hoursWorked || 0
@@ -343,7 +343,7 @@ router.post('/', async (req, res) => {
           // Create invoice_developers record
           await db.insert(invoiceDevelopers).values({
             invoiceServiceId: invoiceService.id,
-            developerId: developer.developerId,
+            clientServiceTeamMemberId: developer.id,
             hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
             fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
             hoursWorked: hoursWorked > 0 ? hoursWorked : null,
@@ -361,7 +361,7 @@ router.post('/', async (req, res) => {
           .where(eq(invoiceServices.id, invoiceService.id))
       }
     }
-    
+
     res.json(newInvoice)
   } catch (error) {
     console.error('Create invoice error:', error)
@@ -383,7 +383,7 @@ router.put('/:id', async (req, res) => {
 
     // Only update fields that are provided
     const allowedFields = ['amount', 'invoiceDate', 'periodStart', 'periodEnd', 'description', 'status', 'dueDate', 'paidAt', 'notes']
-    
+
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         if (field === 'amount') {
@@ -419,7 +419,7 @@ router.put('/:id', async (req, res) => {
       .set(updateData)
       .where(eq(invoices.id, invoiceId))
       .returning()
-    
+
     if (!updatedInvoice) {
       return res.status(404).json({ error: 'Invoice not found' })
     }
@@ -461,15 +461,15 @@ router.put('/:id', async (req, res) => {
         // Get assigned developers
         const assignedDevelopers = await db
           .select({
-            id: clientServiceDevelopers.id,
-            developerId: clientServiceDevelopers.developerId,
-            hourlyRate: clientServiceDevelopers.hourlyRate,
-            fixedPrice: clientServiceDevelopers.fixedPrice,
+            id: clientServiceTeamMembers.id,
+            teamMemberId: clientServiceTeamMembers.teamMemberId,
+            hourlyRate: clientServiceTeamMembers.hourlyRate,
+            fixedPrice: clientServiceTeamMembers.fixedPrice,
           })
-          .from(clientServiceDevelopers)
+          .from(clientServiceTeamMembers)
           .where(and(
-            eq(clientServiceDevelopers.clientServiceId, serviceId),
-            eq(clientServiceDevelopers.isActive, true)
+            eq(clientServiceTeamMembers.clientServiceId, serviceId),
+            eq(clientServiceTeamMembers.isActive, true)
           ))
 
         // Create invoice_services record
@@ -482,7 +482,7 @@ router.put('/:id', async (req, res) => {
         // Create invoice_developers records and calculate total
         let developerTotal = 0
         for (const developer of assignedDevelopers) {
-          const devRates = developerRates?.[developer.developerId] || {}
+          const devRates = developerRates?.[developer.teamMemberId] || {}
           const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
           const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
           const hoursWorked = devRates.hoursWorked || 0
@@ -500,7 +500,7 @@ router.put('/:id', async (req, res) => {
           if (devAmount > 0) {
             await db.insert(invoiceDevelopers).values({
               invoiceServiceId: invoiceService.id,
-              developerId: developer.developerId,
+              clientServiceTeamMemberId: developer.id,
               hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
               fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
               hoursWorked: hoursWorked > 0 ? hoursWorked : null,
@@ -519,7 +519,7 @@ router.put('/:id', async (req, res) => {
           .where(eq(invoiceServices.id, invoiceService.id))
       }
     }
-    
+
     res.json(updatedInvoice)
   } catch (error) {
     console.error('Update invoice error:', error)
@@ -557,14 +557,14 @@ router.delete('/:id', async (req, res) => {
     // Delete related records in the correct order
     if (invoiceServiceIds.length > 0) {
       const serviceIds = invoiceServiceIds.map(is => is.id)
-      
+
       // Delete invoice developers first (references invoice_services)
       for (const serviceId of serviceIds) {
         await db
           .delete(invoiceDevelopers)
           .where(eq(invoiceDevelopers.invoiceServiceId, serviceId))
       }
-      
+
       // Delete invoice services (references invoices)
       await db
         .delete(invoiceServices)
@@ -576,7 +576,7 @@ router.delete('/:id', async (req, res) => {
       .delete(invoices)
       .where(eq(invoices.id, invoiceId))
       .returning({ id: invoices.id })
-    
+
     console.log('Invoice deleted successfully:', deletedInvoice.id)
     res.json({ message: 'Invoice deleted successfully' })
   } catch (error) {
@@ -589,7 +589,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/client-service-options/:clientId', async (req, res) => {
   try {
     const clientId = parseInt(req.params.clientId)
-    
+
     // Check if user has access to this client's data
     if (req.user!.role !== 'admin' && req.user!.clientId !== clientId) {
       return res.status(403).json({ error: 'Access denied' })
@@ -615,19 +615,19 @@ router.get('/client-service-options/:clientId', async (req, res) => {
       clientServicesWithDevelopers.map(async (service) => {
         const assignedDevelopers = await db
           .select({
-            id: clientServiceDevelopers.id,
-            developerId: clientServiceDevelopers.developerId,
-            developerName: developers.name,
-            hourlyRate: clientServiceDevelopers.hourlyRate,
-            fixedPrice: clientServiceDevelopers.fixedPrice,
-            employmentType: clientServiceDevelopers.employmentType,
-            isActive: clientServiceDevelopers.isActive,
+            id: clientServiceTeamMembers.id,
+            teamMemberId: clientServiceTeamMembers.teamMemberId,
+            developerName: teamMembers.name,
+            hourlyRate: clientServiceTeamMembers.hourlyRate,
+            fixedPrice: clientServiceTeamMembers.fixedPrice,
+            employmentType: clientServiceTeamMembers.employmentType,
+            isActive: clientServiceTeamMembers.isActive,
           })
-          .from(clientServiceDevelopers)
-          .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
+          .from(clientServiceTeamMembers)
+          .leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
           .where(and(
-            eq(clientServiceDevelopers.clientServiceId, service.id),
-            eq(clientServiceDevelopers.isActive, true)
+            eq(clientServiceTeamMembers.clientServiceId, service.id),
+            eq(clientServiceTeamMembers.isActive, true)
           ))
 
         return {
@@ -647,8 +647,8 @@ router.get('/client-service-options/:clientId', async (req, res) => {
         billingModel: serviceTypes.billingModel,
       })
       .from(serviceTypes)
-      .where(assignedServiceIds.length > 0 ? 
-        and(...assignedServiceIds.map(id => ne(serviceTypes.id, id))) : 
+      .where(assignedServiceIds.length > 0 ?
+        and(...assignedServiceIds.map(id => ne(serviceTypes.id, id))) :
         undefined
       )
 
@@ -712,22 +712,22 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
       // Get assigned developers for this service
       const assignedDevelopers = await db
         .select({
-          id: clientServiceDevelopers.id,
-          developerId: clientServiceDevelopers.developerId,
-          developerName: developers.name,
-          currentHourlyRate: clientServiceDevelopers.hourlyRate,
-          currentFixedPrice: clientServiceDevelopers.fixedPrice,
+          id: clientServiceTeamMembers.id,
+          teamMemberId: clientServiceTeamMembers.teamMemberId,
+          developerName: teamMembers.name,
+          currentHourlyRate: clientServiceTeamMembers.hourlyRate,
+          currentFixedPrice: clientServiceTeamMembers.fixedPrice,
         })
-        .from(clientServiceDevelopers)
-        .leftJoin(developers, eq(clientServiceDevelopers.developerId, developers.id))
+        .from(clientServiceTeamMembers)
+        .leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
         .where(and(
-          eq(clientServiceDevelopers.clientServiceId, serviceId),
-          eq(clientServiceDevelopers.isActive, true)
+          eq(clientServiceTeamMembers.clientServiceId, serviceId),
+          eq(clientServiceTeamMembers.isActive, true)
         ))
 
       console.log('Developer filtering start:', {
         serviceId,
-        allAssignedDevelopers: assignedDevelopers.map(d => ({ id: d.id, developerId: d.developerId, name: d.developerName })),
+        allAssignedDevelopers: assignedDevelopers.map(d => ({ id: d.id, teamMemberId: d.teamMemberId, name: d.developerName })),
         developerRateKeys: Object.keys(developerRates)
       })
 
@@ -735,38 +735,38 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
       // This ensures that when developers are removed from the UI, they're not included in calculations
       const activeDevelopers = assignedDevelopers.filter(dev => {
         // Check both developer ID formats to be safe
-        const hasRatesByDeveloperId = Object.prototype.hasOwnProperty.call(developerRates, dev.developerId.toString())
+        const hasRatesByDeveloperId = Object.prototype.hasOwnProperty.call(developerRates, dev.teamMemberId.toString())
         const hasRatesById = Object.prototype.hasOwnProperty.call(developerRates, dev.id.toString())
         const shouldInclude = hasRatesByDeveloperId || hasRatesById
-        
+
         console.log('Developer filter check:', {
           devId: dev.id,
-          developerId: dev.developerId,
+          teamMemberId: dev.teamMemberId,
           name: dev.developerName,
           hasRatesByDeveloperId,
           hasRatesById,
           shouldInclude
         })
-        
+
         return shouldInclude
       })
 
       console.log('Developer filtering end:', {
-        activeDevelopers: activeDevelopers.map(d => ({ id: d.id, developerId: d.developerId, name: d.developerName }))
+        activeDevelopers: activeDevelopers.map(d => ({ id: d.id, teamMemberId: d.teamMemberId, name: d.developerName }))
       })
 
       // Calculate developer costs
       let developerTotal = 0
       const developerCalculations = activeDevelopers.map(dev => {
         // Check both ID formats for developer rates
-        const customRate = developerRates[dev.developerId] || developerRates[dev.id] || {}
+        const customRate = developerRates[dev.teamMemberId] || developerRates[dev.id] || {}
         const hourlyRate = customRate.hourlyRate !== undefined ? customRate.hourlyRate : parseFloat(dev.currentHourlyRate || '0')
         const fixedPrice = customRate.fixedPrice !== undefined ? customRate.fixedPrice : parseFloat(dev.currentFixedPrice || '0')
         const hoursWorked = customRate.hoursWorked || 0
 
         console.log('Processing developer in pricing:', {
           devId: dev.id,
-          developerId: dev.developerId,
+          teamMemberId: dev.teamMemberId,
           developerName: dev.developerName,
           customRate,
           hourlyRate,
@@ -776,10 +776,10 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
         })
 
         let amount = 0
-        
+
         // Check if user has provided custom rates - prioritize user input
         const hasCustomRates = Object.keys(customRate).length > 0
-        
+
         if (hasCustomRates) {
           // User has provided custom rates - determine their intended mode
           // Check if user has explicitly set fixed price (including 0)
@@ -806,7 +806,7 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
             amount = hourlyRate * 160
           }
         }
-        
+
         console.log('Calculated amount for developer:', {
           hasCustomRates,
           customRate,
@@ -917,7 +917,7 @@ router.get('/client/:clientId/service-totals', async (req, res) => {
       serviceTypeName: total.serviceTypeName,
       totalAmount: parseFloat(total.totalAmount.toString())
     }))
-    
+
     res.json(result)
   } catch (error) {
     console.error('Get service totals error:', error)

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { db } from '../db/index.js'
-import { shifts, shiftBreaks, shiftSchedules, teamMembers, clientUsers, clientServices, serviceTypes } from '../db/schema.js'
+import { shifts, shiftBreaks, shiftSchedules, teamMembers, clientUsers, clientServices, serviceTypes, clientServiceTeamMembers } from '../db/schema.js'
 import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm'
 import { notifyShiftEvent } from '../utils/slack.js'
 
@@ -28,14 +28,14 @@ async function getEmployeeByUser(email: string | undefined | null) {
     console.error('[getEmployeeByUser] No email provided')
     return undefined
   }
-  
+
   try {
-  const members = await db
-    .select()
-    .from(teamMembers)
+    const members = await db
+      .select()
+      .from(teamMembers)
       .where(eq(teamMembers.email, email))
 
-  return members[0]
+    return members[0]
   } catch (error) {
     console.error('[getEmployeeByUser] Error fetching employee:', error)
     throw error
@@ -96,16 +96,16 @@ router.get('/current', async (req, res) => {
     let activeShifts
     try {
       activeShifts = await db
-      .select()
-      .from(shifts)
-      .where(
-        and(
-          eq(shifts.employeeId, employee.id),
-          isNull(shifts.endTime)
+        .select()
+        .from(shifts)
+        .where(
+          and(
+            eq(shifts.employeeId, employee.id),
+            isNull(shifts.endTime)
+          )
         )
-      )
-      .orderBy(desc(shifts.startTime))
-      .limit(1)
+        .orderBy(desc(shifts.startTime))
+        .limit(1)
       console.log(`[GET /shifts/current] Found ${activeShifts.length} active shift(s)`)
     } catch (dbError) {
       console.error('[GET /shifts/current] Database error fetching shifts:', dbError)
@@ -127,16 +127,16 @@ router.get('/current', async (req, res) => {
     let activeBreaks
     try {
       activeBreaks = await db
-      .select()
-      .from(shiftBreaks)
-      .where(
-        and(
-          eq(shiftBreaks.shiftId, activeShift.id),
-          isNull(shiftBreaks.endTime)
+        .select()
+        .from(shiftBreaks)
+        .where(
+          and(
+            eq(shiftBreaks.shiftId, activeShift.id),
+            isNull(shiftBreaks.endTime)
+          )
         )
-      )
-      .orderBy(desc(shiftBreaks.startTime))
-      .limit(1)
+        .orderBy(desc(shiftBreaks.startTime))
+        .limit(1)
     } catch (dbError) {
       console.error('[GET /shifts/current] Database error fetching breaks:', dbError)
       // Don't fail if breaks query fails, just return empty
@@ -160,13 +160,52 @@ router.get('/current', async (req, res) => {
     console.error('[GET /shifts/current] Stack:', err.stack)
     console.error('[GET /shifts/current] User:', req.user ? { id: req.user.id, email: req.user.email } : 'no user')
     console.error('========================================')
-    
+
     const origin = req.headers.origin
     if (origin) {
       res.header('Access-Control-Allow-Origin', origin)
       res.header('Access-Control-Allow-Credentials', 'true')
     }
     res.status(500).json({ error: 'Failed to fetch current shift' })
+  }
+})
+
+// Get employee's active service assignments
+router.get('/my-services', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' })
+    }
+
+    const employee = await getEmployeeByUser(req.user.email!)
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' })
+    }
+
+    // Get all active service assignments for this employee
+    const services = await db
+      .select({
+        serviceId: clientServices.id,
+        serviceName: serviceTypes.name,
+        clientName: sql<string>`(SELECT name FROM clients WHERE id = ${clientServices.clientId})`,
+        employmentType: clientServiceTeamMembers.employmentType,
+        workSchedule: clientServiceTeamMembers.workSchedule,
+        serviceTitle: clientServices.serviceTitle,
+        slackChannelId: clientServices.slackChannelId
+      })
+      .from(clientServiceTeamMembers)
+      .innerJoin(clientServices, eq(clientServiceTeamMembers.clientServiceId, clientServices.id))
+      .innerJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
+      .where(and(
+        eq(clientServiceTeamMembers.teamMemberId, employee.id),
+        eq(clientServiceTeamMembers.isActive, true),
+        eq(clientServices.isActive, true)
+      ))
+
+    res.json({ services })
+  } catch (error) {
+    console.error('Error fetching employee services:', error)
+    res.status(500).json({ error: 'Failed to fetch services' })
   }
 })
 
@@ -246,12 +285,49 @@ router.post('/start', async (req, res) => {
       scheduleId = schedule.id
     }
 
+    // NEW: Handle service selection for Slack notifications
+    const { serviceId } = req.body
+    let validatedServiceId = null
+    let slackChannelId = null
+
+    if (serviceId) {
+      // Verify employee is assigned to this service
+      const assignment = await db
+        .select({
+          service: clientServices,
+          assignment: clientServiceTeamMembers
+        })
+        .from(clientServiceTeamMembers)
+        .innerJoin(clientServices, eq(clientServiceTeamMembers.clientServiceId, clientServices.id))
+        .where(and(
+          eq(clientServiceTeamMembers.teamMemberId, employee.id),
+          eq(clientServiceTeamMembers.clientServiceId, serviceId),
+          eq(clientServiceTeamMembers.isActive, true)
+        ))
+        .limit(1)
+
+      if (assignment.length === 0) {
+        const origin = req.headers.origin
+        if (origin) {
+          res.header('Access-Control-Allow-Origin', origin)
+          res.header('Access-Control-Allow-Credentials', 'true')
+        }
+        return res.status(400).json({
+          error: 'You are not assigned to this service'
+        })
+      }
+
+      validatedServiceId = serviceId
+      slackChannelId = assignment[0].service.slackChannelId
+    }
+
     // Create new shift
     const newShifts = await db
       .insert(shifts)
       .values({
         employeeId: employee.id,
         scheduleId,
+        serviceId: validatedServiceId, // NEW: Store service ID
         startTime: now,
         status: 'active',
         isLate,
@@ -265,7 +341,8 @@ router.post('/start', async (req, res) => {
       employeeName: employee.name || (employee as any).fullName || null,
       employeeEmail: employee.email,
       shiftId: createdShift.id,
-      timestamp: now
+      timestamp: now,
+      channelId: slackChannelId || undefined // NEW: Use service channel
     }).catch((err) => console.error('[SLACK] shift start notify failed:', err))
 
     const origin = req.headers.origin
@@ -316,6 +393,20 @@ router.post('/end', async (req, res) => {
 
     const activeShift = activeShifts[0]
 
+    // NEW: Get service's Slack channel if shift has a service
+    let slackChannelId = null
+    if (activeShift.serviceId) {
+      const serviceData = await db
+        .select({ slackChannelId: clientServices.slackChannelId })
+        .from(clientServices)
+        .where(eq(clientServices.id, activeShift.serviceId))
+        .limit(1)
+
+      if (serviceData.length > 0) {
+        slackChannelId = serviceData[0].slackChannelId
+      }
+    }
+
     // End any active breaks first
     await db
       .update(shiftBreaks)
@@ -345,7 +436,8 @@ router.post('/end', async (req, res) => {
       employeeName: employee.name || (employee as any).fullName || null,
       employeeEmail: employee.email,
       shiftId: endedShift.id,
-      timestamp: now
+      timestamp: now,
+      channelId: slackChannelId || undefined
     }).catch((err) => console.error('[SLACK] shift end notify failed:', err))
 
     res.json({ shift: endedShift, message: 'Shift ended successfully' })
@@ -383,6 +475,20 @@ router.post('/break/start', async (req, res) => {
     }
 
     const activeShift = activeShifts[0]
+
+    // NEW: Get service's Slack channel if shift has a service
+    let slackChannelId = null
+    if (activeShift.serviceId) {
+      const serviceData = await db
+        .select({ slackChannelId: clientServices.slackChannelId })
+        .from(clientServices)
+        .where(eq(clientServices.id, activeShift.serviceId))
+        .limit(1)
+
+      if (serviceData.length > 0) {
+        slackChannelId = serviceData[0].slackChannelId
+      }
+    }
 
     // Check if there's already an active break
     const activeBreaks = await db
@@ -432,7 +538,8 @@ router.post('/break/start', async (req, res) => {
       shiftId: activeShift.id,
       breakType: req.body.breakType || 'regular',
       breakNote: breakNote || undefined,
-      timestamp: createdBreak.startTime
+      timestamp: createdBreak.startTime,
+      channelId: slackChannelId || undefined
     }).catch((err) => console.error('[SLACK] break start notify failed:', err))
 
     res.json({ break: createdBreak, message: 'Break started successfully' })
@@ -469,7 +576,22 @@ router.post('/break/end', async (req, res) => {
       return res.status(400).json({ error: 'No active shift found' })
     }
 
+
     const activeShift = activeShifts[0]
+
+    // NEW: Get service's Slack channel if shift has a service
+    let slackChannelId = null
+    if (activeShift.serviceId) {
+      const serviceData = await db
+        .select({ slackChannelId: clientServices.slackChannelId })
+        .from(clientServices)
+        .where(eq(clientServices.id, activeShift.serviceId))
+        .limit(1)
+
+      if (serviceData.length > 0) {
+        slackChannelId = serviceData[0].slackChannelId
+      }
+    }
 
     // Find active break
     const activeBreaks = await db
@@ -505,7 +627,8 @@ router.post('/break/end', async (req, res) => {
       employeeName: employee.name || (employee as any).fullName || null,
       employeeEmail: employee.email,
       shiftId: activeShift.id,
-      timestamp: endedBreak.endTime || new Date()
+      timestamp: endedBreak.endTime || new Date(),
+      channelId: slackChannelId || undefined
     }).catch((err) => console.error('[SLACK] break end notify failed:', err))
 
     res.json({ break: endedBreak, message: 'Break ended successfully' })
@@ -840,10 +963,9 @@ router.get('/client/team', async (req, res) => {
           isNull(shifts.endTime),
           sql`${shifts.employeeId} IN (
             SELECT tm.id FROM team_members tm
-            JOIN developers d ON d.email = tm.email
-            JOIN client_service_developers csd ON csd.developer_id = d.id
-            WHERE csd.client_service_id IN (${sql.join(serviceIds.map(id => sql`${id}`), sql`, `)})
-            AND csd.is_active = true
+            JOIN client_service_team_members cstm ON cstm.team_member_id = tm.id
+            WHERE cstm.client_service_id IN (${sql.join(serviceIds.map(id => sql`${id}`), sql`, `)})
+            AND cstm.is_active = true
           )`
         )
       )

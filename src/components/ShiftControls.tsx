@@ -12,6 +12,15 @@ interface Shift {
   lateMinutes: number
 }
 
+interface UserService {
+  serviceId: number
+  serviceName: string
+  clientName: string
+  employmentType: 'fulltime' | 'part_time'
+  workSchedule: Record<string, string>
+  slackChannelId: string | null
+}
+
 interface ShiftBreak {
   id: number
   shiftId: number
@@ -24,6 +33,9 @@ export function ShiftControls() {
   const [activeBreak, setActiveBreak] = useState<ShiftBreak | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [myServices, setMyServices] = useState<UserService[]>([])
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
+  const [isFullTime, setIsFullTime] = useState(false)
 
   // Fetch current shift status
   const fetchCurrentShift = async () => {
@@ -32,6 +44,9 @@ export function ShiftControls() {
       if (response.hasActiveShift) {
         setCurrentShift(response.shift)
         setActiveBreak(response.activeBreak)
+        if (response.shift?.serviceId) {
+          setSelectedServiceId(response.shift.serviceId)
+        }
       } else {
         setCurrentShift(null)
         setActiveBreak(null)
@@ -41,8 +56,34 @@ export function ShiftControls() {
     }
   }
 
+  const fetchMyServices = async () => {
+    try {
+      const response = await api.getMyServices()
+      setMyServices(response.services)
+
+      if (response.services.length === 1) {
+        setSelectedServiceId(response.services[0].serviceId)
+        setIsFullTime(response.services[0].employmentType === 'fulltime')
+      } else if (response.services.length > 1) {
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+        const today = dayNames[new Date().getDay()]
+
+        const scheduledService = response.services.find(s =>
+          s.workSchedule && s.workSchedule[today] && s.workSchedule[today] !== 'off'
+        )
+
+        if (scheduledService) {
+          setSelectedServiceId(scheduledService.serviceId)
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching my services:', err)
+    }
+  }
+
   useEffect(() => {
     fetchCurrentShift()
+    fetchMyServices()
     // Refresh every 30 seconds
     const interval = setInterval(fetchCurrentShift, 30000)
     return () => clearInterval(interval)
@@ -51,8 +92,15 @@ export function ShiftControls() {
   const handleStartShift = async () => {
     setLoading(true)
     setError(null)
+
+    if (!selectedServiceId && myServices.length > 0) {
+      setError('Please select a service first')
+      setLoading(false)
+      return
+    }
+
     try {
-      const response = await api.request('/shifts/start', { method: 'POST' })
+      const response = await api.startShift(selectedServiceId || undefined)
       setCurrentShift(response.shift)
       setActiveBreak(null)
     } catch (err: any) {
@@ -163,6 +211,49 @@ export function ShiftControls() {
         </div>
       )}
 
+      {/* Service Selection */}
+      {!currentShift && myServices.length > 0 && (
+        <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Select Service Context for Shift
+          </label>
+          {myServices.length > 1 ? (
+            <select
+              value={selectedServiceId || ''}
+              onChange={(e) => setSelectedServiceId(Number(e.target.value))}
+              disabled={loading}
+              className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+            >
+              <option value="" disabled>Choose a service...</option>
+              {myServices.map((service) => (
+                <option key={service.serviceId} value={service.serviceId}>
+                  {service.clientName} - {service.serviceName}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="font-medium text-gray-900">{myServices[0].clientName}</span>
+              <span className="text-gray-500">- {myServices[0].serviceName}</span>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-gray-500">
+            This determines which client the shift is assigned to and where Slack notifications are sent.
+          </p>
+        </div>
+      )}
+
+      {currentShift && selectedServiceId && (
+        <div className="mb-4 px-1">
+          <p className="text-sm font-medium text-gray-500">
+            Current Service: <span className="text-blue-600 font-semibold">
+              {myServices.find(s => s.serviceId === selectedServiceId)?.clientName} - {myServices.find(s => s.serviceId === selectedServiceId)?.serviceName}
+            </span>
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {!currentShift ? (
           <button
@@ -210,9 +301,8 @@ export function ShiftControls() {
             <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl shadow-inner flex flex-col items-center justify-center gap-2 border-2 border-gray-300">
               <div className="text-sm font-medium text-gray-600 uppercase">Status</div>
               <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${
-                  activeBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500 animate-pulse'
-                }`} />
+                <div className={`w-3 h-3 rounded-full ${activeBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500 animate-pulse'
+                  }`} />
                 <span className="text-xl font-bold text-gray-900">
                   {activeBreak ? 'On Break' : 'Working'}
                 </span>
@@ -234,9 +324,8 @@ export function ShiftControls() {
             <div>
               <div className="text-sm text-gray-600 mb-1">Status</div>
               <div className="flex items-center justify-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  currentShift.status === 'on_break' ? 'bg-amber-500' : 'bg-green-500'
-                }`} />
+                <div className={`w-2 h-2 rounded-full ${currentShift.status === 'on_break' ? 'bg-amber-500' : 'bg-green-500'
+                  }`} />
                 <span className="text-lg font-semibold text-gray-900 capitalize">
                   {currentShift.status === 'on_break' ? 'On Break' : 'Active'}
                 </span>

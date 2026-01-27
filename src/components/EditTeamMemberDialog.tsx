@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Pencil } from 'lucide-react'
 
-// Type for team member data used in the edit dialog
 export interface EditTeamMemberData {
   id: number
   name: string
@@ -22,6 +21,8 @@ export interface EditTeamMemberData {
   status: 'active' | 'bench' | 'unavailable' | string
   startDate: string
   location?: string
+  position?: string
+  isDeveloper: boolean
   clientId?: number
 }
 
@@ -121,6 +122,55 @@ export function EditTeamMemberDialog({
                   className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-isDeveloper" className="text-sm font-medium text-gray-700 block">Developer Status</Label>
+                <div className="flex items-center space-x-2 pt-2">
+                  <Switch
+                    id="edit-isDeveloper"
+                    checked={member.isDeveloper}
+                    onCheckedChange={(checked) => onMemberChange({ isDeveloper: checked })}
+                  />
+                  <Label htmlFor="edit-isDeveloper" className="text-sm font-normal text-gray-600">
+                    Explicitly mark as Developer
+                  </Label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-position-select" className="text-sm font-medium text-gray-700">Position Type</Label>
+                <Select
+                  value={member.position === 'Developer' ? 'Developer' : 'Other'}
+                  onValueChange={(value) => {
+                    if (value === 'Developer') {
+                      onMemberChange({ position: 'Developer', isDeveloper: true })
+                    } else {
+                      onMemberChange({ position: '' })
+                    }
+                  }}
+                >
+                  <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
+                    <SelectValue placeholder="Select position type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Developer">Developer</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {member.position !== 'Developer' && (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-position-text" className="text-sm font-medium text-gray-700">Custom Position</Label>
+                  <Input
+                    id="edit-position-text"
+                    value={member.position || ''}
+                    onChange={(e) => onMemberChange({ position: e.target.value })}
+                    placeholder="e.g. HR Manager, PM, Designer"
+                    className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

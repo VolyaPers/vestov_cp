@@ -77,9 +77,9 @@ export async function calculateSickLeaveBalance(
   // Default sick leave allocation is 7 days per cycle
   let totalAllocated = 7
   if (balances.length > 0) {
-    const allocatedDays = parseFloat(balances[0].allocatedDays || '7')
+    const totalDays = parseFloat(balances[0].totalDays || '7')
     const adjustmentDays = parseFloat(balances[0].adjustmentDays || '0')
-    totalAllocated = allocatedDays + adjustmentDays
+    totalAllocated = totalDays + adjustmentDays
   }
 
   // Get all APPROVED sick leave requests for this cycle
