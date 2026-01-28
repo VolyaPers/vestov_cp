@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   Users,
   UserCheck,
@@ -14,13 +15,34 @@ import {
   Zap,
   BarChart3,
   Briefcase,
-  Receipt
+  Receipt,
+  Settings,
+  RefreshCw
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 
 export function AdminDashboard() {
+  const [isSyncingAvatars, setIsSyncingAvatars] = useState(false)
+
+  const handleSyncSlackAvatars = async () => {
+    if (!confirm('This will sync all user avatars from Slack. Users must have matching email addresses in Slack. Continue?')) {
+      return
+    }
+
+    setIsSyncingAvatars(true)
+    try {
+      const result = await api.syncAllSlackAvatars()
+      alert(`Sync complete!\n\nSynced: ${result.results.synced}\nNot found in Slack: ${result.results.notFound}\nErrors: ${result.results.errors}`)
+    } catch (error: any) {
+      console.error('Failed to sync Slack avatars:', error)
+      alert(error.message || 'Failed to sync Slack avatars')
+    } finally {
+      setIsSyncingAvatars(false)
+    }
+  }
+
   // Fetch dashboard data
   const { data: dashboardData } = useQuery({
     queryKey: ['adminDashboard'],
@@ -358,6 +380,32 @@ export function AdminDashboard() {
             <p className="stripe-text-secondary text-sm">
               Advanced analytics and revenue tracking features will be available in the next update.
             </p>
+          </div>
+
+          <div className="stripe-card p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg stripe-surface flex items-center justify-center">
+                <Settings className="h-5 w-5 stripe-text-muted" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold stripe-text-primary">Settings</h3>
+                <p className="stripe-text-muted text-sm">System configuration</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={handleSyncSlackAvatars}
+                disabled={isSyncingAvatars}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingAvatars ? 'animate-spin' : ''}`} />
+                {isSyncingAvatars ? 'Syncing Avatars...' : 'Sync Slack Avatars'}
+              </Button>
+              <p className="text-xs stripe-text-muted">
+                Updates all user profile pictures from Slack based on email address.
+              </p>
+            </div>
           </div>
         </div>
       </div>

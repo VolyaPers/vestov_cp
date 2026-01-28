@@ -321,6 +321,28 @@ router.post('/', async (req, res) => {
       source: 'admin_create'
     })
 
+    // Auto-sync Slack avatar (async, don't wait for it)
+    if (!avatarUrl) {
+      getSlackAvatarByEmail(email).then(async (slackAvatar) => {
+        if (slackAvatar) {
+          const slackAvatarUrl = slackAvatar.avatar192 || slackAvatar.avatar512 || slackAvatar.avatar72
+          if (slackAvatarUrl) {
+            try {
+              await db.update(users).set({ avatarUrl: slackAvatarUrl }).where(eq(users.id, user.id))
+              if (user.teamMemberId) {
+                await db.update(teamMembers).set({ avatarUrl: slackAvatarUrl }).where(eq(teamMembers.id, user.teamMemberId))
+              }
+              console.log(`[SLACK] Auto-synced avatar for new user: ${email}`)
+            } catch (err) {
+              console.error(`[SLACK] Failed to save avatar for new user: ${email}`, err)
+            }
+          }
+        }
+      }).catch(err => {
+        console.error(`[SLACK] Failed to fetch avatar for new user: ${email}`, err)
+      })
+    }
+
     const { password: _, ...userWithoutPassword } = user
     res.status(201).json({
       user: userWithoutPassword,
