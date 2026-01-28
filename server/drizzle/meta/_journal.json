@@ -176,6 +176,13 @@
       "when": 1758054000000,
       "tag": "add_work_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1769604512678,
+      "tag": "0025_abnormal_scarecrow",
+      "breakpoints": true
     }
   ]
 }
