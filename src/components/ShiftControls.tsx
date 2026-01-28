@@ -68,13 +68,17 @@ export function ShiftControls() {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
         const today = dayNames[new Date().getDay()]
 
-        const scheduledService = response.services.find(s =>
+        // Find all services scheduled for today (not "off")
+        const scheduledServices = response.services.filter(s =>
           s.workSchedule && s.workSchedule[today] && s.workSchedule[today] !== 'off'
         )
 
-        if (scheduledService) {
-          setSelectedServiceId(scheduledService.serviceId)
+        // Only pre-select if EXACTLY 1 service is scheduled for today
+        if (scheduledServices.length === 1) {
+          setSelectedServiceId(scheduledServices[0].serviceId)
+          setIsFullTime(scheduledServices[0].employmentType === 'fulltime')
         }
+        // If 0 or more than 1 service for today, leave unselected
       }
     } catch (err) {
       console.error('Error fetching my services:', err)
