@@ -32,6 +32,34 @@ async function main() {
     console.error('[MIGRATIONS] Could not read migrations folder:', fsError)
   }
   
+  // Debug: Check if __drizzle_migrations table exists
+  try {
+    const tableCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = '__drizzle_migrations'
+      ) as exists
+    `)
+    console.log(`\n[MIGRATIONS] __drizzle_migrations table exists: ${tableCheck.rows[0]?.exists}`)
+  } catch (e) {
+    console.error('[MIGRATIONS] Error checking __drizzle_migrations table:', e)
+  }
+
+  // Debug: Check client_service_team_members table
+  try {
+    const cstmCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'client_service_team_members'
+      ) as exists
+    `)
+    console.log(`[MIGRATIONS] client_service_team_members table exists: ${cstmCheck.rows[0]?.exists}`)
+  } catch (e) {
+    console.error('[MIGRATIONS] Error checking client_service_team_members table:', e)
+  }
+
   const appliedMigrations = await getAppliedMigrations(pool)
   console.log(`\n[MIGRATIONS] Already applied: ${appliedMigrations.length} migrations`)
   if (appliedMigrations.length > 0) {
@@ -54,6 +82,38 @@ async function main() {
       afterMigrations.slice(0, 5).forEach(m => {
         console.log(`[MIGRATIONS]   ✓ ${m.name} (${m.created_at})`)
       })
+    }
+
+    // Debug: Check table again after migration
+    try {
+      const tableCheckAfter = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public'
+          AND table_name = '__drizzle_migrations'
+        ) as exists
+      `)
+      console.log(`[MIGRATIONS] __drizzle_migrations table exists AFTER migration: ${tableCheckAfter.rows[0]?.exists}`)
+
+      // Check table contents directly
+      if (tableCheckAfter.rows[0]?.exists) {
+        const contents = await pool.query('SELECT * FROM __drizzle_migrations LIMIT 5')
+        console.log(`[MIGRATIONS] __drizzle_migrations contents (first 5):`, contents.rows)
+      }
+    } catch (e) {
+      console.error('[MIGRATIONS] Error checking after migration:', e)
+    }
+
+    // Check if client_service_team_members was created
+    try {
+      const cstmCheckAfter = await pool.query(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'client_service_team_members'
+        ORDER BY ordinal_position
+      `)
+      console.log(`[MIGRATIONS] client_service_team_members columns:`, cstmCheckAfter.rows.map(r => r.column_name))
+    } catch (e) {
+      console.error('[MIGRATIONS] Error checking client_service_team_members columns:', e)
     }
     
     console.log('========================================')
