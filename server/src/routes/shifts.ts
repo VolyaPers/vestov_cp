@@ -177,8 +177,34 @@ router.get('/my-services', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' })
     }
 
-    const employee = await getEmployeeByUser(req.user.email!)
+    // Try to get employee by teamMemberId first (more reliable)
+    let employee
+    if ((req.user as any).teamMemberId) {
+      try {
+        const [member] = await db
+          .select()
+          .from(teamMembers)
+          .where(eq(teamMembers.id, (req.user as any).teamMemberId))
+          .limit(1)
+        employee = member
+        if (employee) {
+          console.log(`[GET /my-services] Found employee by teamMemberId: ${employee.id}, ${employee.name}`)
+        }
+      } catch (error) {
+        console.error('[GET /my-services] Error fetching by teamMemberId:', error)
+      }
+    }
+
+    // Fallback to email lookup if teamMemberId didn't work
     if (!employee) {
+      employee = await getEmployeeByUser(req.user.email!)
+      if (employee) {
+        console.log(`[GET /my-services] Found employee by email: ${employee.id}, ${employee.name}`)
+      }
+    }
+
+    if (!employee) {
+      console.log(`[GET /my-services] Employee not found for email: ${req.user.email}, teamMemberId: ${(req.user as any).teamMemberId}`)
       return res.status(404).json({ error: 'Employee not found' })
     }
 
