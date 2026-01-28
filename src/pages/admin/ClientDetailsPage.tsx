@@ -38,10 +38,12 @@ interface Developer {
   email: string
   skills: string[]
   hourlyRate?: number
-  experienceLevel: 'junior' | 'middle' | 'senior' | 'lead'
-  status: 'available' | 'busy' | 'on_leave'
+  role?: string
+  position?: string
+  status?: string
   bio?: string
   location?: string
+  isDeveloper?: boolean
 }
 
 interface ServiceDeveloper {
@@ -1789,7 +1791,7 @@ export function ClientDetailsPage() {
                 <SelectContent>
                   {developers.map((developer) => (
                     <SelectItem key={developer.id} value={developer.id.toString()}>
-                      {developer.name} ({developer.experienceLevel}) - {developer.skills?.slice(0, 2).join(', ')}
+                      {developer.name} ({developer.position || developer.role}) - {developer.skills?.slice(0, 2).join(', ')}
                     </SelectItem>
                   ))}
                 </SelectContent>
