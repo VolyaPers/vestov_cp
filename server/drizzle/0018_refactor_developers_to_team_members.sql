@@ -21,8 +21,12 @@ CREATE TABLE IF NOT EXISTS client_service_team_members (
   created_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 
--- Step 3: Add work_schedule column if table exists but column doesn't
+-- Step 3: Add any missing columns if table exists but columns don't
 ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS work_schedule JSONB;
+ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10, 2);
+ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS fixed_price NUMERIC(10, 2);
+ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS start_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS end_date DATE;
 
 -- Step 4: Add FK constraints to client_service_team_members if they don't exist
 DO $$ BEGIN
