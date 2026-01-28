@@ -82,6 +82,22 @@ async function main() {
     { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS start_date DATE DEFAULT CURRENT_DATE` },
     { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS end_date DATE` },
     { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS work_schedule JSONB` },
+    // Fix: Change work_schedule from VARCHAR to JSONB if it was created with wrong type
+    { table: 'client_service_team_members', sql: `
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'client_service_team_members'
+          AND column_name = 'work_schedule'
+          AND data_type = 'character varying'
+        ) THEN
+          ALTER TABLE client_service_team_members
+          ALTER COLUMN work_schedule TYPE JSONB
+          USING CASE WHEN work_schedule IS NOT NULL AND work_schedule != '' THEN work_schedule::jsonb ELSE NULL END;
+        END IF;
+      END $$;
+    ` },
     { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20) DEFAULT 'fulltime'` },
 
     // client_services columns
