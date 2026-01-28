@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { db, pool } from '../db/index.js'
-import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks } from '../db/schema.js'
+import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks, clientServiceTeamMembers, invoiceDevelopers, reimbursementRequests } from '../db/schema.js'
 import { eq, and, sql, inArray } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { requireAuth } from '../middleware/auth.js'
@@ -54,6 +54,7 @@ async function deleteOptionalTeamMemberData(teamMemberId: number): Promise<void>
     { name: 'leave requests', operation: () => db.delete(leaveRequests).where(eq(leaveRequests.employeeId, teamMemberId)) },
     { name: 'employment cycles', operation: () => db.delete(employmentCycles).where(eq(employmentCycles.employeeId, teamMemberId)) },
     { name: 'shift schedules', operation: () => db.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, teamMemberId)) },
+    { name: 'reimbursement requests', operation: () => db.delete(reimbursementRequests).where(eq(reimbursementRequests.employeeId, teamMemberId)) },
     {
       name: 'shifts and breaks',
       operation: async () => {
@@ -71,6 +72,26 @@ async function deleteOptionalTeamMemberData(teamMemberId: number): Promise<void>
           await db.delete(shifts).where(eq(shifts.employeeId, teamMemberId))
           console.log(`[HARD DELETE] Deleted shifts (no breaks found)`)
         }
+      }
+    },
+    {
+      name: 'client service team members and invoice developers',
+      operation: async () => {
+        // First, get all client_service_team_member IDs for this team member
+        const cstmIds = await db
+          .select({ id: clientServiceTeamMembers.id })
+          .from(clientServiceTeamMembers)
+          .where(eq(clientServiceTeamMembers.teamMemberId, teamMemberId))
+
+        if (cstmIds.length > 0) {
+          const ids = cstmIds.map((c) => c.id)
+          // Delete invoice_developers that reference these client_service_team_members
+          await db.delete(invoiceDevelopers).where(inArray(invoiceDevelopers.clientServiceTeamMemberId, ids))
+          console.log(`[HARD DELETE] Deleted invoice_developers for ${ids.length} client_service_team_member(s)`)
+        }
+
+        // Now delete the client_service_team_members
+        await db.delete(clientServiceTeamMembers).where(eq(clientServiceTeamMembers.teamMemberId, teamMemberId))
       }
     }
   ]
