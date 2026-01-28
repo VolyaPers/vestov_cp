@@ -21,6 +21,10 @@ UPDATE "reimbursement_requests"
 SET "career_year" = 1 
 WHERE "career_year" IS NULL;
 
--- Make the column NOT NULL after setting defaults
-ALTER TABLE "reimbursement_requests" ALTER COLUMN "career_year" SET NOT NULL;
+-- Make the column NOT NULL after setting defaults (safe to run multiple times)
+DO $$ BEGIN
+  ALTER TABLE "reimbursement_requests" ALTER COLUMN "career_year" SET NOT NULL;
+EXCEPTION
+  WHEN others THEN null;
+END $$;
 

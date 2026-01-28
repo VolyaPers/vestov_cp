@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS "developers" (
 	CONSTRAINT "developers_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-ALTER TABLE "client_services" ADD COLUMN "service_level_price" numeric(10, 2);--> statement-breakpoint
+ALTER TABLE "client_services" ADD COLUMN IF NOT EXISTS "service_level_price" numeric(10, 2);--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "client_service_developers" ADD CONSTRAINT "client_service_developers_client_service_id_client_services_id_fk" FOREIGN KEY ("client_service_id") REFERENCES "client_services"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION

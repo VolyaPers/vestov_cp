@@ -2,8 +2,12 @@
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50);
 
--- Make password nullable for OAuth-only users
-ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+-- Make password nullable for OAuth-only users (safe to run multiple times)
+DO $$ BEGIN
+  ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+EXCEPTION
+  WHEN others THEN null;
+END $$;
 
 -- Create index for google_id lookups
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
