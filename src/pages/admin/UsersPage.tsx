@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'wouter'
-import { Plus, Edit, Trash2, User, Mail, UserCheck, UserX, Users, Shield, Briefcase, Search, Building, X, Settings } from 'lucide-react'
+import { Plus, Edit, Trash2, User, Mail, UserCheck, UserX, Users, Shield, Briefcase, Search, Building, X, Settings, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -66,6 +66,7 @@ export function UsersPage() {
     clientId: '',
     accessLevel: 'read' as 'read' | 'write' | 'admin',
   })
+  const [isSyncingAvatars, setIsSyncingAvatars] = useState(false)
 
   useEffect(() => {
     loadUsers()
@@ -213,6 +214,24 @@ export function UsersPage() {
     } catch (error: any) {
       console.error('Failed to toggle user status:', error)
       alert(error.message || 'Failed to update user status')
+    }
+  }
+
+  const handleSyncSlackAvatars = async () => {
+    if (!confirm('This will sync all user avatars from Slack. Users must have matching email addresses in Slack. Continue?')) {
+      return
+    }
+
+    setIsSyncingAvatars(true)
+    try {
+      const result = await api.syncAllSlackAvatars()
+      await loadUsers()
+      alert(`Sync complete!\n\nSynced: ${result.results.synced}\nNot found in Slack: ${result.results.notFound}\nErrors: ${result.results.errors}`)
+    } catch (error: any) {
+      console.error('Failed to sync Slack avatars:', error)
+      alert(error.message || 'Failed to sync Slack avatars')
+    } finally {
+      setIsSyncingAvatars(false)
     }
   }
 
@@ -366,10 +385,20 @@ export function UsersPage() {
           <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
           <p className="text-gray-600">Manage system users and their roles</p>
         </div>
-        <Button onClick={() => setIsUserDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create User
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleSyncSlackAvatars}
+            disabled={isSyncingAvatars}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingAvatars ? 'animate-spin' : ''}`} />
+            {isSyncingAvatars ? 'Syncing...' : 'Sync Slack Avatars'}
+          </Button>
+          <Button onClick={() => setIsUserDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create User
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

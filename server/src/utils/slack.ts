@@ -1,5 +1,29 @@
 import https from 'node:https'
 
+// Slack User Profile types
+interface SlackUserProfile {
+  image_24?: string
+  image_32?: string
+  image_48?: string
+  image_72?: string
+  image_192?: string
+  image_512?: string
+  image_1024?: string
+  image_original?: string
+}
+
+interface SlackUser {
+  id: string
+  name: string
+  profile: SlackUserProfile
+}
+
+interface SlackLookupResponse {
+  ok: boolean
+  user?: SlackUser
+  error?: string
+}
+
 // Slack Block Kit types
 interface SlackTextBlock {
   type: 'plain_text' | 'mrkdwn'
@@ -335,6 +359,80 @@ export async function notifyVacationRequest(options: NotifyVacationRequestOption
     text,
     channel: SLACK_ADMIN_CHANNEL || SLACK_CHANNEL || '',
     blocks
+  })
+}
+
+/**
+ * Fetch a user's avatar URL from Slack by their email address.
+ * Requires the `users:read.email` scope on the Slack bot.
+ *
+ * @param email - The email address to look up
+ * @returns Object with avatar URLs of different sizes, or null if not found
+ */
+export async function getSlackAvatarByEmail(email: string): Promise<{
+  avatar72?: string
+  avatar192?: string
+  avatar512?: string
+  slackUserId?: string
+} | null> {
+  if (!SLACK_TOKEN) {
+    console.warn('[SLACK] SLACK_BOT_TOKEN not configured')
+    return null
+  }
+
+  return new Promise((resolve) => {
+    const encodedEmail = encodeURIComponent(email)
+
+    const req = https.request(
+      {
+        hostname: 'slack.com',
+        path: `/api/users.lookupByEmail?email=${encodedEmail}`,
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${SLACK_TOKEN}`
+        }
+      },
+      (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c) => chunks.push(c))
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString()
+          try {
+            const parsed: SlackLookupResponse = JSON.parse(body)
+
+            if (!parsed.ok) {
+              if (parsed.error === 'users_not_found') {
+                console.log(`[SLACK] User not found for email: ${email}`)
+              } else {
+                console.error('[SLACK] lookupByEmail error:', parsed.error)
+              }
+              return resolve(null)
+            }
+
+            if (parsed.user?.profile) {
+              resolve({
+                avatar72: parsed.user.profile.image_72,
+                avatar192: parsed.user.profile.image_192,
+                avatar512: parsed.user.profile.image_512,
+                slackUserId: parsed.user.id
+              })
+            } else {
+              resolve(null)
+            }
+          } catch (err) {
+            console.error('[SLACK] Failed to parse lookupByEmail response:', err)
+            resolve(null)
+          }
+        })
+      }
+    )
+
+    req.on('error', (err) => {
+      console.error('[SLACK] lookupByEmail request failed:', err)
+      resolve(null)
+    })
+
+    req.end()
   })
 }
 

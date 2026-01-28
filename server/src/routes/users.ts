@@ -5,6 +5,7 @@ import { eq, and, sql, inArray } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { requireAuth } from '../middleware/auth.js'
 import { createUserAccount, deactivateUserAndMemberships } from '../services/userService.js'
+import { getSlackAvatarByEmail } from '../utils/slack.js'
 
 const router = Router()
 
@@ -813,6 +814,156 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
     }
     
     res.status(500).json({ error: errorMessage })
+  }
+})
+
+// Get Slack avatar for a user by email
+router.get('/:id/slack-avatar', async (req, res) => {
+  try {
+    const { id } = req.params
+
+    // Get user email
+    const [user] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, Number(id)))
+      .limit(1)
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const slackAvatar = await getSlackAvatarByEmail(user.email)
+
+    if (!slackAvatar) {
+      return res.status(404).json({ error: 'Slack user not found for this email' })
+    }
+
+    res.json({
+      avatarUrl: slackAvatar.avatar192 || slackAvatar.avatar72,
+      avatar72: slackAvatar.avatar72,
+      avatar192: slackAvatar.avatar192,
+      avatar512: slackAvatar.avatar512,
+      slackUserId: slackAvatar.slackUserId
+    })
+  } catch (error) {
+    console.error('Error fetching Slack avatar:', error)
+    res.status(500).json({ error: 'Failed to fetch Slack avatar' })
+  }
+})
+
+// Sync Slack avatar - fetches from Slack and saves to user profile
+router.post('/:id/sync-slack-avatar', async (req, res) => {
+  try {
+    const { id } = req.params
+
+    // Get user email
+    const [user] = await db
+      .select({ email: users.email, avatarUrl: users.avatarUrl })
+      .from(users)
+      .where(eq(users.id, Number(id)))
+      .limit(1)
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const slackAvatar = await getSlackAvatarByEmail(user.email)
+
+    if (!slackAvatar) {
+      return res.status(404).json({ error: 'Slack user not found for this email' })
+    }
+
+    // Use the 192px version as default (good balance of quality and size)
+    const avatarUrl = slackAvatar.avatar192 || slackAvatar.avatar512 || slackAvatar.avatar72
+
+    if (!avatarUrl) {
+      return res.status(404).json({ error: 'No avatar found for this Slack user' })
+    }
+
+    // Update user's avatar URL
+    const [updatedUser] = await db
+      .update(users)
+      .set({ avatarUrl, updatedAt: new Date() })
+      .where(eq(users.id, Number(id)))
+      .returning()
+
+    // Also update team_member avatar if linked
+    if (updatedUser.teamMemberId) {
+      await db
+        .update(teamMembers)
+        .set({ avatarUrl })
+        .where(eq(teamMembers.id, updatedUser.teamMemberId))
+    }
+
+    res.json({
+      success: true,
+      avatarUrl,
+      message: 'Avatar synced from Slack successfully'
+    })
+  } catch (error) {
+    console.error('Error syncing Slack avatar:', error)
+    res.status(500).json({ error: 'Failed to sync Slack avatar' })
+  }
+})
+
+// Bulk sync all users' avatars from Slack
+router.post('/sync-all-slack-avatars', async (req, res) => {
+  try {
+    const allUsers = await db
+      .select({ id: users.id, email: users.email, teamMemberId: users.teamMemberId })
+      .from(users)
+
+    const results = {
+      total: allUsers.length,
+      synced: 0,
+      notFound: 0,
+      errors: 0
+    }
+
+    for (const user of allUsers) {
+      try {
+        const slackAvatar = await getSlackAvatarByEmail(user.email)
+
+        if (slackAvatar) {
+          const avatarUrl = slackAvatar.avatar192 || slackAvatar.avatar512 || slackAvatar.avatar72
+
+          if (avatarUrl) {
+            await db
+              .update(users)
+              .set({ avatarUrl, updatedAt: new Date() })
+              .where(eq(users.id, user.id))
+
+            if (user.teamMemberId) {
+              await db
+                .update(teamMembers)
+                .set({ avatarUrl })
+                .where(eq(teamMembers.id, user.teamMemberId))
+            }
+
+            results.synced++
+          } else {
+            results.notFound++
+          }
+        } else {
+          results.notFound++
+        }
+      } catch {
+        results.errors++
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    res.json({
+      success: true,
+      message: `Synced ${results.synced} avatars from Slack`,
+      results
+    })
+  } catch (error) {
+    console.error('Error bulk syncing Slack avatars:', error)
+    res.status(500).json({ error: 'Failed to bulk sync Slack avatars' })
   }
 })
 

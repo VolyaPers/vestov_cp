@@ -573,6 +573,41 @@ class ApiClient {
     })
   }
 
+  async getSlackAvatar(userId: number): Promise<{
+    avatarUrl?: string
+    avatar72?: string
+    avatar192?: string
+    avatar512?: string
+    slackUserId?: string
+  }> {
+    return this.request(`/users/${userId}/slack-avatar`)
+  }
+
+  async syncSlackAvatar(userId: number): Promise<{
+    success: boolean
+    avatarUrl: string
+    message: string
+  }> {
+    return this.request(`/users/${userId}/sync-slack-avatar`, {
+      method: 'POST',
+    })
+  }
+
+  async syncAllSlackAvatars(): Promise<{
+    success: boolean
+    message: string
+    results: {
+      total: number
+      synced: number
+      notFound: number
+      errors: number
+    }
+  }> {
+    return this.request('/users/sync-all-slack-avatars', {
+      method: 'POST',
+    })
+  }
+
   async assignUserToClient(userId: number, clientId: number, data: {
     accessLevel?: 'read' | 'write' | 'admin'
     assignedBy: number
