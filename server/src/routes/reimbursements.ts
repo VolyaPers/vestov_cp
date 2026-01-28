@@ -134,15 +134,38 @@ router.get('/my-requests', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' })
     }
 
-    // Get team member info by matching email
-    const members = await db
-      .select()
-      .from(teamMembers)
-      .where(eq(teamMembers.email, req.user.email!))
+    // Try to get team member by teamMemberId first (more reliable)
+    let member
+    if ((req.user as any).teamMemberId) {
+      try {
+        const [foundMember] = await db
+          .select()
+          .from(teamMembers)
+          .where(eq(teamMembers.id, (req.user as any).teamMemberId))
+          .limit(1)
+        member = foundMember
+        if (member) {
+          console.log(`[GET /reimbursements/my-requests] Found member by teamMemberId: ${member.id}, ${member.name}`)
+        }
+      } catch (error) {
+        console.error('[GET /reimbursements/my-requests] Error fetching by teamMemberId:', error)
+      }
+    }
 
-    const member = members[0]
+    // Fallback to email lookup if teamMemberId didn't work
+    if (!member) {
+      const members = await db
+        .select()
+        .from(teamMembers)
+        .where(eq(teamMembers.email, req.user.email!))
+      member = members[0]
+      if (member) {
+        console.log(`[GET /reimbursements/my-requests] Found member by email: ${member.id}, ${member.name}`)
+      }
+    }
 
     if (!member) {
+      console.log(`[GET /reimbursements/my-requests] Member not found for email: ${req.user.email}, teamMemberId: ${(req.user as any).teamMemberId}`)
       return res.status(404).json({ error: 'Team member not found' })
     }
 
