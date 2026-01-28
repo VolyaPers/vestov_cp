@@ -36,11 +36,15 @@ CREATE TABLE IF NOT EXISTS client_service_team_members (
   employment_type VARCHAR(20) NOT NULL DEFAULT 'fulltime',
   hourly_rate NUMERIC(10, 2),
   fixed_price NUMERIC(10, 2),
+  work_schedule JSONB,
   is_active BOOLEAN DEFAULT TRUE,
   start_date DATE NOT NULL DEFAULT CURRENT_DATE,
   end_date DATE,
   created_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+
+-- Add work_schedule column if table already exists but column is missing
+ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS work_schedule JSONB;
 
 -- Create index on shifts.service_id if it doesn't exist
 CREATE INDEX IF NOT EXISTS idx_shifts_service_id ON shifts(service_id);
@@ -48,3 +52,14 @@ CREATE INDEX IF NOT EXISTS idx_shifts_service_id ON shifts(service_id);
 -- Create indexes on users for OAuth if they don't exist
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 CREATE INDEX IF NOT EXISTS idx_users_auth_provider ON users(auth_provider);
+
+-- Fix invoice_developers table - rename column if old name exists
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoice_developers' AND column_name = 'client_service_developer_id') THEN
+    ALTER TABLE invoice_developers RENAME COLUMN client_service_developer_id TO client_service_team_member_id;
+  END IF;
+EXCEPTION WHEN others THEN null;
+END $$;
+
+-- Add client_service_team_member_id if neither column exists
+ALTER TABLE invoice_developers ADD COLUMN IF NOT EXISTS client_service_team_member_id INTEGER;
