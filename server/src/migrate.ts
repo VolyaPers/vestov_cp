@@ -72,69 +72,56 @@ async function main() {
 
   // CRITICAL FIX: Run essential schema fixes directly via SQL
   // This bypasses Drizzle's migration system which isn't tracking properly
+  // Each ALTER TABLE is run separately to avoid multi-statement issues
   console.log('\n[MIGRATIONS] Running critical schema fixes directly...')
-  try {
-    // Fix client_service_team_members table - add all missing columns
-    await pool.query(`
-      ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10, 2);
-      ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS fixed_price NUMERIC(10, 2);
-      ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS start_date DATE DEFAULT CURRENT_DATE;
-      ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS end_date DATE;
-      ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS work_schedule JSONB;
-      ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20) DEFAULT 'fulltime';
-    `)
-    console.log('[MIGRATIONS] ✓ client_service_team_members columns fixed')
 
-    // Fix client_services table
-    await pool.query(`
-      ALTER TABLE client_services ADD COLUMN IF NOT EXISTS service_title TEXT;
-      ALTER TABLE client_services ADD COLUMN IF NOT EXISTS service_level_price NUMERIC(10, 2);
-      ALTER TABLE client_services ADD COLUMN IF NOT EXISTS slack_channel_id VARCHAR(255);
-    `)
-    console.log('[MIGRATIONS] ✓ client_services columns fixed')
+  const schemaFixes = [
+    // client_service_team_members columns
+    { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10, 2)` },
+    { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS fixed_price NUMERIC(10, 2)` },
+    { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS start_date DATE DEFAULT CURRENT_DATE` },
+    { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS end_date DATE` },
+    { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS work_schedule JSONB` },
+    { table: 'client_service_team_members', sql: `ALTER TABLE client_service_team_members ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20) DEFAULT 'fulltime'` },
 
-    // Fix team_members table
-    await pool.query(`
-      ALTER TABLE team_members ADD COLUMN IF NOT EXISTS position TEXT;
-      ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_developer BOOLEAN DEFAULT FALSE;
-      ALTER TABLE team_members ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20) DEFAULT 'fulltime';
-      ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_billable BOOLEAN DEFAULT TRUE;
-    `)
-    console.log('[MIGRATIONS] ✓ team_members columns fixed')
+    // client_services columns
+    { table: 'client_services', sql: `ALTER TABLE client_services ADD COLUMN IF NOT EXISTS service_title TEXT` },
+    { table: 'client_services', sql: `ALTER TABLE client_services ADD COLUMN IF NOT EXISTS service_level_price NUMERIC(10, 2)` },
+    { table: 'client_services', sql: `ALTER TABLE client_services ADD COLUMN IF NOT EXISTS slack_channel_id VARCHAR(255)` },
 
-    // Fix users table
-    await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS team_member_id INTEGER;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50);
-    `)
-    console.log('[MIGRATIONS] ✓ users columns fixed')
+    // team_members columns
+    { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS position TEXT` },
+    { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_developer BOOLEAN DEFAULT FALSE` },
+    { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20) DEFAULT 'fulltime'` },
+    { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_billable BOOLEAN DEFAULT TRUE` },
 
-    // Fix shifts table
-    await pool.query(`
-      ALTER TABLE shifts ADD COLUMN IF NOT EXISTS service_id INTEGER;
-    `)
-    console.log('[MIGRATIONS] ✓ shifts columns fixed')
+    // users columns
+    { table: 'users', sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS team_member_id INTEGER` },
+    { table: 'users', sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP` },
+    { table: 'users', sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE` },
+    { table: 'users', sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255)` },
+    { table: 'users', sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50)` },
 
-    // Fix reimbursement_requests table
-    await pool.query(`
-      ALTER TABLE reimbursement_requests ADD COLUMN IF NOT EXISTS career_year INTEGER DEFAULT 1;
-    `)
-    console.log('[MIGRATIONS] ✓ reimbursement_requests columns fixed')
+    // shifts columns
+    { table: 'shifts', sql: `ALTER TABLE shifts ADD COLUMN IF NOT EXISTS service_id INTEGER` },
 
-    // Fix clients table
-    await pool.query(`
-      ALTER TABLE clients ADD COLUMN IF NOT EXISTS logo_url TEXT;
-    `)
-    console.log('[MIGRATIONS] ✓ clients columns fixed')
+    // reimbursement_requests columns
+    { table: 'reimbursement_requests', sql: `ALTER TABLE reimbursement_requests ADD COLUMN IF NOT EXISTS career_year INTEGER DEFAULT 1` },
 
-    console.log('[MIGRATIONS] ✓ All critical schema fixes applied')
-  } catch (schemaError) {
-    console.error('[MIGRATIONS] Schema fix error:', schemaError)
-    // Don't exit - continue with Drizzle migrations
+    // clients columns
+    { table: 'clients', sql: `ALTER TABLE clients ADD COLUMN IF NOT EXISTS logo_url TEXT` },
+  ]
+
+  for (const fix of schemaFixes) {
+    try {
+      await pool.query(fix.sql)
+      console.log(`[MIGRATIONS] ✓ ${fix.table}: column added/verified`)
+    } catch (err) {
+      const error = err as Error
+      console.error(`[MIGRATIONS] ✗ ${fix.table} error:`, error.message)
+    }
   }
+  console.log('[MIGRATIONS] ✓ All critical schema fixes processed')
 
   console.log('\n[MIGRATIONS] Running Drizzle migrations...')
   try {
