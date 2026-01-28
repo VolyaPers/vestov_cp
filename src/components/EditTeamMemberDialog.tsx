@@ -124,53 +124,38 @@ export function EditTeamMemberDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-isDeveloper" className="text-sm font-medium text-gray-700 block">Developer Status</Label>
+                <Label htmlFor="edit-isDeveloper" className="text-sm font-medium text-gray-700 block">Developer</Label>
                 <div className="flex items-center space-x-2 pt-2">
                   <Switch
                     id="edit-isDeveloper"
                     checked={member.isDeveloper}
-                    onCheckedChange={(checked) => onMemberChange({ isDeveloper: checked })}
+                    onCheckedChange={(checked) => onMemberChange({
+                      isDeveloper: checked,
+                      position: checked ? 'Developer' : ''
+                    })}
                   />
                   <Label htmlFor="edit-isDeveloper" className="text-sm font-normal text-gray-600">
-                    Explicitly mark as Developer
+                    Mark if user is a developer
                   </Label>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-position-select" className="text-sm font-medium text-gray-700">Position Type</Label>
-                <Select
-                  value={member.position === 'Developer' ? 'Developer' : 'Other'}
-                  onValueChange={(value) => {
-                    if (value === 'Developer') {
-                      onMemberChange({ position: 'Developer', isDeveloper: true })
-                    } else {
-                      onMemberChange({ position: '' })
-                    }
-                  }}
-                >
-                  <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
-                    <SelectValue placeholder="Select position type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Developer">Developer</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="edit-position-text" className="text-sm font-medium text-gray-700">Position</Label>
+                <Input
+                  id="edit-position-text"
+                  value={member.position || ''}
+                  onChange={(e) => onMemberChange({ position: e.target.value })}
+                  placeholder="e.g. HR Manager, PM, Designer"
+                  className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
+                  disabled={member.isDeveloper}
+                />
+                <p className="text-xs text-gray-500">
+                  {member.isDeveloper
+                    ? 'Position is set to Developer when toggle is enabled'
+                    : 'Enter the position for non-developer team members'}
+                </p>
               </div>
-
-              {member.position !== 'Developer' && (
-                <div className="space-y-2">
-                  <Label htmlFor="edit-position-text" className="text-sm font-medium text-gray-700">Custom Position</Label>
-                  <Input
-                    id="edit-position-text"
-                    value={member.position || ''}
-                    onChange={(e) => onMemberChange({ position: e.target.value })}
-                    placeholder="e.g. HR Manager, PM, Designer"
-                    className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                  />
-                </div>
-              )}
             </div>
           </div>
 
