@@ -97,13 +97,8 @@ export function ShiftControls() {
     setLoading(true)
     setError(null)
 
-    if (!selectedServiceId && myServices.length > 0) {
-      setError('Please select a service first')
-      setLoading(false)
-      return
-    }
-
     try {
+      // Service selection is optional - if not selected, notifications go to default channel
       const response = await api.startShift(selectedServiceId || undefined)
       setCurrentShift(response.shift)
       setActiveBreak(null)
