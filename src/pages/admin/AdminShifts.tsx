@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Clock, Coffee, AlertTriangle, Calendar, Users, TrendingUp } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 
 interface Shift {
   id: number
@@ -26,35 +28,42 @@ interface Shift {
 }
 
 export function AdminShifts() {
-  const [activeShifts, setActiveShifts] = useState<Shift[]>([])
-  const [lateShifts, setLateShifts] = useState<any[]>([])
-  const [missedShifts, setMissedShifts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  // Connect to WebSocket for real-time updates
+  useShiftEvents()
 
-  const fetchShiftData = async () => {
-    try {
-      setLoading(true)
-      const [activeRes, lateRes] = await Promise.all([
-        api.getAdminActiveShifts(),
-        api.getAdminLateShifts()
-      ])
+  const { data: activeShiftsData, isLoading: isLoadingActive, refetch: refetchActive } = useQuery({
+    queryKey: ['adminActiveShifts'],
+    queryFn: () => api.getAdminActiveShifts(),
+    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+  })
 
-      setActiveShifts(activeRes.shifts)
-      setLateShifts(lateRes.lateShifts)
-      setMissedShifts(lateRes.missedShifts)
-    } catch (error) {
-      console.error('Error fetching shift data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: lateShiftsData, isLoading: isLoadingLate, refetch: refetchLate } = useQuery({
+    queryKey: ['adminLateShifts'],
+    queryFn: () => api.getAdminLateShifts(),
+    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+  })
+
+  // Store refetch functions in refs to avoid stale closures
+  const refetchActiveRef = useRef(refetchActive)
+  const refetchLateRef = useRef(refetchLate)
 
   useEffect(() => {
-    fetchShiftData()
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchShiftData, 30000)
-    return () => clearInterval(interval)
+    refetchActiveRef.current = refetchActive
+    refetchLateRef.current = refetchLate
+  }, [refetchActive, refetchLate])
+
+  // Listen for socket shift updates and force refetch using refs
+  const handleShiftUpdate = useCallback(() => {
+    refetchActiveRef.current()
+    refetchLateRef.current()
   }, [])
+
+  useShiftUpdateListener(handleShiftUpdate)
+
+  const activeShifts: Shift[] = activeShiftsData?.shifts ?? []
+  const lateShifts = lateShiftsData?.lateShifts ?? []
+  const missedShifts = lateShiftsData?.missedShifts ?? []
+  const loading = isLoadingActive || isLoadingLate
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('en-US', {

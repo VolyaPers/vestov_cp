@@ -3,6 +3,7 @@ import { db } from '../db/index.js'
 import { shifts, shiftBreaks, shiftSchedules, teamMembers, clientUsers, clientServices, serviceTypes, clientServiceTeamMembers } from '../db/schema.js'
 import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm'
 import { notifyShiftEvent } from '../utils/slack.js'
+import { emitShiftStarted, emitShiftEnded, emitBreakStarted, emitBreakEnded } from '../socket.js'
 
 const router = Router()
 
@@ -371,6 +372,16 @@ router.post('/start', async (req, res) => {
       channelId: slackChannelId || undefined // NEW: Use service channel
     }).catch((err) => console.error('[SLACK] shift start notify failed:', err))
 
+    // Emit WebSocket event for real-time updates
+    emitShiftStarted({
+      shiftId: createdShift.id,
+      employeeId: employee.id,
+      employeeName: employee.name || (employee as any).fullName || 'Unknown',
+      employeeEmail: employee.email,
+      serviceId: validatedServiceId || undefined,
+      timestamp: now.toISOString()
+    })
+
     const origin = req.headers.origin
     if (origin) {
       res.header('Access-Control-Allow-Origin', origin)
@@ -465,6 +476,16 @@ router.post('/end', async (req, res) => {
       timestamp: now,
       channelId: slackChannelId || undefined
     }).catch((err) => console.error('[SLACK] shift end notify failed:', err))
+
+    // Emit WebSocket event for real-time updates
+    emitShiftEnded({
+      shiftId: endedShift.id,
+      employeeId: employee.id,
+      employeeName: employee.name || (employee as any).fullName || 'Unknown',
+      employeeEmail: employee.email,
+      serviceId: activeShift.serviceId || undefined,
+      timestamp: now.toISOString()
+    })
 
     res.json({ shift: endedShift, message: 'Shift ended successfully' })
   } catch (error) {
@@ -568,6 +589,18 @@ router.post('/break/start', async (req, res) => {
       channelId: slackChannelId || undefined
     }).catch((err) => console.error('[SLACK] break start notify failed:', err))
 
+    // Emit WebSocket event for real-time updates
+    emitBreakStarted({
+      breakId: createdBreak.id,
+      shiftId: activeShift.id,
+      employeeId: employee.id,
+      employeeName: employee.name || (employee as any).fullName || 'Unknown',
+      employeeEmail: employee.email,
+      breakType: req.body.breakType || 'regular',
+      breakNote: breakNote,
+      timestamp: createdBreak.startTime.toISOString()
+    })
+
     res.json({ break: createdBreak, message: 'Break started successfully' })
   } catch (error) {
     console.error('Error starting break:', error)
@@ -656,6 +689,16 @@ router.post('/break/end', async (req, res) => {
       timestamp: endedBreak.endTime || new Date(),
       channelId: slackChannelId || undefined
     }).catch((err) => console.error('[SLACK] break end notify failed:', err))
+
+    // Emit WebSocket event for real-time updates
+    emitBreakEnded({
+      breakId: endedBreak.id,
+      shiftId: activeShift.id,
+      employeeId: employee.id,
+      employeeName: employee.name || (employee as any).fullName || 'Unknown',
+      employeeEmail: employee.email,
+      timestamp: (endedBreak.endTime || new Date()).toISOString()
+    })
 
     res.json({ break: endedBreak, message: 'Break ended successfully' })
   } catch (error) {

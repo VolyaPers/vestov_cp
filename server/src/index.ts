@@ -1,5 +1,6 @@
 import './env.js'
 import express from 'express'
+import { createServer } from 'http'
 import session from 'express-session'
 import passport from 'passport'
 import cors from 'cors'
@@ -27,11 +28,13 @@ import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
 import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns } from './utils/migrations.js'
+import { initializeSocket } from './socket.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const app = express()
+const httpServer = createServer(app)
 const PORT = process.env.PORT || 3001
 
 const trustProxy = process.env.NODE_ENV === 'production'
@@ -502,13 +505,17 @@ async function runOrphanedTeamMembersFix() {
 
 runMigrations().then(async () => {
   await runOrphanedTeamMembersFix()
-  
-  app.listen(PORT, () => {
+
+  // Initialize Socket.IO
+  initializeSocket(httpServer, corsOrigin)
+
+  httpServer.listen(PORT, () => {
     console.log('========================================')
     console.log(`[SERVER START] ✅ Server running on port ${PORT}`)
     console.log(`[SERVER START] Environment: ${process.env.NODE_ENV || 'development'}`)
     console.log(`[SERVER START] CORS Origin: ${corsOrigin}`)
     console.log(`[SERVER START] Database URL: ${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`)
+    console.log(`[SERVER START] WebSocket: enabled`)
     console.log('========================================')
   })
 }).catch((err) => {

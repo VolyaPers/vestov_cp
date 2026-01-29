@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Clock, Coffee, Calendar, Users, TrendingUp, AlertCircle, ChevronLeft, ChevronRight, TreePalm, HeartPulse } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 
 interface Shift {
   id: number
@@ -83,39 +85,48 @@ const isPublicHoliday = (date: Date) => {
 }
 
 export function ClientTeamStatus() {
-  const [activeShifts, setActiveShifts] = useState<Shift[]>([])
-  const [vacations, setVacations] = useState<Vacation[]>([])
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [loading, setLoading] = useState(true)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
-  const fetchTeamData = async () => {
-    try {
-      setLoading(true)
-      const [shiftsRes, vacationsRes, schedulesRes] = await Promise.all([
-        api.getClientTeamShifts(),
-        api.getClientTeamVacations(),
-        api.getClientTeamSchedules()
-      ])
+  // Connect to WebSocket for real-time updates
+  useShiftEvents()
 
+  const { data: shiftsData, isLoading: isLoadingShifts, refetch: refetchShifts } = useQuery({
+    queryKey: ['clientTeamShifts'],
+    queryFn: () => api.getClientTeamShifts(),
+    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+  })
 
-      setActiveShifts(shiftsRes.shifts || [])
-      setVacations(vacationsRes.vacations || [])
-      setTeamMembers(schedulesRes.teamMembers || [])
-    } catch (error) {
-      console.error('Error fetching team data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: vacationsData, isLoading: isLoadingVacations } = useQuery({
+    queryKey: ['clientTeamVacations'],
+    queryFn: () => api.getClientTeamVacations(),
+    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+  })
+
+  const { data: schedulesData, isLoading: isLoadingSchedules } = useQuery({
+    queryKey: ['clientTeamSchedules'],
+    queryFn: () => api.getClientTeamSchedules(),
+    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+  })
+
+  // Store refetch function in ref to avoid stale closures
+  const refetchShiftsRef = useRef(refetchShifts)
 
   useEffect(() => {
-    fetchTeamData()
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchTeamData, 30000)
-    return () => clearInterval(interval)
+    refetchShiftsRef.current = refetchShifts
+  }, [refetchShifts])
+
+  // Listen for socket shift updates and refetch data using ref
+  const handleShiftUpdate = useCallback(() => {
+    refetchShiftsRef.current()
   }, [])
+
+  useShiftUpdateListener(handleShiftUpdate)
+
+  const activeShifts: Shift[] = shiftsData?.shifts ?? []
+  const vacations: Vacation[] = vacationsData?.vacations ?? []
+  const teamMembers: TeamMember[] = schedulesData?.teamMembers ?? []
+  const loading = isLoadingShifts || isLoadingVacations || isLoadingSchedules
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('en-US', {
