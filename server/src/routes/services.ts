@@ -969,38 +969,6 @@ router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async 
 })
 
 // Developer CRUD operations
-// Create developer
-router.post('/developers', requireAuth, async (req, res) => {
-  try {
-    const { name, email, skills, hourlyRate, experienceLevel, status, bio, location, position, isDeveloper } = req.body
-    console.log('Creating new developer:', name)
-
-    const [newDeveloper] = await db
-      .insert(teamMembers)
-      .values({
-        name: name || '',
-        email: email || '',
-        role: 'developer', // Default role for legacy /developers route
-        skills: skills || [],
-        hourlyRate: hourlyRate ? hourlyRate.toString() : null,
-        status: status || 'available',
-        startDate: new Date().toISOString().slice(0, 10), // Required field
-        position,
-        isDeveloper: isDeveloper ?? true, // Default to true for this route
-      })
-      .returning()
-
-    console.log('Developer created successfully:', newDeveloper.name)
-    res.status(201).json(newDeveloper)
-  } catch (error: any) {
-    console.error('Error creating developer:', error)
-    if (error.code === '23505') { // Unique constraint violation
-      return res.status(400).json({ error: 'A developer with this email already exists' })
-    }
-    res.status(500).json({ error: 'Failed to create developer' })
-  }
-})
-
 // Update developer
 router.put('/developers/:id', requireAuth, async (req, res) => {
   try {

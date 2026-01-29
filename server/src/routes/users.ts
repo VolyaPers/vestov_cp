@@ -143,44 +143,6 @@ router.get('/available-team-member-users', async (req, res) => {
   }
 })
 
-// Get team members available for user creation (those without user accounts)
-router.get('/available-team-members', async (req, res) => {
-  try {
-    // Get all team members
-    const allTeamMembers = await db
-      .select({
-        id: teamMembers.id,
-        name: teamMembers.name,
-        email: teamMembers.email,
-        role: teamMembers.role,
-        avatarUrl: teamMembers.avatarUrl,
-      })
-      .from(teamMembers)
-      .where(eq(teamMembers.status, 'active'))
-      .orderBy(teamMembers.name)
-
-    // Get team members who already have user accounts
-    const usersWithTeamMembers = await db
-      .select({ teamMemberId: users.teamMemberId })
-      .from(users)
-      .where(sql`${users.teamMemberId} IS NOT NULL`)
-
-    const usedTeamMemberIds = new Set(
-      usersWithTeamMembers.map(u => u.teamMemberId).filter(Boolean)
-    )
-
-    // Filter out team members who already have accounts
-    const availableTeamMembers = allTeamMembers.filter(
-      tm => !usedTeamMemberIds.has(tm.id)
-    )
-
-    res.json(availableTeamMembers)
-  } catch (error) {
-    console.error('Error fetching available team members:', error)
-    res.status(500).json({ error: 'Failed to fetch available team members' })
-  }
-})
-
 // Get all users with pagination and filtering
 router.get('/', async (req, res) => {
   try {

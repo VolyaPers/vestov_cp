@@ -54,11 +54,9 @@ export function UsersPage() {
     email: '',
     role: 'client' as 'admin' | 'team_member' | 'client',
     position: '',
-    teamMemberId: '',
     isDeveloper: false,
   })
   const [availableClients, setAvailableClients] = useState<Array<{id: number, name: string}>>([])
-  const [availableTeamMembers, setAvailableTeamMembers] = useState<Array<{id: number, name: string, email: string, role: string}>>([])
 
   const [isClientAssignmentDialogOpen, setIsClientAssignmentDialogOpen] = useState(false)
   const [selectedUserForAssignment, setSelectedUserForAssignment] = useState<UserWithClientAssignments | null>(null)
@@ -70,7 +68,6 @@ export function UsersPage() {
   useEffect(() => {
     loadUsers()
     loadAvailableClients()
-    loadAvailableTeamMembers()
   }, [])
 
   const loadUsers = async () => {
@@ -115,15 +112,6 @@ export function UsersPage() {
     }
   }
 
-  const loadAvailableTeamMembers = async () => {
-    try {
-      const response = await api.getAvailableTeamMembers()
-      setAvailableTeamMembers(response)
-    } catch (error) {
-      console.error('Failed to load available team members:', error)
-    }
-  }
-
   const handleSearch = () => {
     loadUsers()
   }
@@ -134,19 +122,9 @@ export function UsersPage() {
       return
     }
 
-    if (userFormData.role === 'team_member' && !userFormData.teamMemberId) {
-      alert('Please select a team member')
-      return
-    }
-
     try {
-      const payload: any = { ...userFormData }
-      if (userFormData.teamMemberId) {
-        payload.teamMemberId = parseInt(userFormData.teamMemberId)
-      }
-      await api.createUser(payload)
+      await api.createUser(userFormData)
       await loadUsers()
-      await loadAvailableTeamMembers() // Refresh available team members
       setIsUserDialogOpen(false)
       resetUserForm()
       alert('User created successfully!')
@@ -165,7 +143,6 @@ export function UsersPage() {
       email: user.email,
       role: user.role,
       position: user.position || '',
-      teamMemberId: user.teamMemberId ? String(user.teamMemberId) : '',
       isDeveloper: user.isDeveloper || false,
     })
     setIsUserDialogOpen(true)
@@ -249,7 +226,6 @@ export function UsersPage() {
       email: '',
       role: 'client',
       position: '',
-      teamMemberId: '',
       isDeveloper: false,
     })
     setIsEditingUser(null)
@@ -669,7 +645,7 @@ export function UsersPage() {
                 <Select
                   value={userFormData.role}
                   onValueChange={(value: 'admin' | 'team_member' | 'client') =>
-                    setUserFormData({ ...userFormData, role: value, teamMemberId: value === 'team_member' ? userFormData.teamMemberId : '' })
+                    setUserFormData({ ...userFormData, role: value })
                   }
                 >
                   <SelectTrigger>
@@ -727,45 +703,6 @@ export function UsersPage() {
                   : 'Enter the position for non-developer users'}
               </p>
             </div>
-
-            {/* Team Member Selection - Only show when role is team_member */}
-            {userFormData.role === 'team_member' && !isEditingUser && (
-              <div>
-                <Label htmlFor="teamMember">Link to Team Member *</Label>
-                <Select
-                  value={userFormData.teamMemberId}
-                  onValueChange={(value) => {
-                    setUserFormData({ ...userFormData, teamMemberId: value })
-                    // Auto-fill email from selected team member
-                    const selectedTm = availableTeamMembers.find(tm => tm.id.toString() === value)
-                    if (selectedTm) {
-                      setUserFormData(prev => ({ ...prev, email: selectedTm.email, fullName: selectedTm.name, teamMemberId: value }))
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a team member" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTeamMembers.length === 0 ? (
-                      <div className="p-2 text-sm text-gray-500">No available team members (all have accounts)</div>
-                    ) : (
-                      availableTeamMembers.map(tm => (
-                        <SelectItem key={tm.id} value={tm.id.toString()} label={tm.name}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{tm.name}</span>
-                            <span className="text-xs text-gray-500">{tm.email} - {tm.role}</span>
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Select an existing team member to create their login account
-                </p>
-              </div>
-            )}
 
             <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
               <p><strong>Role Descriptions:</strong></p>

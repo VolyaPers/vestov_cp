@@ -417,22 +417,6 @@ class ApiClient {
   }
 
   // Developer management
-  async createDeveloper(data: {
-    name: string
-    email: string
-    skills: string[]
-    hourlyRate: number
-    experienceLevel: 'junior' | 'middle' | 'senior' | 'lead'
-    status: 'available' | 'assigned' | 'unavailable'
-    bio?: string
-    location?: string
-  }) {
-    return this.request('/services/developers', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    })
-  }
-
   async updateDeveloper(id: number, data: {
     name: string
     email: string
@@ -540,10 +524,6 @@ class ApiClient {
 
   async getUser(id: number) {
     return this.request(`/users/${id}`)
-  }
-
-  async getAvailableTeamMembers() {
-    return this.request('/users/available-team-members')
   }
 
   async createUser(data: CreateUserData): Promise<User> {
