@@ -101,15 +101,29 @@ export const clientServices = pgTable('client_services', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// Document Folders table (for organizing documents by service)
+export const documentFolders = pgTable('document_folders', {
+  id: serial('id').primaryKey(),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
+  name: text('name').notNull(),
+  parentFolderId: integer('parent_folder_id'),
+  createdBy: integer('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 // Documents table
 export const documents = pgTable('documents', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
-  type: varchar('type', { length: 50 }).notNull(),
+  documentTitle: text('document_title'), // Optional user-friendly title
+  type: varchar('type', { length: 50 }), // Document type (optional)
   fileSize: integer('file_size'),
   url: text('url').notNull(),
   userId: integer('user_id').references(() => users.id),
   clientId: integer('client_id').references(() => clients.id),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id),
+  folderId: integer('folder_id').references(() => documentFolders.id),
+  visibleToClient: boolean('visible_to_client').default(false).notNull(),
   lastUpdated: timestamp('last_updated').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })

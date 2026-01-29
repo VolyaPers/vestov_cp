@@ -28,6 +28,7 @@ import { VacationPage } from '@/pages/admin/VacationPage'
 import { ServicesPage } from '@/pages/admin/ServicesPage'
 import { AdminReimbursements } from '@/pages/admin/AdminReimbursements'
 import { AdminShifts } from '@/pages/admin/AdminShifts'
+import { AdminDocumentsPage } from '@/pages/admin/AdminDocumentsPage'
 import { UserImpersonation } from '@/components/UserImpersonation'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -51,7 +52,7 @@ const navigation = [
   { name: 'Vacation', href: '/admin/vacation', icon: Calendar },
   { name: 'Reimbursements', href: '/admin/reimbursements', icon: FileText },
   { name: 'Documents', href: '/admin/documents', icon: FileText },
-  { name: 'Time Tracking', href: '/admin/time', icon: Clock },
+  // { name: 'Time Tracking', href: '/admin/time', icon: Clock },
   { name: 'Feedback', href: '/admin/feedback', icon: Star },
 ]
 
@@ -145,6 +146,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 <Route path="/admin/vacation" component={VacationPage} />
                 <Route path="/admin/reimbursements" component={AdminReimbursements} />
                 <Route path="/admin/shifts" component={AdminShifts} />
+                <Route path="/admin/documents" component={AdminDocumentsPage} />
                 <Route path="/admin" component={AdminDashboard} />
                 <Route path="*">
                   {() => (

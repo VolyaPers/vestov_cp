@@ -721,6 +721,50 @@ class ApiClient {
   async getClientTeamSchedules() {
     return this.request('/vacation/client/team/schedules')
   }
+
+  // Document Management Methods
+  async getClientsWithServices() {
+    return this.request('/documents/clients-with-services')
+  }
+
+  async getServiceDocuments(clientServiceId: number) {
+    return this.request(`/documents/service/${clientServiceId}`)
+  }
+
+  async getServiceDocumentsClientVisible(clientServiceId: number) {
+    return this.request(`/documents/service/${clientServiceId}/client-visible`)
+  }
+
+  async createDocumentFolder(data: { clientServiceId: number; name: string; parentFolderId?: number }) {
+    return this.request('/documents/folder', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async renameDocumentFolder(folderId: number, name: string) {
+    return this.request(`/documents/folder/${folderId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    })
+  }
+
+  async deleteDocumentFolder(folderId: number, deleteContents: boolean = false) {
+    return this.request(`/documents/folder/${folderId}?deleteContents=${deleteContents}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async updateDocumentVisibility(documentId: number, visibleToClient: boolean) {
+    return this.request(`/documents/${documentId}/visibility`, {
+      method: 'PATCH',
+      body: JSON.stringify({ visibleToClient }),
+    })
+  }
+
+  async uploadServiceDocument(formData: FormData) {
+    return this.requestFormData('/documents/upload', formData)
+  }
 }
 
 export const api = new ApiClient()
