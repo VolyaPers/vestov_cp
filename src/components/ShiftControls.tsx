@@ -214,31 +214,23 @@ export function ShiftControls() {
       {!currentShift && myServices.length > 0 && (
         <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
           <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Select Service Context for Shift
+            Service Context (optional)
           </label>
-          {myServices.length > 1 ? (
-            <select
-              value={selectedServiceId || ''}
-              onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-              disabled={loading}
-              className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-            >
-              <option value="" disabled>Choose a service...</option>
-              {myServices.map((service) => (
-                <option key={service.serviceId} value={service.serviceId}>
-                  {service.clientName} - {service.serviceName}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500" />
-              <span className="font-medium text-gray-900">{myServices[0].clientName}</span>
-              <span className="text-gray-500">- {myServices[0].serviceName}</span>
-            </div>
-          )}
+          <select
+            value={selectedServiceId || ''}
+            onChange={(e) => setSelectedServiceId(e.target.value ? Number(e.target.value) : null)}
+            disabled={loading}
+            className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+          >
+            <option value="">No specific service</option>
+            {myServices.map((service) => (
+              <option key={service.serviceId} value={service.serviceId}>
+                {service.clientName} - {service.serviceName}
+              </option>
+            ))}
+          </select>
           <p className="mt-2 text-xs text-gray-500">
-            This determines which client the shift is assigned to and where Slack notifications are sent.
+            Select the client/service you're working on. Leave empty for general work (notifications go to default channel).
           </p>
         </div>
       )}
