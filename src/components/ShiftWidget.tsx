@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Clock, Coffee, Info, Loader2, Play, Square } from 'lucide-react'
 import { api } from '../lib/api'
+import { useShiftEvents, useShiftUpdateListener } from '../hooks/useSocket'
 
 interface Shift {
   id: number
@@ -43,26 +44,31 @@ export function ShiftWidget() {
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
 
-  useEffect(() => {
-    const fetchCurrentShift = async () => {
-      try {
-        const response = await api.getCurrentShift()
-        if (response.hasActiveShift) {
-          setCurrentShift(response.shift)
-          setActiveBreak(response.activeBreak)
-          // If shift has a service, set it as selected
-          if (response.shift?.serviceId) {
-            setSelectedServiceId(response.shift.serviceId)
-          }
-        } else {
-          setCurrentShift(null)
-          setActiveBreak(null)
-        }
-      } catch (err) {
-        console.error('Error fetching shift:', err)
-      }
-    }
+  // WebSocket connection for real-time shift updates
+  useShiftEvents()
 
+  const fetchCurrentShift = useCallback(async () => {
+    try {
+      const response = await api.getCurrentShift()
+      if (response.hasActiveShift) {
+        setCurrentShift(response.shift)
+        setActiveBreak(response.activeBreak)
+        if (response.shift?.serviceId) {
+          setSelectedServiceId(response.shift.serviceId)
+        }
+      } else {
+        setCurrentShift(null)
+        setActiveBreak(null)
+      }
+    } catch (err) {
+      console.error('Error fetching shift:', err)
+    }
+  }, [])
+
+  // Listen for WebSocket shift events and refetch
+  useShiftUpdateListener(fetchCurrentShift)
+
+  useEffect(() => {
     const fetchMyServices = async () => {
       try {
         const response = await api.getMyServices()
@@ -90,13 +96,13 @@ export function ShiftWidget() {
 
     fetchCurrentShift()
     fetchMyServices()
-    const interval = setInterval(fetchCurrentShift, 30000)
+    const interval = setInterval(fetchCurrentShift, 5 * 60 * 1000) // 5 min fallback (WebSocket handles real-time)
     return () => {
       clearInterval(interval)
       if (holdTimer.current) clearTimeout(holdTimer.current)
       if (progressInterval.current) clearInterval(progressInterval.current)
     }
-  }, [])
+  }, [fetchCurrentShift])
 
   const handleStartShift = async () => {
     setLoading(true)

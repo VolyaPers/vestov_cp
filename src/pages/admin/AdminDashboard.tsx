@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 import {
   Users,
   UserCheck,
@@ -26,6 +27,29 @@ import { api } from '@/lib/api'
 export function AdminDashboard() {
   const [isSyncingAvatars, setIsSyncingAvatars] = useState(false)
 
+  // WebSocket connection for real-time shift updates
+  useShiftEvents()
+
+  // Fetch active shifts
+  const { data: activeShiftsData, refetch: refetchActiveShifts } = useQuery({
+    queryKey: ['adminActiveShifts'],
+    queryFn: () => api.getAdminActiveShifts(),
+    refetchInterval: 5 * 60 * 1000, // 5 minutes fallback
+  })
+  const activeShifts = activeShiftsData?.shifts ?? []
+
+  // Store refetch in ref to avoid stale closures
+  const refetchRef = useRef(refetchActiveShifts)
+  useEffect(() => {
+    refetchRef.current = refetchActiveShifts
+  }, [refetchActiveShifts])
+
+  // Listen for WebSocket shift events and refetch
+  const handleShiftUpdate = useCallback(() => {
+    refetchRef.current()
+  }, [])
+  useShiftUpdateListener(handleShiftUpdate)
+
   const handleSyncSlackAvatars = async () => {
     if (!confirm('This will sync all user avatars from Slack. Users must have matching email addresses in Slack. Continue?')) {
       return
@@ -47,13 +71,6 @@ export function AdminDashboard() {
   const { data: dashboardData } = useQuery({
     queryKey: ['adminDashboard'],
     queryFn: api.getAdminDashboard,
-  })
-
-  // Fetch active shifts
-  const { data: activeShifts = [] } = useQuery({
-    queryKey: ['activeShifts'],
-    queryFn: api.getAdminActiveShifts,
-    refetchInterval: 30000, // Refresh every 30 seconds
   })
 
   // Fetch clients to count active projects
@@ -107,14 +124,6 @@ export function AdminDashboard() {
     paidInvoicesCount: paidThisMonth.length,
     paidInvoicesTotal: totalPaidAmount,
   }
-
-  console.log('Dashboard Stats:', {
-    activeShifts: activeShifts.length,
-    shiftsData: activeShifts,
-    paidThisMonth: paidThisMonth.length,
-    totalPaid: totalPaidAmount,
-    activeProjects: stats.activeProjects,
-  })
 
   return (
     <div className="space-y-6">

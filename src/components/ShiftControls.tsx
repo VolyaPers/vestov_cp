@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Play, Square, Coffee, Clock, AlertCircle } from 'lucide-react'
 import { api } from '../lib/api'
+import { useShiftEvents, useShiftUpdateListener } from '../hooks/useSocket'
 
 interface Shift {
   id: number
@@ -38,8 +39,11 @@ export function ShiftControls() {
   const [isFullTime, setIsFullTime] = useState(false)
   const [hasTeamMember, setHasTeamMember] = useState<boolean | null>(null)
 
+  // WebSocket connection for real-time shift updates
+  useShiftEvents()
+
   // Fetch current shift status
-  const fetchCurrentShift = async () => {
+  const fetchCurrentShift = useCallback(async () => {
     try {
       const response = await api.request('/shifts/current')
       if (response.hasActiveShift) {
@@ -55,13 +59,14 @@ export function ShiftControls() {
     } catch (err) {
       console.error('Error fetching current shift:', err)
     }
-  }
+  }, [])
+
+  // Listen for WebSocket shift events and refetch
+  useShiftUpdateListener(fetchCurrentShift)
 
   const fetchMyServices = async () => {
     try {
       const response = await api.getMyServices() as { services: UserService[], hasTeamMember?: boolean }
-      console.log('[ShiftControls] my-services response:', response)
-      console.log('[ShiftControls] hasTeamMember from API:', response.hasTeamMember)
       setMyServices(response.services)
       setHasTeamMember(response.hasTeamMember !== false)
 
@@ -94,10 +99,10 @@ export function ShiftControls() {
   useEffect(() => {
     fetchCurrentShift()
     fetchMyServices()
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchCurrentShift, 30000)
+    // 5 min fallback (WebSocket handles real-time updates)
+    const interval = setInterval(fetchCurrentShift, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchCurrentShift])
 
   const handleStartShift = async () => {
     setLoading(true)
