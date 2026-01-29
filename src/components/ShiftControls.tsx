@@ -36,6 +36,7 @@ export function ShiftControls() {
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
   const [isFullTime, setIsFullTime] = useState(false)
+  const [hasTeamMember, setHasTeamMember] = useState<boolean | null>(null)
 
   // Fetch current shift status
   const fetchCurrentShift = async () => {
@@ -58,8 +59,11 @@ export function ShiftControls() {
 
   const fetchMyServices = async () => {
     try {
-      const response = await api.getMyServices()
+      const response = await api.getMyServices() as { services: UserService[], hasTeamMember?: boolean }
+      console.log('[ShiftControls] my-services response:', response)
+      console.log('[ShiftControls] hasTeamMember from API:', response.hasTeamMember)
       setMyServices(response.services)
+      setHasTeamMember(response.hasTeamMember !== false)
 
       if (response.services.length === 1) {
         setSelectedServiceId(response.services[0].serviceId)
@@ -82,6 +86,8 @@ export function ShiftControls() {
       }
     } catch (err) {
       console.error('Error fetching my services:', err)
+      // If API fails, we can't determine team member status - set to false to show warning
+      setHasTeamMember(false)
     }
   }
 
@@ -201,6 +207,20 @@ export function ShiftControls() {
         </div>
       )}
 
+      {hasTeamMember === false && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              Your account is not linked to a team member profile.
+            </p>
+            <p className="text-sm text-amber-700 mt-1">
+              Please contact an administrator to set up your team member profile before you can start tracking shifts.
+            </p>
+          </div>
+        </div>
+      )}
+
       {currentShift && currentShift.isLate && (
         <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -249,7 +269,7 @@ export function ShiftControls() {
         {!currentShift ? (
           <button
             onClick={handleStartShift}
-            disabled={loading}
+            disabled={loading || hasTeamMember === false || hasTeamMember === null}
             className="col-span-full h-32 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-3"
           >
             <Play className="w-12 h-12" fill="currentColor" />

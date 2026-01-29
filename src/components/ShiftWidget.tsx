@@ -42,7 +42,6 @@ export function ShiftWidget() {
   const holdStartTime = useRef<number | null>(null)
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
-  const [isFullTime, setIsFullTime] = useState(false)
 
   useEffect(() => {
     const fetchCurrentShift = async () => {
@@ -71,7 +70,6 @@ export function ShiftWidget() {
 
         if (response.services.length === 1) {
           setSelectedServiceId(response.services[0].serviceId)
-          setIsFullTime(response.services[0].employmentType === 'fulltime')
         } else if (response.services.length > 1) {
           // Detect current day and pre-select based on schedule
           const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
@@ -102,11 +100,8 @@ export function ShiftWidget() {
 
   const handleStartShift = async () => {
     setLoading(true)
-    if (!selectedServiceId && myServices.length > 0) {
-      alert('Please select a service first')
-      setLoading(false)
-      return
-    }
+    // Service selection is optional - users can start shifts without selecting a service
+    // Notifications will go to the default channel if no service is selected
 
     try {
       const response = await api.startShift(selectedServiceId || undefined)
@@ -308,27 +303,22 @@ export function ShiftWidget() {
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             Service Context
           </label>
-          {myServices.length > 1 ? (
-            <select
-              value={selectedServiceId || ''}
-              onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-              disabled={loading}
-              className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
-            >
-              <option value="" disabled>Choose a service...</option>
-              {myServices.map((service) => (
-                <option key={service.serviceId} value={service.serviceId}>
-                  {service.clientName} - {service.serviceTitle || service.serviceName} {service.serviceTitle ? `(${service.serviceName})` : ''}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-400" />
-              <span className="font-medium text-gray-900">{myServices[0].clientName}</span>
-              <span className="text-gray-500">- {myServices[0].serviceName}</span>
-            </div>
-          )}
+          <select
+            value={selectedServiceId || ''}
+            onChange={(e) => setSelectedServiceId(e.target.value ? Number(e.target.value) : null)}
+            disabled={loading}
+            className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+          >
+            <option value="">No specific service</option>
+            {myServices.map((service) => (
+              <option key={service.serviceId} value={service.serviceId}>
+                {service.clientName} - {service.serviceTitle || service.serviceName} {service.serviceTitle ? `(${service.serviceName})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-gray-500 mt-1">
+            Optional - notifications go to default channel if not selected
+          </p>
         </div>
       )}
 
@@ -393,7 +383,7 @@ export function ShiftWidget() {
             }}
             onTouchStart={() => startHold(mainAction)}
             onTouchEnd={() => cancelHold(mainAction)}
-            disabled={loading || (!currentShift && !selectedServiceId)}
+            disabled={loading}
             aria-label={
               holdAction === mainAction
                 ? `Holding to ${currentShift ? (activeBreak ? 'end break' : 'start break') : 'start shift'}... ${Math.round(holdProgress)}%`

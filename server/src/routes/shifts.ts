@@ -206,7 +206,8 @@ router.get('/my-services', async (req, res) => {
 
     if (!employee) {
       console.log(`[GET /my-services] Employee not found for email: ${req.user.email}, teamMemberId: ${(req.user as any).teamMemberId}`)
-      return res.status(404).json({ error: 'Employee not found' })
+      // Return empty services with flag indicating no team_member record
+      return res.json({ services: [], hasTeamMember: false })
     }
 
     // Get all active service assignments for this employee
@@ -229,7 +230,7 @@ router.get('/my-services', async (req, res) => {
         eq(clientServices.isActive, true)
       ))
 
-    res.json({ services })
+    res.json({ services, hasTeamMember: true })
   } catch (error) {
     console.error('Error fetching employee services:', error)
     res.status(500).json({ error: 'Failed to fetch services' })
