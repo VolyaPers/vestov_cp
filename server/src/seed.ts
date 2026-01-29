@@ -132,8 +132,21 @@ async function seed() {
       },
     ]
 
-    await db.insert(teamMembers).values(teamMembersData)
+    const insertedTeamMembers = await db.insert(teamMembers).values(teamMembersData).returning()
     console.log('✓ Sample team members created')
+
+    // Create team member user (eduardo) linked to first team member
+    const hashedEmployeePassword = await bcrypt.hash('eduardo123', 12)
+    await db.insert(users).values({
+      username: 'eduardo',
+      password: hashedEmployeePassword,
+      fullName: 'Eduardo Cerato',
+      email: 'eduardo.cerato@vestov.com',
+      role: 'team_member',
+      position: 'Full-Stack Developer',
+      teamMemberId: insertedTeamMembers[0]?.id || 1,
+    }).onConflictDoNothing()
+    console.log('✓ Team member user created (username: eduardo, password: eduardo123)')
 
     console.log('🎉 Database seeding completed successfully!')
 

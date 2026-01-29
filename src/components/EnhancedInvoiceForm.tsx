@@ -1172,7 +1172,7 @@ export function EnhancedInvoiceForm({
                   const service = localClientServices.find(s => s.id === selectedServiceForDeveloper)
                   return !service?.developers.some(assigned => assigned.id === dev.id)
                 }).map((developer: any) => (
-                  <SelectItem key={developer.id} value={developer.id.toString()}>
+                  <SelectItem key={developer.id} value={developer.id.toString()} label={developer.name}>
                     {developer.name} {developer.hourlyRate && `($${developer.hourlyRate}/hr)`}
                   </SelectItem>
                 ))}

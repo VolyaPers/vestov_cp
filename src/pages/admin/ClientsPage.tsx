@@ -804,7 +804,7 @@ export function ClientsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {serviceTypes.map((service) => (
-                    <SelectItem key={service.id} value={service.id.toString()}>
+                    <SelectItem key={service.id} value={service.id.toString()} label={service.name}>
                       {service.name} ({service.category}) - {service.billingModel}
                       {service.baseRate && ` - $${service.baseRate}`}
                     </SelectItem>

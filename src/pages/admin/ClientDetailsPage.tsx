@@ -1682,7 +1682,7 @@ export function ClientDetailsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {serviceTypes.map((service) => (
-                    <SelectItem key={service.id} value={service.id.toString()}>
+                    <SelectItem key={service.id} value={service.id.toString()} label={service.name}>
                       {service.name} ({service.category}) - {service.billingModel}
                     </SelectItem>
                   ))}
@@ -1790,7 +1790,7 @@ export function ClientDetailsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {developers.map((developer) => (
-                    <SelectItem key={developer.id} value={developer.id.toString()}>
+                    <SelectItem key={developer.id} value={developer.id.toString()} label={developer.name}>
                       {developer.name} ({developer.position || developer.role}) - {developer.skills?.slice(0, 2).join(', ')}
                     </SelectItem>
                   ))}
@@ -2643,7 +2643,7 @@ export function ClientDetailsPage() {
                   {availableUsers
                     .filter(user => !clientUsers.some(cu => cu.id === user.id))
                     .map((user) => (
-                      <SelectItem key={user.id} value={user.id.toString()}>
+                      <SelectItem key={user.id} value={user.id.toString()} label={user.fullName}>
                         {user.fullName} (@{user.username}) - {user.email}
                       </SelectItem>
                     ))}

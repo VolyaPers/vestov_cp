@@ -7,23 +7,37 @@ interface SelectContextType {
   onValueChange: (value: string) => void
   open: boolean
   setOpen: (open: boolean) => void
+  labels: Map<string, string>
+  registerLabel: (value: string, label: string) => void
+  labelVersion: number
 }
 
 const SelectContext = React.createContext<SelectContextType | null>(null)
 
-const Select = ({ 
-  value, 
-  onValueChange, 
-  children 
-}: { 
+const Select = ({
+  value,
+  onValueChange,
+  children
+}: {
   value: string
   onValueChange: (value: string) => void
-  children: React.ReactNode 
+  children: React.ReactNode
 }) => {
   const [open, setOpen] = React.useState(false)
+  const [labelVersion, setLabelVersion] = React.useState(0)
+  const labelsRef = React.useRef(new Map<string, string>())
+
+  const registerLabel = React.useCallback((itemValue: string, label: string) => {
+    const currentLabel = labelsRef.current.get(itemValue)
+    if (currentLabel !== label) {
+      labelsRef.current.set(itemValue, label)
+      // Trigger re-render to update SelectValue display
+      setLabelVersion(v => v + 1)
+    }
+  }, [])
 
   return (
-    <SelectContext.Provider value={{ value, onValueChange, open, setOpen }}>
+    <SelectContext.Provider value={{ value, onValueChange, open, setOpen, labels: labelsRef.current, registerLabel, labelVersion }}>
       <div className="relative">
         {children}
       </div>
@@ -60,7 +74,13 @@ const SelectValue = ({ placeholder }: { placeholder?: string }) => {
   const context = React.useContext(SelectContext)
   if (!context) throw new Error('SelectValue must be used within a Select')
 
-  return <span>{context.value || placeholder}</span>
+  // Get the display label for the current value, or fall back to the value itself
+  // labelVersion dependency ensures re-render when labels are registered
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _version = context.labelVersion
+  const displayText = context.value ? (context.labels.get(context.value) || context.value) : placeholder
+
+  return <span>{displayText}</span>
 }
 
 const SelectContent = ({ children }: { children: React.ReactNode }) => {
@@ -83,27 +103,54 @@ const SelectContent = ({ children }: { children: React.ReactNode }) => {
     }
   }, [context.open])
 
-  if (!context.open) return null
-
+  // Always render to allow SelectItems to register their labels,
+  // but visually hide when closed
   return (
-    <div className="select-content absolute z-50 top-full left-0 w-full min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+    <div
+      className={cn(
+        "select-content absolute z-50 top-full left-0 w-full min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        !context.open && "invisible pointer-events-none h-0 overflow-hidden opacity-0"
+      )}
+      aria-hidden={!context.open}
+    >
       {children}
     </div>
   )
 }
 
-const SelectItem = ({ 
-  value, 
+// Helper function to extract text content from React children
+const extractTextFromChildren = (children: React.ReactNode): string => {
+  if (typeof children === 'string') return children
+  if (typeof children === 'number') return String(children)
+  if (Array.isArray(children)) {
+    return children.map(extractTextFromChildren).join('')
+  }
+  if (React.isValidElement(children)) {
+    return extractTextFromChildren(children.props.children)
+  }
+  return ''
+}
+
+const SelectItem = ({
+  value,
   children,
   className,
-  ...props 
-}: { 
+  label,
+  ...props
+}: {
   value: string
   children: React.ReactNode
   className?: string
+  label?: string // Optional explicit label for display
 } & React.HTMLAttributes<HTMLDivElement>) => {
   const context = React.useContext(SelectContext)
   if (!context) throw new Error('SelectItem must be used within a Select')
+
+  // Register this item's label when mounted or when children change
+  React.useEffect(() => {
+    const displayLabel = label || extractTextFromChildren(children)
+    context.registerLabel(value, displayLabel)
+  }, [value, children, label, context.registerLabel])
 
   return (
     <div

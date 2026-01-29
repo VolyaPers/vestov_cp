@@ -751,7 +751,7 @@ export function UsersPage() {
                       <div className="p-2 text-sm text-gray-500">No available team members (all have accounts)</div>
                     ) : (
                       availableTeamMembers.map(tm => (
-                        <SelectItem key={tm.id} value={tm.id.toString()}>
+                        <SelectItem key={tm.id} value={tm.id.toString()} label={tm.name}>
                           <div className="flex flex-col">
                             <span className="font-medium">{tm.name}</span>
                             <span className="text-xs text-gray-500">{tm.email} - {tm.role}</span>
