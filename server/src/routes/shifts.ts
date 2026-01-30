@@ -1004,9 +1004,9 @@ router.get('/client/team', async (req, res) => {
 
     console.log('[GET /client/team] Found', activeServices.length, 'active services')
 
-    // Filter for outsourcing and outstaffing services
+    // Filter for outsourcing and outstaffing services (by category)
     const relevantServices = activeServices.filter(service =>
-      service.serviceTypeName === 'Outsourcing' || service.serviceTypeName === 'Outstaffing'
+      service.serviceTypeCategory === 'outsourcing' || service.serviceTypeCategory === 'outstaffing'
     )
 
     console.log('[GET /client/team] Found', relevantServices.length, 'outsourcing/outstaffing services')

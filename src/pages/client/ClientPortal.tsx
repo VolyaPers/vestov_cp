@@ -42,6 +42,11 @@ interface DocumentWithUploader {
   }
 }
 
+interface DocumentWithService extends DocumentWithUploader {
+  serviceName: string
+  serviceTitle?: string | null
+}
+
 interface ClientContact {
   id: number
   clientId: number
@@ -79,11 +84,11 @@ export function ClientPortal() {
   const [client, setClient] = useState<ClientDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [serviceDevelopers, setServiceDevelopers] = useState<Record<number, ServiceDeveloper[]>>({})
-  const [documents, setDocuments] = useState<DocumentWithUploader[]>([])
+  const [documents, setDocuments] = useState<DocumentWithService[]>([])
   const [contacts, setContacts] = useState<ClientContact[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
-  const [previewDocument, setPreviewDocument] = useState<DocumentWithUploader | null>(null)
+  const [previewDocument, setPreviewDocument] = useState<DocumentWithService | null>(null)
 
   useEffect(() => {
     const loadClientData = async () => {
@@ -109,10 +114,36 @@ export function ClientPortal() {
           setServiceDevelopers(developersData)
         }
 
-        // Load documents
+        // Load documents (visible to client) from all active services
         try {
-          const documentsResponse = await api.request(`/documents/client/${clientId}`)
-          setDocuments(documentsResponse)
+          const allDocs: DocumentWithService[] = []
+          for (const service of clientResponse.services.filter((s: any) => s.isActive)) {
+            try {
+              const serviceDocsResponse = await api.getServiceDocumentsClientVisible(service.id)
+              const serviceName = service.serviceTypeName || service.serviceType?.name || 'Service'
+              const serviceTitle = service.serviceTitle
+
+              // Add root documents with service info
+              if (serviceDocsResponse.rootDocuments) {
+                for (const doc of serviceDocsResponse.rootDocuments) {
+                  allDocs.push({ ...doc, serviceName, serviceTitle })
+                }
+              }
+              // Add documents from folders with service info
+              if (serviceDocsResponse.folders) {
+                for (const folder of serviceDocsResponse.folders) {
+                  if (folder.documents) {
+                    for (const doc of folder.documents) {
+                      allDocs.push({ ...doc, serviceName, serviceTitle })
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.error(`Failed to load documents for service ${service.id}:`, error)
+            }
+          }
+          setDocuments(allDocs)
         } catch (error) {
           console.error('Failed to load documents:', error)
         }
@@ -161,7 +192,7 @@ export function ClientPortal() {
     }
   }
 
-  const handleDocumentPreview = (doc: DocumentWithUploader) => {
+  const handleDocumentPreview = (doc: DocumentWithService) => {
     setPreviewDocument(doc)
     setIsPreviewDialogOpen(true)
   }
@@ -188,6 +219,19 @@ export function ClientPortal() {
       style: 'currency',
       currency: 'USD'
     }).format(amount)
+  }
+
+  // Calculate unique team members across all services (no duplicates)
+  const getUniqueTeamSize = () => {
+    const uniqueDeveloperIds = new Set<number>()
+    Object.values(serviceDevelopers).forEach(developers => {
+      developers.forEach(dev => {
+        if (dev.isActive) {
+          uniqueDeveloperIds.add(dev.developerId)
+        }
+      })
+    })
+    return uniqueDeveloperIds.size
   }
 
   if (isLoading) {
@@ -235,45 +279,53 @@ export function ClientPortal() {
 
       {/* Overview Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center p-6">
-            <Users className="h-8 w-8 text-blue-600" />
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center">
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Users className="h-6 w-6 text-blue-600" />
+            </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Team Size</p>
-              <p className="text-2xl font-bold">{client.teamSize || 0}</p>
+              <p className="text-2xl font-bold text-gray-900">{getUniqueTeamSize()}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="flex items-center p-6">
-            <Building className="h-8 w-8 text-green-600" />
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center">
+            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+              <Building className="h-6 w-6 text-green-600" />
+            </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Active Services</p>
-              <p className="text-2xl font-bold">{client.services.filter(s => s.isActive).length}</p>
+              <p className="text-2xl font-bold text-gray-900">{client.services.filter(s => s.isActive).length}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="flex items-center p-6">
-            <FileText className="h-8 w-8 text-purple-600" />
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center">
+            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+              <FileText className="h-6 w-6 text-purple-600" />
+            </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Documents</p>
-              <p className="text-2xl font-bold">{documents.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{documents.length}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="flex items-center p-6">
-            <DollarSign className="h-8 w-8 text-orange-600" />
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center">
+            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
+              <DollarSign className="h-6 w-6 text-orange-600" />
+            </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Invoices</p>
-              <p className="text-2xl font-bold">{invoices.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Contract Information */}
@@ -455,10 +507,7 @@ export function ClientPortal() {
       {/* Documents */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Documents
-          </CardTitle>
+          <CardTitle>Documents</CardTitle>
           <CardDescription>Your project documents and files</CardDescription>
         </CardHeader>
         <CardContent>
@@ -470,11 +519,18 @@ export function ClientPortal() {
                     <div className="flex items-center gap-3 mb-2">
                       <FileText className="h-5 w-5 text-gray-400" />
                       <div>
-                        <p className="font-medium text-gray-900">{doc.document.name}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <Badge variant="outline" className="text-xs">
-                            {doc.document.type}
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-medium text-gray-900">{doc.document.name}</p>
+                          <Badge className="bg-blue-100 text-blue-800 text-xs">
+                            {doc.serviceTitle || doc.serviceName}
                           </Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          {doc.document.type && (
+                            <Badge variant="outline" className="text-xs">
+                              {doc.document.type}
+                            </Badge>
+                          )}
                           <span>{formatFileSize(doc.document.fileSize)}</span>
                           <span>Uploaded: {new Date(doc.document.createdAt).toLocaleDateString()}</span>
                         </div>
@@ -515,10 +571,7 @@ export function ClientPortal() {
       {/* Invoices */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Invoices
-          </CardTitle>
+          <CardTitle>Invoices</CardTitle>
           <CardDescription>Your billing history and invoices</CardDescription>
         </CardHeader>
         <CardContent>

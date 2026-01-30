@@ -85,7 +85,7 @@ export function ClientDocuments() {
 
       try {
         // Get client data which includes services
-        const clientData = await api.request(`/client/${clientId}`)
+        const clientData = await api.getClient(clientId)
         if (clientData?.services) {
           setServices(clientData.services.filter((s: any) => s.isActive))
           // Auto-expand all services

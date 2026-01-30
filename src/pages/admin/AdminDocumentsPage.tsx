@@ -868,6 +868,7 @@ export function AdminDocumentsPage() {
                                   e.stopPropagation()
                                   openCreateFolderDialog(service)
                                 }}
+                                title="Create a new folder"
                               >
                                 <FolderPlus className="h-4 w-4 mr-1" />
                                 New Folder
@@ -879,6 +880,7 @@ export function AdminDocumentsPage() {
                                   e.stopPropagation()
                                   openUploadDialog(client, service)
                                 }}
+                                title="Upload a document"
                               >
                                 <Upload className="h-4 w-4 mr-1" />
                                 Upload

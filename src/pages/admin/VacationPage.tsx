@@ -522,6 +522,7 @@ export function VacationPage() {
                 onClick={() => setShowRequestModal(true)}
                 size="sm"
                 className="bg-primary hover:bg-primary/90"
+                title="Create a new leave request"
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Add Request
@@ -614,6 +615,7 @@ export function VacationPage() {
                               onClick={() => handleApprove(String(request.id))}
                               disabled={approveMutation.isPending}
                               className="bg-green-600 hover:bg-green-700"
+                              title="Approve this leave request"
                             >
                               <Check className="h-4 w-4 mr-1" />
                               Approve
@@ -623,6 +625,7 @@ export function VacationPage() {
                               variant="destructive"
                               onClick={() => handleDeny(String(request.id))}
                               disabled={denyMutation.isPending}
+                              title="Deny this leave request"
                             >
                               <X className="h-4 w-4 mr-1" />
                               Deny
@@ -635,6 +638,7 @@ export function VacationPage() {
                             variant="outline"
                             onClick={() => handleCancel(String(request.id))}
                             disabled={cancelMutation.isPending}
+                            title="Cancel this approved leave"
                           >
                             <X className="h-4 w-4 mr-1" />
                             Cancel
@@ -649,6 +653,7 @@ export function VacationPage() {
                           onClick={() => handleDelete(String(request.id), employee?.name || 'this employee')}
                           disabled={deleteMutation.isPending}
                           className="border-red-300 text-red-600 hover:bg-red-50"
+                          title="Delete this leave request"
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
                           Delete
@@ -746,6 +751,7 @@ export function VacationPage() {
                     size="sm"
                     variant="outline"
                     onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                    title="Previous month"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
@@ -756,6 +762,7 @@ export function VacationPage() {
                     size="sm"
                     variant="outline"
                     onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                    title="Next month"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>

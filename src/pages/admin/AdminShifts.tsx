@@ -113,61 +113,53 @@ export function AdminShifts() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Currently Working</p>
-                <p className="text-3xl font-bold text-green-600">{workingNow.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-green-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Currently Working</p>
+              <p className="text-3xl font-bold text-green-600">{workingNow.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+              <Users className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">On Break</p>
-                <p className="text-3xl font-bold text-amber-600">{onBreak.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Coffee className="w-6 h-6 text-amber-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">On Break</p>
+              <p className="text-3xl font-bold text-amber-600">{onBreak.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
+              <Coffee className="w-6 h-6 text-amber-600" />
+            </div>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Late Today</p>
-                <p className="text-3xl font-bold text-red-600">{lateShifts.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Late Today</p>
+              <p className="text-3xl font-bold text-red-600">{lateShifts.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Missed Shifts</p>
-                <p className="text-3xl font-bold text-orange-600">{missedShifts.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-orange-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Missed Shifts</p>
+              <p className="text-3xl font-bold text-orange-600">{missedShifts.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Active Shifts - Card Grid */}

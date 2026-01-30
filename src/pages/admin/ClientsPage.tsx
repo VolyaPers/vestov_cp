@@ -408,6 +408,7 @@ export function ClientsPage() {
             <button
               onClick={() => setIsClientDialogOpen(true)}
               className="stripe-btn-primary"
+              title="Create a new client"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Client
@@ -418,7 +419,7 @@ export function ClientsPage() {
 
       {/* Analytics Cards - Stripe style */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="stripe-card-hover p-6">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
               <Building className="h-6 w-6 stripe-text-muted" />
@@ -431,7 +432,7 @@ export function ClientsPage() {
           <div className="text-sm stripe-text-muted">All registered clients</div>
         </div>
 
-        <div className="stripe-card-hover p-6">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
               <Users className="h-6 w-6 stripe-text-muted" />
@@ -444,7 +445,7 @@ export function ClientsPage() {
           <div className="text-sm stripe-text-muted">With active services</div>
         </div>
 
-        <div className="stripe-card-hover p-6">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
               <DollarSign className="h-6 w-6 stripe-text-muted" />
@@ -459,7 +460,7 @@ export function ClientsPage() {
           <div className="text-sm stripe-text-muted">Monthly recurring revenue</div>
         </div>
 
-        <div className="stripe-card-hover p-6">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
               <TrendingUp className="h-6 w-6 stripe-text-muted" />
@@ -479,13 +480,13 @@ export function ClientsPage() {
 
       {/* Search and Tabs */}
       <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 stripe-text-muted h-4 w-4" />
+        <div className="flex items-center gap-2 stripe-input flex-1 max-w-md">
+          <Search className="h-4 w-4 stripe-text-muted flex-shrink-0" />
           <input
             placeholder="Search clients..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="stripe-input pl-10 w-full"
+            className="flex-1 bg-transparent outline-none border-none"
           />
         </div>
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'active' | 'all')} className="w-auto">
@@ -613,6 +614,7 @@ export function ClientsPage() {
                         setLocation(`/admin/clients/${client.id}`)
                       }}
                       className="rounded-xl border-gray-300 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
+                      title="View client details"
                     >
                       <Eye className="h-4 w-4 mr-2" />
                       View Details
@@ -637,6 +639,7 @@ export function ClientsPage() {
                         }
                       }}
                       className="rounded-xl border-red-300 text-red-600 hover:border-red-400 hover:bg-red-50 transition-all duration-200"
+                      title="Delete client and all related data"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete
@@ -660,6 +663,7 @@ export function ClientsPage() {
                         setSelectedClient(client)
                         setIsServiceDialogOpen(true)
                       }}
+                      title="Add a new service to this client"
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       Add Service

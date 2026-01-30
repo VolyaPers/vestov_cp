@@ -223,6 +223,17 @@ export function ClientTeamStatus() {
   const workingNow = activeShifts.filter(s => s.status === 'active')
   const onBreak = activeShifts.filter(s => s.status === 'on_break')
 
+  // Calculate unique team members (no duplicates by email)
+  const getUniqueTeamSize = () => {
+    const uniqueEmails = new Set<string>()
+    teamMembers.forEach(member => {
+      if (member.email) {
+        uniqueEmails.add(member.email.toLowerCase())
+      }
+    })
+    return uniqueEmails.size
+  }
+
   // Filter current and upcoming vacations
   const now = new Date()
   const currentVacations = vacations.filter(v => {
@@ -264,62 +275,66 @@ export function ClientTeamStatus() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Currently Working</p>
-                <p className="text-3xl font-bold text-green-600">{workingNow.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <Users className="w-6 h-6 text-green-600" />
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Team Size</p>
+              <p className="text-3xl font-bold text-blue-600">{getUniqueTeamSize()}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Users className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">On Break</p>
-                <p className="text-3xl font-bold text-amber-600">{onBreak.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Coffee className="w-6 h-6 text-amber-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Currently Working</p>
+              <p className="text-3xl font-bold text-green-600">{workingNow.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+              <Clock className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">On Vacation</p>
-                <p className="text-3xl font-bold text-blue-600">{currentVacations.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-blue-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">On Break</p>
+              <p className="text-3xl font-bold text-amber-600">{onBreak.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
+              <Coffee className="w-6 h-6 text-amber-600" />
+            </div>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Upcoming Leave</p>
-                <p className="text-3xl font-bold text-purple-600">{upcomingVacations.length}</p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-purple-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">On Vacation</p>
+              <p className="text-3xl font-bold text-purple-600">{currentVacations.length}</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+              <TreePalm className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Upcoming Leave</p>
+              <p className="text-3xl font-bold text-orange-600">{upcomingVacations.length}</p>
+            </div>
+            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
       </div>
 {/* Active Team Members - Card Grid */}
 {activeShifts.length > 0 && (

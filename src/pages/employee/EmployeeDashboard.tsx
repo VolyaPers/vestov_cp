@@ -230,121 +230,113 @@ export function EmployeeDashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Vacation Days */}
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-blue-600" />
-              </div>
-              <Badge variant="outline" className="text-xs">
-                {data.vacations.pending} pending
-              </Badge>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-blue-600" />
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600">Vacation Days</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {vacationRemaining} <span className="text-lg text-gray-500">/ {data.roadmap.currentVacationDays}</span>
-              </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all"
-                  style={{ width: `${Math.min(vacationProgress, 100)}%` }}
-                ></div>
-              </div>
-              <p className="text-xs text-gray-500">{Math.round(100 - vacationProgress)}% remaining</p>
+            <Badge variant="outline" className="text-xs">
+              {data.vacations.pending} pending
+            </Badge>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-600">Vacation Days</p>
+            <p className="text-3xl font-bold text-gray-900">
+              {vacationRemaining} <span className="text-lg text-gray-500">/ {data.roadmap.currentVacationDays}</span>
+            </p>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all"
+                style={{ width: `${Math.min(vacationProgress, 100)}%` }}
+              ></div>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-xs text-gray-500">{Math.round(100 - vacationProgress)}% remaining</p>
+          </div>
+        </div>
 
         {/* Reimbursement Budget */}
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-green-600" />
-              </div>
-              <Badge variant="outline" className="text-xs">
-                {data.reimbursements.pending} pending
-              </Badge>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-green-600" />
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600">Reimbursement Budget</p>
-              <p className="text-xs text-gray-500">Available for use:</p>
-              <p className="text-3xl font-bold text-gray-900">
-                ${reimbursementRemaining} <span className="text-lg text-gray-500">/ ${data.roadmap.currentReimbursementLimit}</span>
-              </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-green-600 h-2 rounded-full transition-all"
-                  style={{ width: `${Math.min(reimbursementProgress, 100)}%` }}
-                ></div>
-              </div>
-              <p className="text-xs text-gray-500">{Math.round(100 - reimbursementProgress)}% remaining</p>
+            <Badge variant="outline" className="text-xs">
+              {data.reimbursements.pending} pending
+            </Badge>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-600">Reimbursement Budget</p>
+            <p className="text-xs text-gray-500">Available for use:</p>
+            <p className="text-3xl font-bold text-gray-900">
+              ${reimbursementRemaining} <span className="text-lg text-gray-500">/ ${data.roadmap.currentReimbursementLimit}</span>
+            </p>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-green-600 h-2 rounded-full transition-all"
+                style={{ width: `${Math.min(reimbursementProgress, 100)}%` }}
+              ></div>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-xs text-gray-500">{Math.round(100 - reimbursementProgress)}% remaining</p>
+          </div>
+        </div>
 
         {/* Current Year */}
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600">Career Year</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {data.roadmap.yearsAtCompany >= 5 ? 'Year 5+' : `Year ${data.roadmap.yearsAtCompany}`}
-              </p>
-              <p className="text-sm text-gray-600">
-                Started {formatDate(data.profile.startDate)}
-              </p>
-              <Link href="/employee/roadmap">
-                <a className="text-xs text-purple-600 hover:text-purple-700 font-medium inline-flex items-center gap-1">
-                  View roadmap <ArrowRight className="w-3 h-3" />
-                </a>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-600">Career Year</p>
+            <p className="text-3xl font-bold text-gray-900">
+              {data.roadmap.yearsAtCompany >= 5 ? 'Year 5+' : `Year ${data.roadmap.yearsAtCompany}`}
+            </p>
+            <p className="text-sm text-gray-600">
+              Started {formatDate(data.profile.startDate)}
+            </p>
+            <Link href="/employee/roadmap">
+              <a className="text-xs text-purple-600 hover:text-purple-700 font-medium inline-flex items-center gap-1">
+                View roadmap <ArrowRight className="w-3 h-3" />
+              </a>
+            </Link>
+          </div>
+        </div>
 
         {/* Next Milestone */}
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Award className="w-6 h-6 text-orange-600" />
-              </div>
+        <div className="stripe-stat-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
+              <Award className="w-6 h-6 text-orange-600" />
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-600">Next Milestone</p>
-              {data.roadmap.yearsAtCompany < 5 ? (
-                <>
-                  <p className="text-3xl font-bold text-gray-900">
-                    Year {data.roadmap.nextMilestoneYear}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    In {data.roadmap.daysUntilNextMilestone} days
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatDate(data.roadmap.nextMilestoneDate)}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-2xl font-bold text-gray-900">
-                    Max Level! 🎉
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    You've reached maximum benefits
-                  </p>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-600">Next Milestone</p>
+            {data.roadmap.yearsAtCompany < 5 ? (
+              <>
+                <p className="text-3xl font-bold text-gray-900">
+                  Year {data.roadmap.nextMilestoneYear}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <Clock className="w-3 h-3 inline mr-1" />
+                  In {data.roadmap.daysUntilNextMilestone} days
+                </p>
+                <p className="text-xs text-gray-500">
+                  {formatDate(data.roadmap.nextMilestoneDate)}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-gray-900">
+                  Max Level!
+                </p>
+                <p className="text-sm text-gray-600">
+                  You've reached maximum benefits
+                </p>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Quick Actions */}

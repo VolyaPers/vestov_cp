@@ -143,6 +143,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
             onClick={handleStopImpersonation}
             disabled={loading}
             className="bg-red-600 hover:bg-red-700 text-white"
+            title="Stop impersonating and return to your account"
           >
             <LogOut className="w-4 h-4 mr-1" />
             {loading ? 'Stopping...' : 'Stop'}
@@ -162,6 +163,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
           onClick={() => setShowDropdown(true)}
           className="w-full stripe-btn-primary"
           variant="outline"
+          title="Impersonate another user"
         >
           <Users className="w-4 h-4 mr-2" />
           Switch to User
@@ -188,6 +190,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
             onClick={() => setShowDropdown(false)}
             variant="outline"
             className="w-full"
+            title="Cancel user selection"
           >
             <X className="w-4 h-4 mr-1" />
             Cancel

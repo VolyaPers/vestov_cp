@@ -348,7 +348,7 @@ export function UsersPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setIsUserDialogOpen(true)} className="stripe-btn-primary">
+            <button onClick={() => setIsUserDialogOpen(true)} className="stripe-btn-primary" title="Create a new user">
               <Plus className="h-4 w-4 mr-2" />
               Create User
             </button>
@@ -391,7 +391,7 @@ export function UsersPage() {
               </Select>
             </div>
             <div className="flex items-end">
-              <Button onClick={handleSearch}>Search</Button>
+              <Button onClick={handleSearch} title="Search users">Search</Button>
             </div>
           </div>
         </CardContent>

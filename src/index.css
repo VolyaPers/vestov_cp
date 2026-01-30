@@ -160,12 +160,28 @@
     border: 1px solid var(--stripe-border);
     border-radius: 8px;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-    transition: box-shadow 200ms ease-in-out;
+    transition: box-shadow 200ms ease-in-out, border-color 200ms ease-in-out;
     cursor: pointer;
   }
 
   .stripe-card-hover:hover {
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: var(--stripe-primary);
+  }
+
+  /* Stat cards - non-clickable with subtle hover */
+  .stripe-stat-card {
+    background-color: var(--stripe-surface);
+    border: 1px solid var(--stripe-border);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    transition: box-shadow 200ms ease-in-out, transform 200ms ease-in-out, border-color 200ms ease-in-out;
+  }
+
+  .stripe-stat-card:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transform: translateY(-2px);
+    border-color: var(--stripe-primary);
   }
 
   /* Surfaces */
@@ -236,6 +252,12 @@
   }
 
   .stripe-badge-success {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
     background-color: rgba(0, 217, 36, 0.1);
     color: var(--stripe-success);
     border: 1px solid rgba(0, 217, 36, 0.2);
@@ -243,6 +265,12 @@
   }
 
   .stripe-badge-warning {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
     background-color: rgba(255, 90, 31, 0.1);
     color: var(--stripe-warning);
     border: 1px solid rgba(255, 90, 31, 0.2);
@@ -250,15 +278,29 @@
   }
 
   .stripe-badge-error {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
     background-color: rgba(223, 27, 65, 0.1);
     color: var(--stripe-error);
     border: 1px solid rgba(223, 27, 65, 0.2);
+    border-radius: 12px;
   }
 
   .stripe-badge-neutral {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
     background-color: rgba(66, 84, 102, 0.1);
     color: var(--stripe-text-secondary);
     border: 1px solid rgba(66, 84, 102, 0.2);
+    border-radius: 12px;
   }
 
   /* Navigation */

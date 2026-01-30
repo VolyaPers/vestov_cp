@@ -205,6 +205,7 @@ export function ServicesPage() {
             <button
               onClick={() => setIsDialogOpen(true)}
               className="stripe-btn-primary"
+              title="Create a new service type"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Service Type
@@ -215,140 +216,123 @@ export function ServicesPage() {
 
       {/* Analytics Cards - Stripe style */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center">
-              <Building2 className="h-6 w-6 stripe-text-muted" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <Building2 className="h-5 w-5 text-blue-600" />
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{analytics?.activeServicesCount || 0}</div>
-              <div className="text-sm stripe-text-secondary">Active Services</div>
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">{analytics?.activeServicesCount || 0}</div>
+              <div className="text-sm text-gray-500">Active Services</div>
             </div>
           </div>
-          <div className="text-sm stripe-text-muted">Currently assigned services</div>
         </div>
 
-        <div className="group relative stripe-card rounded-lg p-6 border border-green-100 hover:border-green-200 transition-all duration-200 hover:shadow-lg hover:shadow-green-100/50">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 shadow-lg">
-              <Users className="h-6 w-6 text-white" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <Users className="h-5 w-5 text-green-600" />
             </div>
-            <div className="text-right">
+            <div className="min-w-0">
               <div className="text-2xl font-bold text-gray-900">
                 {analytics?.serviceDistribution.find(s => s.category === 'outstaffing')?.count || 0}
               </div>
-              <div className="text-sm font-medium text-green-700">Outstaffing</div>
+              <div className="text-sm text-gray-500">Outstaffing</div>
             </div>
           </div>
-          <div className="text-sm text-green-600 font-medium">Developer assignments</div>
         </div>
 
-        <div className="group relative stripe-card rounded-lg p-6 border border-purple-100 hover:border-purple-200 transition-all duration-200 hover:shadow-lg hover:shadow-purple-100/50">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg">
-              <TrendingUp className="h-6 w-6 text-white" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
             </div>
-            <div className="text-right">
+            <div className="min-w-0">
               <div className="text-2xl font-bold text-gray-900">
                 {analytics?.serviceDistribution.find(s => s.category === 'outsourcing')?.count || 0}
               </div>
-              <div className="text-sm font-medium text-purple-700">Outsourcing</div>
+              <div className="text-sm text-gray-500">Outsourcing</div>
             </div>
           </div>
-          <div className="text-sm text-purple-600 font-medium">Project-based services</div>
         </div>
 
-        <div className="group relative stripe-card rounded-lg p-6 border border-orange-100 hover:border-orange-200 transition-all duration-200 hover:shadow-lg hover:shadow-orange-100/50">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg">
-              <DollarSign className="h-6 w-6 text-white" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+              <DollarSign className="h-5 w-5 text-orange-600" />
             </div>
-            <div className="text-right">
+            <div className="min-w-0">
               <div className="text-2xl font-bold text-gray-900">
                 ${analytics?.serviceDistribution.reduce((sum, s) => sum + (s.totalRevenue || 0), 0).toLocaleString() || 0}
               </div>
-              <div className="text-sm font-medium text-orange-700">Total Revenue</div>
+              <div className="text-sm text-gray-500">Total Revenue</div>
             </div>
           </div>
-          <div className="text-sm text-orange-600 font-medium">From active services</div>
         </div>
       </div>
 
       {/* Service Types */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
+      <div className="stripe-card">
+        <div className="p-6 border-b stripe-border">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-xl font-semibold text-gray-900">Service Types</h3>
-              <p className="text-gray-600 mt-1">Manage your service offerings and billing models</p>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Building2 className="h-4 w-4" />
-              {services.length} service types
+              <h3 className="text-lg font-semibold stripe-text-primary">Service Types</h3>
+              <p className="text-sm stripe-text-secondary mt-1">Manage your service offerings and billing models</p>
             </div>
           </div>
         </div>
-        
+
         <div className="p-6">
-          <div className="space-y-6">
+          <div className="space-y-3">
             {services.map((service) => (
-              <div key={service.id} className="group relative bg-gradient-to-r from-gray-50 to-white rounded-lg p-6 border border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all duration-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-sky-400 via-purple-400 to-purple-500 text-white shadow-lg">
-                        <Building2 className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900">{service.name}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge className={`${getCategoryColor(service.category)} rounded-full px-3 py-1`}>
-                            {service.category}
-                          </Badge>
-                          <Badge className={`${getBillingModelColor(service.billingModel)} rounded-full px-3 py-1`}>
-                            {service.billingModel}
-                          </Badge>
-                        </div>
-                      </div>
+              <div key={service.id} className="group flex items-center justify-between p-4 stripe-surface rounded-lg stripe-border hover:bg-gray-50 transition-colors duration-150">
+                <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                    <Building2 className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-medium text-gray-900">{service.name}</h4>
+                      <Badge className={`${getCategoryColor(service.category)} text-xs`}>
+                        {service.category}
+                      </Badge>
+                      <Badge className={`${getBillingModelColor(service.billingModel)} text-xs`}>
+                        {service.billingModel}
+                      </Badge>
                     </div>
                     {service.description && (
-                      <p className="text-gray-600 mb-3 pl-15">{service.description}</p>
+                      <p className="text-sm text-gray-500 mt-1 truncate">{service.description}</p>
                     )}
-                    <div className="flex items-center gap-2 pl-15 text-sm text-gray-500 bg-gray-100 px-3 py-2 rounded-lg w-fit">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span>Created: <span className="font-medium">{new Date(service.createdAt).toLocaleDateString()}</span></span>
-                    </div>
                   </div>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditDialog(service)}
-                      className="rounded-xl border-gray-300 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
-                    >
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteService(service.id)}
-                      className="rounded-xl border-red-300 text-red-600 hover:text-red-700 hover:bg-red-50 transition-all duration-200"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </Button>
-                  </div>
+                </div>
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ml-4 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditDialog(service)}
+                    title="Edit service type"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteService(service.id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    title="Delete service type"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ))}
             {services.length === 0 && (
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-12 text-center border border-gray-200">
-                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-lg bg-gradient-to-br from-gray-200 to-gray-300">
-                  <Building2 className="h-8 w-8 text-gray-500" />
+              <div className="stripe-surface rounded-lg p-12 text-center stripe-border">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-gray-100 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-gray-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Service Types</h3>
-                <p className="text-gray-500">Get started by creating your first service type</p>
+                <h3 className="text-base font-medium text-gray-900 mb-1">No Service Types</h3>
+                <p className="text-sm text-gray-500">Get started by creating your first service type</p>
               </div>
             )}
           </div>
@@ -357,104 +341,91 @@ export function ServicesPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] rounded-lg border border-gray-200 shadow-2xl">
-          <DialogHeader className="space-y-4 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-sky-400 via-purple-400 to-purple-500 text-white shadow-lg">
-                <Building2 className="h-6 w-6" />
-              </div>
-              <div>
-                <DialogTitle className="text-xl font-bold text-gray-900">
-                  {editingService ? 'Edit Service Type' : 'Create New Service Type'}
-                </DialogTitle>
-                <DialogDescription className="text-gray-600">
-                  {editingService 
-                    ? 'Update the service type details below.'
-                    : 'Add a new service type to your offerings.'
-                  }
-                </DialogDescription>
-              </div>
-            </div>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingService ? 'Edit Service Type' : 'Create Service Type'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingService
+                ? 'Update the service type details below.'
+                : 'Add a new service type to your offerings.'
+              }
+            </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-6 py-4">
+
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-sm font-medium text-gray-700">Service Name</Label>
+              <Label htmlFor="name">Service Name</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Senior React Developer"
-                className="rounded-xl border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
               />
             </div>
-            
+
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-sm font-medium text-gray-700">Description (Optional)</Label>
+              <Label htmlFor="description">Description (Optional)</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Describe the service offering..."
-                className="rounded-xl border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 min-h-[80px]"
               />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="category" className="text-sm font-medium text-gray-700">Category</Label>
+                <Label htmlFor="category">Category</Label>
                 <Select
                   value={formData.category}
-                  onValueChange={(value: 'outstaffing' | 'outsourcing') => 
+                  onValueChange={(value: 'outstaffing' | 'outsourcing') =>
                     setFormData({ ...formData, category: value })
                   }
                 >
-                  <SelectTrigger className="rounded-xl border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="outstaffing" className="rounded-lg">Outstaffing</SelectItem>
-                    <SelectItem value="outsourcing" className="rounded-lg">Outsourcing</SelectItem>
+                    <SelectItem value="outstaffing">Outstaffing</SelectItem>
+                    <SelectItem value="outsourcing">Outsourcing</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="space-y-2">
-                <Label htmlFor="billingModel" className="text-sm font-medium text-gray-700">Billing Model</Label>
+                <Label htmlFor="billingModel">Billing Model</Label>
                 <Select
                   value={formData.billingModel}
-                  onValueChange={(value: 'hourly' | 'monthly' | 'fixed') => 
+                  onValueChange={(value: 'hourly' | 'monthly' | 'fixed') =>
                     setFormData({ ...formData, billingModel: value })
                   }
                 >
-                  <SelectTrigger className="rounded-xl border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="hourly" className="rounded-lg">Hourly</SelectItem>
-                    <SelectItem value="monthly" className="rounded-lg">Monthly</SelectItem>
-                    <SelectItem value="fixed" className="rounded-lg">Fixed Price</SelectItem>
+                    <SelectItem value="hourly">Hourly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="fixed">Fixed Price</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
           </div>
-          
-          <DialogFooter className="flex gap-3 pt-4">
+
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
                 setIsDialogOpen(false)
                 resetForm()
               }}
-              className="rounded-xl border-gray-300 hover:bg-gray-50 transition-all duration-200"
             >
               Cancel
             </Button>
-            <Button
-              onClick={editingService ? handleUpdateService : handleCreateService}
-              className="stripe-btn-primary rounded-lg"
-            >
+            <Button onClick={editingService ? handleUpdateService : handleCreateService}>
               {editingService ? 'Update Service' : 'Create Service'}
             </Button>
           </DialogFooter>

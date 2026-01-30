@@ -465,58 +465,58 @@ export function TeamOverview() {
 
       {/* Statistics - Stripe style */}
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="stripe-card-hover p-6">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Users className="h-6 w-6 stripe-text-muted" />
+            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <Users className="h-6 w-6 text-blue-600" />
             </div>
             <div className="text-right">
-              <div className="text-3xl font-bold stripe-text-primary">{teamMembers.length}</div>
-              <div className="text-sm stripe-text-secondary">Total Team</div>
+              <div className="text-3xl font-bold text-gray-900">{teamMembers.length}</div>
+              <div className="text-sm text-gray-500">Total Team</div>
             </div>
           </div>
-          <div className="text-sm stripe-text-muted">All team members </div>
+          <div className="text-sm text-gray-500">All team members</div>
         </div>
 
-        <div className="stripe-card-hover p-6">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <DollarSign className="h-6 w-6 stripe-text-muted" />
+            <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <DollarSign className="h-6 w-6 text-green-600" />
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold text-gray-900">{billableMembers.length}</div>
-              <div className="text-sm font-medium text-green-700">Billable Resources</div>
+              <div className="text-3xl font-bold text-gray-900">{billableMembers.length}</div>
+              <div className="text-sm text-gray-500">Billable Resources</div>
             </div>
           </div>
-          <div className="text-sm text-green-600 font-medium">Available for clients</div>
+          <div className="text-sm text-gray-500">Available for clients</div>
         </div>
 
-        <div className="stripe-card rounded-lg p-6 hover:shadow-md transition-all duration-150">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-slate-100">
-              <UserCheck className="h-6 w-6 text-white" />
+            <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <UserCheck className="h-6 w-6 text-purple-600" />
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold text-gray-900">{internalStaff.length}</div>
-              <div className="text-sm font-medium text-purple-700">Internal Staff</div>
+              <div className="text-3xl font-bold text-gray-900">{internalStaff.length}</div>
+              <div className="text-sm text-gray-500">Internal Staff</div>
             </div>
           </div>
-          <div className="text-sm text-purple-600 font-medium">Non-billable members</div>
+          <div className="text-sm text-gray-500">Non-billable members</div>
         </div>
 
-        <div className="group relative bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-6 border border-orange-100 hover:border-orange-200 transition-all duration-200 hover:shadow-lg hover:shadow-orange-100/50">
+        <div className="stripe-stat-card p-6">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg">
-              <Briefcase className="h-6 w-6 text-white" />
+            <div className="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+              <Briefcase className="h-6 w-6 text-orange-600" />
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold text-gray-900">
+              <div className="text-3xl font-bold text-gray-900">
                 {billableMembers.filter(m => m.status === 'bench' || !m.clientId).length}
               </div>
-              <div className="text-sm font-medium text-orange-700">Available Now</div>
+              <div className="text-sm text-gray-500">Available Now</div>
             </div>
           </div>
-          <div className="text-sm text-orange-600 font-medium">Ready for assignment</div>
+          <div className="text-sm text-gray-500">Ready for assignment</div>
         </div>
       </div>
 

@@ -1026,6 +1026,7 @@ export function ClientDetailsPage() {
             variant="outline"
             size="icon"
             onClick={() => window.history.back()}
+            title="Go back"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -1076,17 +1077,17 @@ export function ClientDetailsPage() {
         <div className="flex items-center gap-2">
           {isEditing ? (
             <>
-              <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+              <Button variant="outline" onClick={handleCancel} disabled={isSaving} title="Cancel editing">
                 <X className="h-4 w-4 mr-2" />
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={isSaving}>
+              <Button onClick={handleSave} disabled={isSaving} title="Save changes">
                 <Save className="h-4 w-4 mr-2" />
                 {isSaving ? 'Saving...' : 'Save'}
               </Button>
             </>
           ) : (
-            <Button onClick={handleEdit}>
+            <Button onClick={handleEdit} title="Edit client details">
               <Edit className="h-4 w-4 mr-2" />
               Edit Client
             </Button>
@@ -1108,6 +1109,7 @@ export function ClientDetailsPage() {
                 size="sm"
                 variant="outline"
                 className="gap-2"
+                title="Add a new contact"
               >
                 <UserPlus className="h-4 w-4" />
                 Add Contact
@@ -1399,6 +1401,7 @@ export function ClientDetailsPage() {
               onClick={() => setIsInvoiceFormOpen(true)}
               size="sm"
               className="gap-2"
+              title="Create a new invoice"
             >
               <Plus className="h-4 w-4" />
               Create Invoice
@@ -1418,7 +1421,7 @@ export function ClientDetailsPage() {
               <CardTitle>Service Assignments</CardTitle>
               <CardDescription>All services provided to this client</CardDescription>
             </div>
-            <Button onClick={() => setIsServiceDialogOpen(true)}>
+            <Button onClick={() => setIsServiceDialogOpen(true)} title="Add a new service assignment">
               <Plus className="h-4 w-4 mr-2" />
               Add Service
             </Button>
@@ -2171,6 +2174,7 @@ export function ClientDetailsPage() {
                 onClick={() => setIsAssignUserDialogOpen(true)}
                 size="sm"
                 className="gap-2"
+                title="Assign a user to this client"
               >
                 <UserPlus className="h-4 w-4" />
                 Assign User
@@ -2273,7 +2277,7 @@ export function ClientDetailsPage() {
               </CardTitle>
               <CardDescription>Client documents and files</CardDescription>
             </div>
-            <Button onClick={() => setIsDocumentDialogOpen(true)}>
+            <Button onClick={() => setIsDocumentDialogOpen(true)} title="Upload a new document">
               <Upload className="h-4 w-4 mr-2" />
               Upload Document
             </Button>

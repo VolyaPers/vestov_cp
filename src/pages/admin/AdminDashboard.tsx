@@ -6,13 +6,9 @@ import {
   UserCheck,
   Clock,
   Building,
-  TrendingUp,
-  Calendar,
   Activity,
   CheckCircle,
-  AlertCircle,
   DollarSign,
-  Target,
   Zap,
   BarChart3,
   Briefcase,
@@ -143,7 +139,7 @@ export function AdminDashboard() {
               <CheckCircle className="h-4 w-4 mr-2" />
               All Systems Online
             </div>
-            <button className="stripe-btn-primary rounded-lg">
+            <button className="stripe-btn-primary rounded-lg" title="View analytics and reports">
               <BarChart3 className="h-4 w-4 mr-2" />
               View Reports
             </button>
@@ -151,128 +147,93 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* Key Metrics - Stripe style cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Building className="h-6 w-6 stripe-text-muted" />
+      {/* Key Metrics - Clean stat cards */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <Building className="h-5 w-5 text-blue-600" />
             </div>
-            <div className="text-3xl font-bold stripe-text-primary">{stats.totalClients || 0}</div>
-          </div>
-          <div className="text-sm stripe-text-secondary mb-3">Active Clients</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Active partnerships</div>
-            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              +0%
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">{stats.totalClients || 0}</div>
+              <div className="text-sm text-gray-500">Active Clients</div>
             </div>
           </div>
         </div>
 
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Users className="h-6 w-6 stripe-text-muted" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+              <Users className="h-5 w-5 text-indigo-600" />
             </div>
-            <div className="text-3xl font-bold stripe-text-primary">{stats.totalTeamMembers || 0}</div>
-          </div>
-          <div className="text-sm stripe-text-secondary mb-3">Team Members</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Total workforce</div>
-            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              +0%
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">{stats.totalTeamMembers || 0}</div>
+              <div className="text-sm text-gray-500">Team Members</div>
             </div>
           </div>
         </div>
 
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <UserCheck className="h-6 w-6 stripe-text-muted" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <UserCheck className="h-5 w-5 text-green-600" />
             </div>
-            <div className="text-3xl font-bold stripe-text-primary">{stats.activeTeamMembers || 0}</div>
-          </div>
-          <div className="text-sm stripe-text-secondary mb-3">Active Members</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Currently assigned</div>
-            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
-              <Target className="h-3 w-3 mr-1" />
-              {stats.activeTeamMembers && stats.totalTeamMembers
-                ? Math.round((stats.activeTeamMembers / stats.totalTeamMembers) * 100)
-                : 0
-              }%
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">{stats.activeTeamMembers || 0}</div>
+              <div className="text-sm text-gray-500">Active Members</div>
             </div>
           </div>
         </div>
 
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Clock className="h-6 w-6 stripe-text-muted" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <Clock className="h-5 w-5 text-amber-600" />
             </div>
-            <div className="text-3xl font-bold stripe-text-primary">{stats.pendingLeaveRequests || 0}</div>
-          </div>
-          <div className="text-sm stripe-text-secondary mb-3">Pending Requests</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Awaiting approval</div>
-            <div className="stripe-badge-neutral whitespace-nowrap flex-shrink-0">
-              <Calendar className="h-3 w-3 mr-1" />
-              Leave
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">{stats.pendingLeaveRequests || 0}</div>
+              <div className="text-sm text-gray-500">Pending Requests</div>
             </div>
           </div>
         </div>
 
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Activity className="h-6 w-6 stripe-text-muted" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <Activity className="h-5 w-5 text-emerald-600" />
             </div>
-            <div className="text-3xl font-bold stripe-text-primary">{stats.employeesOnShift || 0}</div>
-          </div>
-          <div className="text-sm stripe-text-secondary mb-3">On Shift Now</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Currently working</div>
-            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
-              <Zap className="h-3 w-3 mr-1" />
-              Live
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Receipt className="h-6 w-6 stripe-text-muted" />
-            </div>
-            <div className="text-3xl font-bold stripe-text-primary">
-              ${(stats.paidInvoicesTotal || 0).toLocaleString()}
-            </div>
-          </div>
-          <div className="text-sm stripe-text-secondary mb-3">Paid This Month</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Invoice payments</div>
-            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
-              <DollarSign className="h-3 w-3 mr-1" />
-              {stats.paidInvoicesCount || 0}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="text-2xl font-bold text-gray-900">{stats.employeesOnShift || 0}</div>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">
+                  Live
+                </span>
+              </div>
+              <div className="text-sm text-gray-500">On Shift Now</div>
             </div>
           </div>
         </div>
 
-        <div className="stripe-card-hover p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-lg stripe-surface flex items-center justify-center flex-shrink-0">
-              <Briefcase className="h-6 w-6 stripe-text-muted" />
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0">
+              <Receipt className="h-5 w-5 text-violet-600" />
             </div>
-            <div className="text-3xl font-bold stripe-text-primary">{stats.activeProjects || 0}</div>
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">${(stats.paidInvoicesTotal || 0).toLocaleString()}</div>
+              <div className="text-sm text-gray-500">Paid This Month</div>
+            </div>
           </div>
-          <div className="text-sm stripe-text-secondary mb-3">Active Projects</div>
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <div className="text-sm stripe-text-muted truncate flex-shrink">Running projects</div>
-            <div className="stripe-badge-success whitespace-nowrap flex-shrink-0">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              {stats.totalClients ? Math.round((stats.activeProjects / stats.totalClients) * 100) : 0}%
+        </div>
+
+        <div className="stripe-stat-card p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+              <Briefcase className="h-5 w-5 text-orange-600" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-2xl font-bold text-gray-900">{stats.activeProjects || 0}</div>
+              <div className="text-sm text-gray-500">Active Projects</div>
             </div>
           </div>
         </div>

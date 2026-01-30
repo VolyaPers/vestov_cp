@@ -752,7 +752,7 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
     const assignedDevelopers = await db
       .select({
         id: clientServiceTeamMembers.id,
-        teamMemberId: clientServiceTeamMembers.teamMemberId,
+        developerId: clientServiceTeamMembers.teamMemberId,
         name: teamMembers.name,
         email: teamMembers.email,
         skills: teamMembers.skills,

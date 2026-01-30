@@ -280,6 +280,7 @@ export function AdminFeedbackPage() {
                       size="sm"
                       onClick={() => handleDelete(feedback)}
                       className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
+                      title="Delete this feedback"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -323,6 +324,7 @@ export function AdminFeedbackPage() {
                     size="sm"
                     onClick={() => handleOpenRespondDialog(feedback)}
                     className="mt-2"
+                    title="Respond to this feedback"
                   >
                     <Send className="h-4 w-4 mr-2" />
                     Respond

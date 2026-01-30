@@ -3564,9 +3564,9 @@ router.get('/client/team', async (req, res) => {
 
     console.log('[GET /client/team] Found', activeServices.length, 'active services')
 
-    // Filter for outsourcing and outstaffing services
+    // Filter for outsourcing and outstaffing services (by category)
     const relevantServices = activeServices.filter(service =>
-      service.serviceTypeName === 'Outsourcing' || service.serviceTypeName === 'Outstaffing'
+      service.serviceTypeCategory === 'outsourcing' || service.serviceTypeCategory === 'outstaffing'
     )
 
     console.log('[GET /client/team] Found', relevantServices.length, 'outsourcing/outstaffing services')
@@ -3648,6 +3648,7 @@ router.get('/client/team/schedules', async (req, res) => {
       .select({
         id: clientServices.id,
         serviceTypeName: serviceTypes.name,
+        serviceCategory: serviceTypes.category,
       })
       .from(clientServices)
       .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
@@ -3656,9 +3657,9 @@ router.get('/client/team/schedules', async (req, res) => {
         eq(clientServices.isActive, true)
       ))
 
-    // Filter for outsourcing and outstaffing services
+    // Filter for outsourcing and outstaffing services (by category)
     const relevantServices = activeServices.filter(service =>
-      service.serviceTypeName === 'Outsourcing' || service.serviceTypeName === 'Outstaffing'
+      service.serviceCategory === 'outsourcing' || service.serviceCategory === 'outstaffing'
     )
 
     if (relevantServices.length === 0) {
