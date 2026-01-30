@@ -249,10 +249,18 @@ export function ClientTeamStatus() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Your Team Status</h1>
-        <p className="text-gray-600 mt-1">Monitor your development team's availability in real-time</p>
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Your Team Status
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              Monitor your development team's availability in real-time
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Stats Overview */}

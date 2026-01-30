@@ -208,24 +208,27 @@ export function ClientPortal() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center space-x-4">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <Building className="h-8 w-8 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{client.name}</h1>
-          <p className="text-gray-600">{client.industry || 'Industry not specified'}</p>
-          <div className="flex items-center space-x-4 mt-2">
-            <Badge className={client.status === 'active' ? 'bg-green-100 text-green-800' : client.status === 'inactive' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}>
-              {client.status}
-            </Badge>
-            {client.contractType && (
-              <Badge variant="outline" className="capitalize">
-                {client.contractType}
+    <div className="space-y-6">
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              {client.name}
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              {client.industry || 'Company Overview'}
+            </p>
+            <div className="flex items-center space-x-4 mt-3">
+              <Badge className={client.status === 'active' ? 'bg-green-100 text-green-800' : client.status === 'inactive' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}>
+                {client.status}
               </Badge>
-            )}
+              {client.contractType && (
+                <Badge variant="outline" className="capitalize">
+                  {client.contractType}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -475,12 +475,18 @@ export function VacationPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Vacation & Leave Management</h1>
-        <Button size="sm" variant="outline">
-          <Plus className="w-4 h-4 mr-2" />
-          Export Report
-        </Button>
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Vacation & Leave Management
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              View and manage team vacation requests
+            </p>
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="calendar" className="space-y-6">

@@ -68,14 +68,18 @@ export function ClientProfile() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="flex items-center space-x-4 mb-6">
-        <div className="p-3 bg-primary/10 rounded-lg">
-          <User className="h-8 w-8 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-          <p className="text-gray-600">Your account information and client access</p>
+    <div className="space-y-6">
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Profile
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              Your account information and client access
+            </p>
+          </div>
         </div>
       </div>
 

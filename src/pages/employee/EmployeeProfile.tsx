@@ -108,39 +108,46 @@ export function EmployeeProfile() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-          <p className="text-gray-500 mt-1">View and edit your personal information</p>
-        </div>
-        {!editing ? (
-          <Button
-            onClick={() => setEditing(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Edit3 className="h-4 w-4 mr-2" />
-            Edit Profile
-          </Button>
-        ) : (
-          <div className="flex gap-2">
-            <Button
-              onClick={handleCancel}
-              variant="outline"
-              disabled={saving}
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              My Profile
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              View and edit your personal information
+            </p>
           </div>
-        )}
+          {!editing ? (
+            <Button
+              onClick={() => setEditing(true)}
+              className="bg-primary hover:bg-primary/90 text-white"
+            >
+              <Edit3 className="h-4 w-4 mr-2" />
+              Edit Profile
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCancel}
+                variant="outline"
+                disabled={saving}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-primary hover:bg-primary/90 text-white"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       <Card className="bg-white shadow-sm border border-gray-200">

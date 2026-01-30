@@ -765,6 +765,49 @@ class ApiClient {
   async uploadServiceDocument(formData: FormData) {
     return this.requestFormData('/documents/upload', formData)
   }
+
+  // Feedback Methods
+  async getAdminFeedbacks() {
+    return this.request('/feedback/admin')
+  }
+
+  async getClientFeedbacks() {
+    return this.request('/feedback/client')
+  }
+
+  async getFeedbackClientServices() {
+    return this.request('/feedback/client-services')
+  }
+
+  async getFeedbackServiceDevelopers(clientServiceId: number) {
+    return this.request(`/feedback/service/${clientServiceId}/developers`)
+  }
+
+  async submitFeedback(data: {
+    clientServiceId?: number
+    teamMemberId?: number
+    rating: number
+    comments: string
+    feedbackType: string
+  }) {
+    return this.request('/feedback', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async respondToFeedback(feedbackId: number, adminResponse: string) {
+    return this.request(`/feedback/${feedbackId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ adminResponse }),
+    })
+  }
+
+  async deleteFeedback(feedbackId: number) {
+    return this.request(`/feedback/${feedbackId}`, {
+      method: 'DELETE',
+    })
+  }
 }
 
 export const api = new ApiClient()

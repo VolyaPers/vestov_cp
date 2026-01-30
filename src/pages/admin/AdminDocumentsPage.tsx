@@ -744,22 +744,23 @@ export function AdminDocumentsPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <div className="p-3 bg-primary/10 rounded-lg">
-            <FileText className="h-8 w-8 text-primary" />
-          </div>
+    <div className="space-y-6">
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Documents</h1>
-            <p className="text-gray-600">Manage documents by client and service</p>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Documents
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              Manage documents by client and service
+            </p>
           </div>
         </div>
       </div>
 
       {/* Search */}
-      <div className="mb-6">
+      <div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input

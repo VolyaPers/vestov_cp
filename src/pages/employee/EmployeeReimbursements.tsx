@@ -219,9 +219,18 @@ export function EmployeeReimbursements() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Workspace Reimbursements</h1>
-        <p className="text-gray-500 mt-1">Request reimbursement for workspace equipment</p>
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Workspace Reimbursements
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              Request reimbursement for workspace equipment
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Limits Card */}

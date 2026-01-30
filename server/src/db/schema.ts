@@ -197,11 +197,15 @@ export const feedback = pgTable('feedback', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id).notNull(),
   clientId: integer('client_id').references(() => clients.id),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id),
   teamMemberId: integer('team_member_id').references(() => teamMembers.id),
   rating: integer('rating'), // 1-5 scale
   comments: text('comments'),
-  feedbackType: varchar('feedback_type', { length: 50 }), // 'client_feedback' | 'team_feedback'
+  feedbackType: varchar('feedback_type', { length: 50 }), // 'general' | 'team_member'
   status: varchar('status', { length: 20 }).default('pending'), // 'pending' | 'reviewed'
+  adminResponse: text('admin_response'),
+  adminRespondedBy: integer('admin_responded_by').references(() => users.id),
+  adminRespondedAt: timestamp('admin_responded_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 

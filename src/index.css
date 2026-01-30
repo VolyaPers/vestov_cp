@@ -280,10 +280,14 @@
   }
 
   .stripe-nav-item-active {
-    color: var(--stripe-text-primary);
-    background-color: var(--stripe-surface);
+    color: white;
+    background-color: var(--stripe-primary);
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-    border: 1px solid var(--stripe-border);
+  }
+
+  .stripe-nav-item-active:hover {
+    color: white;
+    background-color: var(--stripe-primary);
   }
 
   /* Tables */

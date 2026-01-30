@@ -44,12 +44,11 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
         allUsers = []
       }
       
-      // Filter users: exclude current user and only include active users
-      // isActive can be true, null, or undefined (all treated as active)
-      // Only explicitly false values are excluded
+      // Filter users: exclude current user and only include explicitly active users
+      // Only show users where isActive is explicitly true
       const filteredUsers = allUsers
         .filter((u) => u.id !== currentUser?.id)
-        .filter((u) => u.isActive !== false)
+        .filter((u) => u.isActive === true)
       
       console.log('[UserImpersonation] Loaded users:', {
         total: allUsers.length,

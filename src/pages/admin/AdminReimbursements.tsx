@@ -216,9 +216,18 @@ export function AdminReimbursements() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Workspace Reimbursements</h1>
-        <p className="text-gray-500 mt-1">Review and manage employee reimbursement requests</p>
+      {/* Header Section - Stripe style */}
+      <div className="stripe-card p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
+              Workspace Reimbursements
+            </h1>
+            <p className="stripe-text-secondary text-lg">
+              Review and manage employee reimbursement requests
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}

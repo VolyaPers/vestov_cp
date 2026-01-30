@@ -153,6 +153,17 @@ async function main() {
     { table: 'documents', sql: `CREATE INDEX IF NOT EXISTS idx_documents_client_service_id ON documents(client_service_id)` },
     { table: 'documents', sql: `CREATE INDEX IF NOT EXISTS idx_documents_folder_id ON documents(folder_id)` },
     { table: 'documents', sql: `CREATE INDEX IF NOT EXISTS idx_documents_visible_to_client ON documents(visible_to_client)` },
+
+    // feedback columns for admin response
+    { table: 'feedback', sql: `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS client_service_id INTEGER REFERENCES client_services(id)` },
+    { table: 'feedback', sql: `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS admin_response TEXT` },
+    { table: 'feedback', sql: `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS admin_responded_by INTEGER REFERENCES users(id)` },
+    { table: 'feedback', sql: `ALTER TABLE feedback ADD COLUMN IF NOT EXISTS admin_responded_at TIMESTAMP` },
+
+    // indexes for feedback
+    { table: 'feedback', sql: `CREATE INDEX IF NOT EXISTS idx_feedback_client_service_id ON feedback(client_service_id)` },
+    { table: 'feedback', sql: `CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id)` },
+    { table: 'feedback', sql: `CREATE INDEX IF NOT EXISTS idx_feedback_client_id ON feedback(client_id)` },
   ]
 
   for (const fix of schemaFixes) {
