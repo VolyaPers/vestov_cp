@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 const getEvidenceUrl = (evidencePath: string | null) => {
@@ -45,6 +46,7 @@ interface ReimbursementRequest {
 }
 
 export function AdminReimbursements() {
+  const { showAlert } = useCustomAlert()
   const [requests, setRequests] = useState<ReimbursementRequest[]>([])
   const [filteredRequests, setFilteredRequests] = useState<ReimbursementRequest[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +127,7 @@ export function AdminReimbursements() {
     if (!dialogRequest) return
 
     if (dialogAction === 'reject' && !dialogNote.trim()) {
-      alert('Please provide a reason for rejection')
+      showAlert({ message: 'Please provide a reason for rejection', type: 'warning' })
       return
     }
 
@@ -142,11 +144,10 @@ export function AdminReimbursements() {
       setDialogRequest(null)
       setDialogNote('')
       await loadRequests()
-      alert(`Request ${dialogAction === 'approve' ? 'approved' : 'rejected'} successfully!`)
+      showAlert({ message: `Request ${dialogAction === 'approve' ? 'approved' : 'rejected'} successfully!`, type: 'success' })
     } catch (error: any) {
       console.error(`Error ${dialogAction}ing request:`, error)
-      alert(error.message || `Failed to ${dialogAction} request. Please try again.`)
-      alert(error.message || `Failed to ${dialogAction} request`)
+      showAlert({ message: error.message || `Failed to ${dialogAction} request`, type: 'error' })
     } finally {
       setProcessing(null)
     }

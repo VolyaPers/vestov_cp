@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { api } from '@/lib/api'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface ServiceDeveloper {
   id: number
@@ -76,6 +77,7 @@ interface Invoice {
 }
 
 export function ClientPortal() {
+  const { showAlert } = useCustomAlert()
   const [, params] = useRoute('/client/portal/:clientId')
   if (!hasRouteParam(params, 'clientId')) {
     return <div>Client ID not found</div>
@@ -188,7 +190,7 @@ export function ClientPortal() {
       document.body.removeChild(a)
     } catch (error: any) {
       console.error('Failed to download document:', error)
-      alert(error.message || 'Failed to download document')
+      showAlert({ message: error.message || 'Failed to download document', type: 'error' })
     }
   }
 

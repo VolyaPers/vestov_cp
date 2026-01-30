@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/select'
 import type { User } from '@/types/common'
 import { api } from '@/lib/api'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface UserImpersonationProps {
   currentUser: User | null
@@ -18,6 +19,7 @@ interface UserImpersonationProps {
 }
 
 export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonation }: UserImpersonationProps) {
+  const { showAlert } = useCustomAlert()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -89,7 +91,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to impersonate user'
       console.error('[UserImpersonation] Error impersonating user:', error)
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setLoading(false)
     }
@@ -113,7 +115,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
       window.location.href = redirectPath
     } catch (error) {
       console.error('Error stopping impersonation:', error)
-      alert('Failed to stop impersonation')
+      showAlert({ message: 'Failed to stop impersonation', type: 'error' })
     } finally {
       setLoading(false)
     }

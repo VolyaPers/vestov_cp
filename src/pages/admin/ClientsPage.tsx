@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 interface Client {
@@ -79,6 +80,7 @@ interface ServiceType {
 
 
 export function ClientsPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [, setLocation] = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState<'active' | 'all'>('active')
@@ -212,36 +214,45 @@ export function ClientsPage() {
 
 
   const handleRemoveService = async (clientId: number, serviceId: number, permanent: boolean = false) => {
-    const message = permanent 
+    const message = permanent
       ? 'Are you sure you want to permanently delete this service assignment? This cannot be undone.'
       : 'Are you sure you want to remove this service assignment?'
-    
-    if (!confirm(message)) return
+
+    const confirmed = await showConfirm({
+      title: permanent ? 'Delete Service' : 'Remove Service',
+      message,
+      type: permanent ? 'error' : 'warning',
+      confirmText: permanent ? 'Delete' : 'Remove',
+      cancelText: 'Cancel',
+      destructive: permanent,
+    })
+
+    if (!confirmed) return
 
     try {
-      const url = permanent 
+      const url = permanent
         ? `/services/clients/${clientId}/services/${serviceId}?permanent=true`
         : `/services/clients/${clientId}/services/${serviceId}`
-        
+
       await api.request(url, {
         method: 'DELETE',
       })
       loadClients()
       loadAnalytics()
-      
-      const successMessage = permanent 
+
+      const successMessage = permanent
         ? 'Service assignment permanently deleted'
         : 'Service assignment deactivated successfully'
-      alert(successMessage)
+      await showAlert({ message: successMessage, type: 'success' })
     } catch (error: any) {
       console.error('Failed to remove service:', error)
-      alert(error.message || 'Failed to remove service assignment')
+      await showAlert({ message: error.message || 'Failed to remove service assignment', type: 'error' })
     }
   }
 
   const handleAddService = async () => {
     if (!selectedClient || !newServiceData.serviceTypeId || !newServiceData.startDate) {
-      alert('Please fill in all required fields')
+      await showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -261,13 +272,13 @@ export function ClientsPage() {
       resetServiceForm()
     } catch (error: any) {
       console.error('Failed to add service:', error)
-      alert(error.message || 'Failed to add service to client')
+      await showAlert({ message: error.message || 'Failed to add service to client', type: 'error' })
     }
   }
 
   const handleCreateClient = async () => {
     if (!newClientData.name) {
-      alert('Please fill in the required field: Client Name')
+      await showAlert({ message: 'Please fill in the required field: Client Name', type: 'warning' })
       return
     }
 
@@ -281,10 +292,10 @@ export function ClientsPage() {
       loadAnalytics()
       setIsClientDialogOpen(false)
       resetClientForm()
-      alert('Client created successfully!')
+      await showAlert({ message: 'Client created successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to create client:', error)
-      alert(error.message || 'Failed to create client')
+      await showAlert({ message: error.message || 'Failed to create client', type: 'error' })
     }
   }
 
@@ -342,15 +353,36 @@ export function ClientsPage() {
       setIsEditServiceDialogOpen(false)
       setEditingServiceData(null)
 
-      alert('Service updated successfully!')
+      await showAlert({ message: 'Service updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update service:', error)
-      alert(error.message || 'Failed to update service')
+      await showAlert({ message: error.message || 'Failed to update service', type: 'error' })
     }
   }
 
   const resetEditServiceForm = () => {
     setEditingServiceData(null)
+  }
+
+  const handleDeleteClient = async (client: Client) => {
+    const confirmed = await showConfirm({
+      title: 'Delete Client',
+      message: `Are you sure you want to delete "${client.name}"?\n\nThis action cannot be undone and will also delete:\n• All service assignments\n• All invoices\n• All documents\n• All related data`,
+      type: 'error',
+      confirmText: 'Delete Client',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
+    try {
+      await api.request(`/admin/clients/${client.id}`, { method: 'DELETE' })
+      loadClients()
+      await showAlert({ message: 'Client deleted successfully!', type: 'success' })
+    } catch (error: any) {
+      await showAlert({ message: error.message || 'Failed to delete client', type: 'error' })
+    }
   }
 
   const filteredClients = clients.filter(client => {
@@ -622,22 +654,7 @@ export function ClientsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={async () => {
-                        if (window.confirm(`Are you sure you want to delete ${client.name}?\n\nThis action cannot be undone and will also delete:\n- All service assignments\n- All invoices\n- All documents\n- All related data\n\nType the client name to confirm.`)) {
-                          const confirmation = window.prompt(`Type "${client.name}" to confirm deletion:`)
-                          if (confirmation === client.name) {
-                            try {
-                              await api.request(`/admin/clients/${client.id}`, { method: 'DELETE' })
-                              // Refresh the clients list
-                              loadClients()
-                            } catch (error: any) {
-                              alert(error.message || 'Failed to delete client')
-                            }
-                          } else if (confirmation !== null) {
-                            alert('Client name did not match. Deletion cancelled.')
-                          }
-                        }
-                      }}
+                      onClick={() => handleDeleteClient(client)}
                       className="rounded-xl border-red-300 text-red-600 hover:border-red-400 hover:bg-red-50 transition-all duration-200"
                       title="Delete client and all related data"
                     >

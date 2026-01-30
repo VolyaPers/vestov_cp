@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { InvoiceStatsChart } from '@/components/InvoiceStatsChart'
 import { EnhancedInvoiceForm } from '@/components/EnhancedInvoiceForm'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
@@ -131,6 +132,7 @@ interface ClientUser {
 }
 
 export function ClientDetailsPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [, params] = useRoute('/admin/clients/:id')
   if (!hasRouteParam(params, 'id')) {
     return <div>Client ID not found</div>
@@ -367,10 +369,10 @@ export function ClientDetailsPage() {
       } as ClientDetails)
       setIsEditing(false)
 
-      alert('Client updated successfully!')
+      showAlert({ message: 'Client updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update client:', error)
-      alert(error.message || 'Failed to update client')
+      showAlert({ message: error.message || 'Failed to update client', type: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -378,7 +380,7 @@ export function ClientDetailsPage() {
 
   const handleAddService = async () => {
     if (!clientId || !newServiceData.serviceTypeId || !newServiceData.startDate) {
-      alert('Please fill in all required fields')
+      showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -400,10 +402,10 @@ export function ClientDetailsPage() {
       setIsServiceDialogOpen(false)
       resetServiceForm()
 
-      alert('Service added successfully!')
+      showAlert({ message: 'Service added successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to add service:', error)
-      alert(error.message || 'Failed to add service to client')
+      showAlert({ message: error.message || 'Failed to add service to client', type: 'error' })
     }
   }
 
@@ -414,7 +416,16 @@ export function ClientDetailsPage() {
       ? 'Are you sure you want to permanently delete this service assignment? This cannot be undone.'
       : 'Are you sure you want to deactivate this service assignment?'
 
-    if (!confirm(message)) return
+    const confirmed = await showConfirm({
+      title: permanent ? 'Delete Service' : 'Deactivate Service',
+      message,
+      type: 'warning',
+      confirmText: permanent ? 'Delete' : 'Deactivate',
+      cancelText: 'Cancel',
+      destructive: permanent,
+    })
+
+    if (!confirmed) return
 
     try {
       const url = permanent
@@ -432,10 +443,10 @@ export function ClientDetailsPage() {
       const successMessage = permanent
         ? 'Service assignment permanently deleted'
         : 'Service assignment deactivated successfully'
-      alert(successMessage)
+      showAlert({ message: successMessage, type: 'success' })
     } catch (error: any) {
       console.error('Failed to remove service:', error)
-      alert(error.message || 'Failed to remove service assignment')
+      showAlert({ message: error.message || 'Failed to remove service assignment', type: 'error' })
     }
   }
 
@@ -456,7 +467,7 @@ export function ClientDetailsPage() {
 
   const handleAddDeveloper = async () => {
     if (!clientId || !selectedServiceForDeveloper || !newDeveloperData.developerId || !newDeveloperData.startDate) {
-      alert('Please fill in all required fields')
+      showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -474,10 +485,10 @@ export function ClientDetailsPage() {
       setIsDeveloperDialogOpen(false)
       resetDeveloperForm()
 
-      alert('Developer added to service successfully!')
+      showAlert({ message: 'Developer added to service successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to add developer:', error)
-      alert(error.message || 'Failed to add developer to service')
+      showAlert({ message: error.message || 'Failed to add developer to service', type: 'error' })
     }
   }
 
@@ -488,7 +499,16 @@ export function ClientDetailsPage() {
       ? 'Are you sure you want to permanently remove this developer from the service?'
       : 'Are you sure you want to deactivate this developer assignment?'
 
-    if (!confirm(message)) return
+    const confirmed = await showConfirm({
+      title: permanent ? 'Remove Developer' : 'Deactivate Developer',
+      message,
+      type: 'warning',
+      confirmText: permanent ? 'Remove' : 'Deactivate',
+      cancelText: 'Cancel',
+      destructive: permanent,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.removeDeveloperFromService(parseInt(clientId), serviceId, assignmentId, permanent)
@@ -499,10 +519,10 @@ export function ClientDetailsPage() {
       const successMessage = permanent
         ? 'Developer assignment permanently removed'
         : 'Developer assignment deactivated successfully'
-      alert(successMessage)
+      showAlert({ message: successMessage, type: 'success' })
     } catch (error: any) {
       console.error('Failed to remove developer:', error)
-      alert(error.message || 'Failed to remove developer assignment')
+      showAlert({ message: error.message || 'Failed to remove developer assignment', type: 'error' })
     }
   }
 
@@ -570,10 +590,10 @@ export function ClientDetailsPage() {
         },
       })
 
-      alert('Developer details updated successfully!')
+      showAlert({ message: 'Developer details updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update developer details:', error)
-      alert(error.message || 'Failed to update developer details')
+      showAlert({ message: error.message || 'Failed to update developer details', type: 'error' })
     }
   }
 
@@ -624,10 +644,10 @@ export function ClientDetailsPage() {
       setIsEditServiceDialogOpen(false)
       setEditingServiceData(null)
 
-      alert('Service updated successfully!')
+      showAlert({ message: 'Service updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update service:', error)
-      alert(error.message || 'Failed to update service')
+      showAlert({ message: error.message || 'Failed to update service', type: 'error' })
     }
   }
 
@@ -675,10 +695,10 @@ export function ClientDetailsPage() {
       await loadDocuments()
       setIsDocumentDialogOpen(false)
       resetDocumentForm()
-      alert('Document uploaded successfully!')
+      showAlert({ message: 'Document uploaded successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to upload document:', error)
-      alert(error.message || 'Failed to upload document')
+      showAlert({ message: error.message || 'Failed to upload document', type: 'error' })
     } finally {
       setIsUploadingDocument(false)
     }
@@ -706,14 +726,21 @@ export function ClientDetailsPage() {
       document.body.removeChild(a)
     } catch (error: any) {
       console.error('Failed to download document:', error)
-      alert(error.message || 'Failed to download document')
+      showAlert({ message: error.message || 'Failed to download document', type: 'error' })
     }
   }
 
   const handleDocumentDelete = async (documentId: number, filename: string) => {
-    if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Delete Document',
+      message: `Are you sure you want to delete "${filename}"? This action cannot be undone.`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.request(`/documents/${documentId}`, {
@@ -722,10 +749,10 @@ export function ClientDetailsPage() {
 
       // Refresh documents list
       await loadDocuments()
-      alert('Document deleted successfully!')
+      showAlert({ message: 'Document deleted successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to delete document:', error)
-      alert(error.message || 'Failed to delete document')
+      showAlert({ message: error.message || 'Failed to delete document', type: 'error' })
     }
   }
 
@@ -771,7 +798,7 @@ export function ClientDetailsPage() {
 
   const handleCreateContact = async () => {
     if (!clientId || !contactFormData.fullName.trim()) {
-      alert('Full name is required')
+      showAlert({ message: 'Full name is required', type: 'warning' })
       return
     }
 
@@ -785,16 +812,16 @@ export function ClientDetailsPage() {
       await loadContacts()
       setIsContactDialogOpen(false)
       resetContactForm()
-      alert('Contact created successfully!')
+      showAlert({ message: 'Contact created successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to create contact:', error)
-      alert(error.message || 'Failed to create contact')
+      showAlert({ message: error.message || 'Failed to create contact', type: 'error' })
     }
   }
 
   const handleUpdateContact = async () => {
     if (!editingContact || !contactFormData.fullName.trim()) {
-      alert('Full name is required')
+      showAlert({ message: 'Full name is required', type: 'warning' })
       return
     }
 
@@ -808,17 +835,24 @@ export function ClientDetailsPage() {
       await loadContacts()
       setIsContactDialogOpen(false)
       resetContactForm()
-      alert('Contact updated successfully!')
+      showAlert({ message: 'Contact updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update contact:', error)
-      alert(error.message || 'Failed to update contact')
+      showAlert({ message: error.message || 'Failed to update contact', type: 'error' })
     }
   }
 
   const handleDeleteContact = async (contactId: number, contactName: string) => {
-    if (!confirm(`Are you sure you want to delete "${contactName}"?`)) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Delete Contact',
+      message: `Are you sure you want to delete "${contactName}"?`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.request(`/client-contacts/${contactId}`, {
@@ -827,10 +861,10 @@ export function ClientDetailsPage() {
 
       // Refresh contacts list
       await loadContacts()
-      alert('Contact deleted successfully!')
+      showAlert({ message: 'Contact deleted successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to delete contact:', error)
-      alert(error.message || 'Failed to delete contact')
+      showAlert({ message: error.message || 'Failed to delete contact', type: 'error' })
     }
   }
 
@@ -883,7 +917,7 @@ export function ClientDetailsPage() {
 
   const handleAssignUser = async () => {
     if (!assignUserData.userId || !clientId) {
-      alert('Please select a user')
+      showAlert({ message: 'Please select a user', type: 'warning' })
       return
     }
 
@@ -897,10 +931,10 @@ export function ClientDetailsPage() {
       await loadClientUsers()
       setIsAssignUserDialogOpen(false)
       resetAssignUserForm()
-      alert('User assigned to client successfully!')
+      showAlert({ message: 'User assigned to client successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to assign user:', error)
-      alert(error.message || 'Failed to assign user to client')
+      showAlert({ message: error.message || 'Failed to assign user to client', type: 'error' })
     }
   }
 
@@ -910,27 +944,34 @@ export function ClientDetailsPage() {
     try {
       await api.updateClientAssignment(userId, Number(clientId), { accessLevel })
       await loadClientUsers()
-      alert('User access level updated successfully!')
+      showAlert({ message: 'User access level updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update user access:', error)
-      alert(error.message || 'Failed to update user access')
+      showAlert({ message: error.message || 'Failed to update user access', type: 'error' })
     }
   }
 
   const handleRemoveUserFromClient = async (userId: number, userName: string) => {
-    if (!confirm(`Are you sure you want to remove "${userName}" from this client?`)) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Remove User',
+      message: `Are you sure you want to remove "${userName}" from this client?`,
+      type: 'warning',
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     if (!clientId) return
 
     try {
       await api.removeUserFromClient(userId, Number(clientId))
       await loadClientUsers()
-      alert('User removed from client successfully!')
+      showAlert({ message: 'User removed from client successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to remove user from client:', error)
-      alert(error.message || 'Failed to remove user from client')
+      showAlert({ message: error.message || 'Failed to remove user from client', type: 'error' })
     }
   }
 
@@ -943,7 +984,7 @@ export function ClientDetailsPage() {
 
   const handleUploadLogo = async () => {
     if (!clientId || !selectedLogoFile) {
-      alert('Please select a logo file')
+      showAlert({ message: 'Please select a logo file', type: 'warning' })
       return
     }
 
@@ -960,10 +1001,10 @@ export function ClientDetailsPage() {
       }
 
       setSelectedLogoFile(null)
-      alert('Logo uploaded successfully!')
+      showAlert({ message: 'Logo uploaded successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to upload logo:', error)
-      alert(error.message || 'Failed to upload logo')
+      showAlert({ message: error.message || 'Failed to upload logo', type: 'error' })
     } finally {
       setIsUploadingLogo(false)
     }
@@ -990,7 +1031,7 @@ export function ClientDetailsPage() {
         e.target.value = ''
       } catch (error: any) {
         console.error('Failed to upload logo:', error)
-        alert(error.message || 'Failed to upload logo')
+        showAlert({ message: error.message || 'Failed to upload logo', type: 'error' })
       } finally {
         setIsUploadingLogo(false)
       }

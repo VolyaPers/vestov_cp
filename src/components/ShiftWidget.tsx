@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Clock, Coffee, Info, Loader2, Play, Square } from 'lucide-react'
 import { api } from '../lib/api'
 import { useShiftEvents, useShiftUpdateListener } from '../hooks/useSocket'
+import { useCustomAlert } from './ui/custom-alert'
 
 interface Shift {
   id: number
@@ -29,6 +30,7 @@ interface UserService {
 type ConfirmAction = 'startShift' | 'endShift' | 'startBreak' | 'endBreak'
 
 export function ShiftWidget() {
+  const { showAlert } = useCustomAlert()
   const [currentShift, setCurrentShift] = useState<Shift | null>(null)
   const [activeBreak, setActiveBreak] = useState<ShiftBreak | null>(null)
   const [loading, setLoading] = useState(false)
@@ -115,7 +117,7 @@ export function ShiftWidget() {
       setConfirmAction(null)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start shift'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setLoading(false)
     }
@@ -133,7 +135,7 @@ export function ShiftWidget() {
       setConfirmAction(null)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start break'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setLoading(false)
     }
@@ -148,7 +150,7 @@ export function ShiftWidget() {
       setConfirmAction(null)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to end break'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setLoading(false)
     }
@@ -163,7 +165,7 @@ export function ShiftWidget() {
       setConfirmAction(null)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to end shift'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setLoading(false)
     }

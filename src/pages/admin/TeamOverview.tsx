@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { EditTeamMemberDialog } from '@/components/EditTeamMemberDialog'
 import { Label } from '@/components/ui/label'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -62,6 +63,7 @@ type AvailableUser = User
 
 // TeamOverview Component - Updated 2026-01-06
 export function TeamOverview() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
   const [billableMembers, setBillableMembers] = useState<LocalTeamMember[]>([])
   const [internalStaff, setInternalStaff] = useState<LocalTeamMember[]>([])
@@ -145,7 +147,7 @@ export function TeamOverview() {
   const handleAddTeamMember = async (userId?: string) => {
     const userIdToUse = userId || selectedUserId
     if (!userIdToUse) {
-      alert('Please select a user to add as team member')
+      await showAlert({ message: 'Please select a user to add as team member', type: 'warning' })
       return
     }
 
@@ -157,11 +159,11 @@ export function TeamOverview() {
       await loadAvailableUsers() // Refresh available users list
       setSelectedUserId('')
       setIsSelectOpen(false)
-      alert('Team member added successfully.')
+      await showAlert({ message: 'Team member added successfully.', type: 'success' })
     } catch (error) {
       console.error('Error adding team member:', error)
       const errorMessage = error instanceof Error ? error.message : 'Error adding team member. Please try again.'
-      alert(errorMessage)
+      await showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setIsSubmitting(false)
     }
@@ -219,28 +221,35 @@ export function TeamOverview() {
       await loadTeamMembers()
       setIsEditModalOpen(false)
       setEditingMember(null)
-      alert('Team member updated successfully.')
+      await showAlert({ message: 'Team member updated successfully.', type: 'success' })
     } catch (error) {
       console.error('Error updating team member:', error)
-      alert('Error updating team member. Please try again.')
+      await showAlert({ message: 'Error updating team member. Please try again.', type: 'error' })
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleDeleteTeamMember = async (memberId: number, memberName: string) => {
-    if (!confirm(`Are you sure you want to delete ${memberName}? This action cannot be undone.`)) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Delete Team Member',
+      message: `Are you sure you want to delete ${memberName}? This action cannot be undone.`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.deleteTeamMember(memberId.toString())
       await loadTeamMembers()
-      alert('Team member deleted successfully.')
+      await showAlert({ message: 'Team member deleted successfully.', type: 'success' })
     } catch (error) {
       console.error('Error deleting team member:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Error deleting team member: ${errorMessage}`)
+      await showAlert({ message: `Error deleting team member: ${errorMessage}`, type: 'error' })
     }
   }
 
@@ -537,7 +546,7 @@ export function TeamOverview() {
               type="button"
               onClick={() => {
                 if (availableUsers.length === 0) {
-                  alert('No users available with role "team_member". Please create a user with this role first.')
+                  showAlert({ message: 'No users available with role "team_member". Please create a user with this role first.', type: 'info' })
                   return
                 }
                 setIsSelectOpen(!isSelectOpen)
@@ -603,7 +612,7 @@ export function TeamOverview() {
                 }`}
             >
               <Users className="h-4 w-4 mr-2 inline" />
-              All Team Members! ({teamMembers.length})
+              All Team Members ({teamMembers.length})
             </button>
             <button
               onClick={() => setActiveTab('billable')}

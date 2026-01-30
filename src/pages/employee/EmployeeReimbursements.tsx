@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 const getEvidenceUrl = (evidencePath: string | null) => {
   if (!evidencePath) return null
@@ -63,6 +64,7 @@ const categories = [
 ]
 
 export function EmployeeReimbursements() {
+  const { showAlert } = useCustomAlert()
   const [limits, setLimits] = useState<ReimbursementLimits | null>(null)
   const [requests, setRequests] = useState<ReimbursementRequest[]>([])
   const [loading, setLoading] = useState(true)
@@ -111,12 +113,12 @@ export function EmployeeReimbursements() {
 
     const expense = parseFloat(expenseAmount)
     if (isNaN(expense) || expense <= 0) {
-      alert('Please enter a valid expense amount')
+      showAlert({ message: 'Please enter a valid expense amount', type: 'warning' })
       return
     }
 
     if (!description.trim()) {
-      alert('Please provide a description')
+      showAlert({ message: 'Please provide a description', type: 'warning' })
       return
     }
 
@@ -139,10 +141,10 @@ export function EmployeeReimbursements() {
 
       // Reload data
       await loadData()
-      alert('Reimbursement request submitted successfully!')
+      showAlert({ message: 'Reimbursement request submitted successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Error submitting request:', error)
-      alert(error.message || 'Failed to submit request')
+      showAlert({ message: error.message || 'Failed to submit request', type: 'error' })
     } finally {
       setSubmitting(false)
     }
@@ -158,10 +160,10 @@ export function EmployeeReimbursements() {
 
       // Reload data
       await loadData()
-      alert('Evidence uploaded successfully!')
+      showAlert({ message: 'Evidence uploaded successfully!', type: 'success' })
     } catch (error) {
       console.error('Error uploading evidence:', error)
-      alert('Failed to upload evidence')
+      showAlert({ message: 'Failed to upload evidence', type: 'error' })
     } finally {
       setUploading(null)
     }

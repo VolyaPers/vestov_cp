@@ -5,6 +5,13 @@ import { DollarSign, Calendar, FileText, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { api } from '@/lib/api'
 
 interface Invoice {
@@ -29,11 +36,14 @@ export function ClientInvoices() {
   const clientId = getRouteParam(params, 'clientId')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const [totals, setTotals] = useState<{
-    totalAmount: number
-    paidAmount: number
-    pendingAmount: number
-    overdueAmount: number
+    totalAmount?: number
+    totalInvoiced?: number
+    paidAmount?: number
+    totalPaid?: number
+    pendingAmount?: number
+    overdueAmount?: number
   } | null>(null)
 
   useEffect(() => {
@@ -107,45 +117,45 @@ export function ClientInvoices() {
       {/* Summary Cards */}
       {totals && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
-            <CardContent className="flex items-center p-6">
+          <div className="stripe-stat-card p-6">
+            <div className="flex items-center">
               <DollarSign className="h-8 w-8 text-blue-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Billed</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.totalAmount)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(totals.totalAmount || totals.totalInvoiced || 0)}</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="flex items-center p-6">
+          <div className="stripe-stat-card p-6">
+            <div className="flex items-center">
               <DollarSign className="h-8 w-8 text-green-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Paid</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.paidAmount)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(totals.paidAmount || totals.totalPaid || 0)}</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="flex items-center p-6">
+          <div className="stripe-stat-card p-6">
+            <div className="flex items-center">
               <DollarSign className="h-8 w-8 text-yellow-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.pendingAmount)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(totals.pendingAmount || 0)}</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="flex items-center p-6">
+          <div className="stripe-stat-card p-6">
+            <div className="flex items-center">
               <DollarSign className="h-8 w-8 text-red-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Overdue</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.overdueAmount)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(totals.overdueAmount || 0)}</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
@@ -205,6 +215,7 @@ export function ClientInvoices() {
                       size="sm"
                       className="text-blue-600 hover:text-blue-700"
                       title="View invoice details"
+                      onClick={() => setViewInvoice(invoice)}
                     >
                       <Eye className="h-4 w-4 mr-1" />
                       View
@@ -224,6 +235,89 @@ export function ClientInvoices() {
           </CardContent>
         </Card>
       )}
+
+      {/* View Invoice Dialog */}
+      <Dialog open={!!viewInvoice} onOpenChange={() => setViewInvoice(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Invoice Details - {viewInvoice?.invoiceNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Complete invoice information
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewInvoice && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="text-2xl font-bold">{viewInvoice.invoiceNumber}</div>
+                  <Badge className={`mt-1 ${getStatusColor(viewInvoice.status)}`}>
+                    {viewInvoice.status.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-green-600">
+                    {formatCurrency(viewInvoice.amount)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Invoice Date</label>
+                    <div className="text-sm text-gray-900">{new Date(viewInvoice.invoiceDate).toLocaleDateString()}</div>
+                  </div>
+                  {viewInvoice.dueDate && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Due Date</label>
+                      <div className="text-sm text-gray-900">{new Date(viewInvoice.dueDate).toLocaleDateString()}</div>
+                    </div>
+                  )}
+                  {viewInvoice.paidAt && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Paid Date</label>
+                      <div className="text-sm text-gray-900">{new Date(viewInvoice.paidAt).toLocaleDateString()}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {viewInvoice.periodStart && viewInvoice.periodEnd && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Service Period</label>
+                      <div className="text-sm text-gray-900">
+                        {new Date(viewInvoice.periodStart).toLocaleDateString()} - {new Date(viewInvoice.periodEnd).toLocaleDateString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {viewInvoice.description && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Description</label>
+                  <div className="mt-1 p-3 bg-gray-50 rounded text-sm text-gray-900">
+                    {viewInvoice.description}
+                  </div>
+                </div>
+              )}
+
+              {viewInvoice.notes && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Notes</label>
+                  <div className="mt-1 p-3 bg-gray-50 rounded text-sm text-gray-600">
+                    {viewInvoice.notes}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

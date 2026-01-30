@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 import { Invoice, CreateInvoiceData as InvoiceCreateInvoiceData, UpdateInvoiceData as InvoiceUpdateInvoiceData } from '@/types/invoice'
 import type { CreateInvoiceData, UpdateInvoiceData } from '@/types/common'
@@ -28,6 +29,7 @@ interface InvoiceListProps {
 }
 
 export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
+  const { showAlert, showConfirm } = useCustomAlert()
   const queryClient = useQueryClient()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -99,7 +101,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       resetNewInvoiceForm()
     },
     onError: (error: any) => {
-      alert(error.message || 'Failed to create invoice')
+      showAlert({ message: error.message || 'Failed to create invoice', type: 'error' })
     }
   })
 
@@ -126,7 +128,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       setEditInvoiceData({})
     },
     onError: (error: any) => {
-      alert(error.message || 'Failed to update invoice')
+      showAlert({ message: error.message || 'Failed to update invoice', type: 'error' })
     }
   })
 
@@ -137,7 +139,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       queryClient.invalidateQueries({ queryKey: ['invoices', 'client', clientId] })
     },
     onError: (error: any) => {
-      alert(error.message || 'Failed to delete invoice')
+      showAlert({ message: error.message || 'Failed to delete invoice', type: 'error' })
     }
   })
 
@@ -188,8 +190,16 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
     }
   }
 
-  const handleDeleteInvoice = (id: number) => {
-    if (confirm('Are you sure you want to delete this invoice?')) {
+  const handleDeleteInvoice = async (id: number) => {
+    const confirmed = await showConfirm({
+      title: 'Delete Invoice',
+      message: 'Are you sure you want to delete this invoice?',
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) {
       deleteInvoiceMutation.mutate(id)
     }
   }

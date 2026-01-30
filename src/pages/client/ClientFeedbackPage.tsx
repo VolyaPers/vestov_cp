@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface Service {
   id: number
@@ -45,6 +46,7 @@ interface Feedback {
 }
 
 export function ClientFeedbackPage() {
+  const { showAlert } = useCustomAlert()
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [developers, setDevelopers] = useState<Developer[]>([])
@@ -104,12 +106,12 @@ export function ClientFeedbackPage() {
     e.preventDefault()
 
     if (rating === 0) {
-      alert('Please select a rating')
+      showAlert({ message: 'Please select a rating', type: 'warning' })
       return
     }
 
     if (!comments.trim()) {
-      alert('Please enter your feedback')
+      showAlert({ message: 'Please enter your feedback', type: 'warning' })
       return
     }
 
@@ -132,10 +134,10 @@ export function ClientFeedbackPage() {
       // Reload feedbacks
       await loadData()
 
-      alert('Thank you for your feedback!')
+      showAlert({ message: 'Thank you for your feedback!', type: 'success' })
     } catch (error) {
       console.error('Error submitting feedback:', error)
-      alert('Failed to submit feedback. Please try again.')
+      showAlert({ message: 'Failed to submit feedback. Please try again.', type: 'error' })
     } finally {
       setIsSubmitting(false)
     }

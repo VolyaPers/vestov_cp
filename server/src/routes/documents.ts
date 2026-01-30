@@ -3,7 +3,7 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import { db } from '../db/index.js'
-import { documents, clients, users, documentFolders, clientServices, serviceTypes } from '../db/schema.js'
+import { documents, clients, users, documentFolders, clientServices, serviceTypes, clientUsers } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 import { eq, and, desc, isNull } from 'drizzle-orm'
 
@@ -86,18 +86,44 @@ router.get('/client/:clientId', requireAuth, async (req, res) => {
 router.post('/upload', requireAuth, upload.single('document'), async (req, res) => {
   try {
     const user = (req as any).user
-    if (user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' })
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' })
-    }
-
     const { clientId, clientServiceId, folderId, visibleToClient, type, documentTitle } = req.body
 
     if (!clientId) {
       return res.status(400).json({ error: 'Client ID is required' })
+    }
+
+    // Check access permissions
+    if (user.role === 'admin' || user.role === 'team_member') {
+      // Admins and team members can upload to any client
+    } else if (user.role === 'client') {
+      // Client users need 'write' or 'admin' access level
+      const clientAccess = await db
+        .select()
+        .from(clientUsers)
+        .where(and(
+          eq(clientUsers.userId, user.id),
+          eq(clientUsers.clientId, parseInt(clientId)),
+          eq(clientUsers.isActive, true)
+        ))
+        .limit(1)
+
+      if (clientAccess.length === 0) {
+        if (req.file) fs.unlinkSync(req.file.path)
+        return res.status(403).json({ error: 'Access denied to this client' })
+      }
+
+      const accessLevel = clientAccess[0].accessLevel
+      if (accessLevel !== 'write' && accessLevel !== 'admin') {
+        if (req.file) fs.unlinkSync(req.file.path)
+        return res.status(403).json({ error: 'You do not have permission to upload documents. Write or admin access is required.' })
+      }
+    } else {
+      if (req.file) fs.unlinkSync(req.file.path)
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' })
     }
 
     // Verify client exists

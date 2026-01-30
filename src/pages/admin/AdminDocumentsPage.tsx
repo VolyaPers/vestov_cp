@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 interface DocumentType {
@@ -98,6 +99,7 @@ interface ServiceDocuments {
 }
 
 export function AdminDocumentsPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [clients, setClients] = useState<Client[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -240,7 +242,7 @@ export function AdminDocumentsPage() {
       setTargetFolderId(null)
     } catch (error) {
       console.error('Error creating folder:', error)
-      alert('Failed to create folder')
+      showAlert({ message: 'Failed to create folder', type: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -258,7 +260,7 @@ export function AdminDocumentsPage() {
       setSelectedFolder(null)
     } catch (error) {
       console.error('Error renaming folder:', error)
-      alert('Failed to rename folder')
+      showAlert({ message: 'Failed to rename folder', type: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -270,14 +272,23 @@ export function AdminDocumentsPage() {
       ? `This folder contains ${folder.documents.length} document(s). Do you want to delete the folder and all its contents?`
       : `Are you sure you want to delete the folder "${folder.name}"?`
 
-    if (!confirm(message)) return
+    const confirmed = await showConfirm({
+      title: 'Delete Folder',
+      message,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.deleteDocumentFolder(folder.id, hasContent)
       await loadServiceDocuments(folder.clientServiceId)
     } catch (error) {
       console.error('Error deleting folder:', error)
-      alert('Failed to delete folder')
+      showAlert({ message: 'Failed to delete folder', type: 'error' })
     }
   }
 
@@ -307,7 +318,7 @@ export function AdminDocumentsPage() {
       resetUploadForm()
     } catch (error) {
       console.error('Error uploading document:', error)
-      alert('Failed to upload document')
+      showAlert({ message: 'Failed to upload document', type: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -339,12 +350,21 @@ export function AdminDocumentsPage() {
       }
     } catch (error) {
       console.error('Error updating visibility:', error)
-      alert('Failed to update document visibility')
+      showAlert({ message: 'Failed to update document visibility', type: 'error' })
     }
   }
 
   const handleDeleteDocument = async (doc: DocumentWithUploader) => {
-    if (!confirm(`Are you sure you want to delete "${doc.document.name}"?`)) return
+    const confirmed = await showConfirm({
+      title: 'Delete Document',
+      message: `Are you sure you want to delete "${doc.document.name}"?`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.request(`/documents/${doc.document.id}`, { method: 'DELETE' })
@@ -360,7 +380,7 @@ export function AdminDocumentsPage() {
       }
     } catch (error) {
       console.error('Error deleting document:', error)
-      alert('Failed to delete document')
+      showAlert({ message: 'Failed to delete document', type: 'error' })
     }
   }
 
@@ -377,7 +397,7 @@ export function AdminDocumentsPage() {
       document.body.removeChild(a)
     } catch (error) {
       console.error('Error downloading document:', error)
-      alert('Failed to download document')
+      showAlert({ message: 'Failed to download document', type: 'error' })
     }
   }
 

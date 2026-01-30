@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { api } from '@/lib/api'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface TeamMember {
   id: number
@@ -21,6 +22,7 @@ interface TeamMember {
 }
 
 export function EmployeeProfile() {
+  const { showAlert } = useCustomAlert()
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -69,7 +71,7 @@ export function EmployeeProfile() {
       setEditing(false)
     } catch (error) {
       console.error('Error saving profile:', error)
-      alert('Failed to save profile. Please try again.')
+      showAlert({ message: 'Failed to save profile. Please try again.', type: 'error' })
     } finally {
       setSaving(false)
     }

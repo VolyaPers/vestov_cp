@@ -23,6 +23,7 @@ import {
 } from 'date-fns'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface TeamMember {
   id: number
@@ -91,6 +92,7 @@ interface LeaveRequestResponse {
 }
 
 export function EmployeeVacations() {
+  const { showAlert } = useCustomAlert()
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null)
   const [employmentCycle, setEmploymentCycle] = useState<EmploymentCycle | null>(null)
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([])
@@ -270,7 +272,7 @@ export function EmployeeVacations() {
     e.preventDefault()
 
     if (!teamMember || !formData.leaveTypeId || !formData.startDate || !formData.endDate) {
-      alert('Please fill in all required fields')
+      showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -299,11 +301,11 @@ export function EmployeeVacations() {
       // Close modal
       setShowCalendarModal(false)
 
-      alert('Leave request submitted successfully!')
+      showAlert({ message: 'Leave request submitted successfully!', type: 'success' })
     } catch (error) {
       console.error('Error submitting leave request:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setSubmitting(false)
     }

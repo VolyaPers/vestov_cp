@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Play, Square, Coffee, Clock, AlertCircle } from 'lucide-react'
 import { api } from '../lib/api'
 import { useShiftEvents, useShiftUpdateListener } from '../hooks/useSocket'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface Shift {
   id: number
@@ -30,6 +31,7 @@ interface ShiftBreak {
 }
 
 export function ShiftControls() {
+  const { showConfirm } = useCustomAlert()
   const [currentShift, setCurrentShift] = useState<Shift | null>(null)
   const [activeBreak, setActiveBreak] = useState<ShiftBreak | null>(null)
   const [loading, setLoading] = useState(false)
@@ -121,7 +123,15 @@ export function ShiftControls() {
   }
 
   const handleEndShift = async () => {
-    if (!confirm('Are you sure you want to end your shift?')) return
+    const confirmed = await showConfirm({
+      title: 'End Shift',
+      message: 'Are you sure you want to end your shift?',
+      type: 'warning',
+      confirmText: 'End Shift',
+      cancelText: 'Cancel',
+    })
+
+    if (!confirmed) return
 
     setLoading(true)
     setError(null)

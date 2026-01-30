@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, parseISO } from 'date-fns'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface EmploymentCycle {
   id: number
@@ -102,6 +103,7 @@ interface LeaveAllocationSetting {
 }
 
 export default function VacationDashboard() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [user, setUser] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [employeeId, setEmployeeId] = useState<number | null>(null)
@@ -141,6 +143,11 @@ export default function VacationDashboard() {
     allocatedDays: '',
     isDefault: false,
   })
+
+  // Denial dialog state
+  const [showDenialDialog, setShowDenialDialog] = useState(false)
+  const [denialReason, setDenialReason] = useState('')
+  const [requestToDeny, setRequestToDeny] = useState<number | null>(null)
 
   useEffect(() => {
     fetchUserData()
@@ -372,11 +379,11 @@ export default function VacationDashboard() {
         fetchEmployeeData()
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to submit request')
+        showAlert({ message: error.error || 'Failed to submit request', type: 'error' })
       }
     } catch (err) {
       console.error('Error submitting request:', err)
-      alert('Failed to submit request')
+      showAlert({ message: 'Failed to submit request', type: 'error' })
     }
   }
 
@@ -396,7 +403,7 @@ export default function VacationDashboard() {
         fetchPendingRequests()
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to approve request')
+        showAlert({ message: error.error || 'Failed to approve request', type: 'error' })
       }
     } catch (err) {
       console.error('Error approving request:', err)
@@ -414,12 +421,12 @@ export default function VacationDashboard() {
           decisionReason: reason || 'Request denied',
         }),
       })
-      
+
       if (response.ok) {
         fetchPendingRequests()
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to deny request')
+        showAlert({ message: error.error || 'Failed to deny request', type: 'error' })
       }
     } catch (err) {
       console.error('Error denying request:', err)
@@ -441,7 +448,7 @@ export default function VacationDashboard() {
         fetchEmployeeData()
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to cancel request')
+        showAlert({ message: error.error || 'Failed to cancel request', type: 'error' })
       }
     } catch (err) {
       console.error('Error canceling request:', err)
@@ -465,7 +472,7 @@ export default function VacationDashboard() {
 
   const handleSaveAllocationSetting = async () => {
     if (!settingsFormData.leaveTypeId || !settingsFormData.allocatedDays) {
-      alert('Please fill in all required fields')
+      showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -488,16 +495,25 @@ export default function VacationDashboard() {
         })
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to save setting')
+        showAlert({ message: error.error || 'Failed to save setting', type: 'error' })
       }
     } catch (err) {
       console.error('Error saving allocation setting:', err)
-      alert('Failed to save setting')
+      showAlert({ message: 'Failed to save setting', type: 'error' })
     }
   }
 
   const handleDeleteAllocationSetting = async (settingId: number) => {
-    if (!confirm('Are you sure you want to delete this allocation setting?')) return
+    const confirmed = await showConfirm({
+      title: 'Delete Allocation Setting',
+      message: 'Are you sure you want to delete this allocation setting?',
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       const response = await fetch(`/api/vacation/admin/allocation-settings/${settingId}`, {
@@ -509,16 +525,24 @@ export default function VacationDashboard() {
         fetchAllocationSettings()
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to delete setting')
+        showAlert({ message: error.error || 'Failed to delete setting', type: 'error' })
       }
     } catch (err) {
       console.error('Error deleting allocation setting:', err)
-      alert('Failed to delete setting')
+      showAlert({ message: 'Failed to delete setting', type: 'error' })
     }
   }
 
   const handleSetDefaultCycle = async (cycleNumber: number) => {
-    if (!confirm(`Set cycle ${cycleNumber} as the default for future cycles?`)) return
+    const confirmed = await showConfirm({
+      title: 'Set Default Cycle',
+      message: `Set cycle ${cycleNumber} as the default for future cycles?`,
+      type: 'info',
+      confirmText: 'Set Default',
+      cancelText: 'Cancel',
+    })
+
+    if (!confirmed) return
 
     try {
       const response = await fetch('/api/vacation/admin/allocation-settings/set-default', {
@@ -530,14 +554,14 @@ export default function VacationDashboard() {
 
       if (response.ok) {
         fetchAllocationSettings()
-        alert(`Cycle ${cycleNumber} is now set as default`)
+        showAlert({ message: `Cycle ${cycleNumber} is now set as default`, type: 'success' })
       } else {
         const error = await response.json()
-        alert(error.error || 'Failed to set default cycle')
+        showAlert({ message: error.error || 'Failed to set default cycle', type: 'error' })
       }
     } catch (err) {
       console.error('Error setting default cycle:', err)
-      alert('Failed to set default cycle')
+      showAlert({ message: 'Failed to set default cycle', type: 'error' })
     }
   }
 
@@ -1008,8 +1032,9 @@ export default function VacationDashboard() {
                         </button>
                         <button
                           onClick={() => {
-                            const reason = prompt('Reason for denial (optional):')
-                            handleDenyRequest(request.id, reason || undefined)
+                            setRequestToDeny(request.id)
+                            setDenialReason('')
+                            setShowDenialDialog(true)
                           }}
                           className="w-9 h-9 flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-xl transition-all duration-200 hover:shadow-md"
                         >
@@ -1307,6 +1332,68 @@ export default function VacationDashboard() {
                 >
                   <Save className="w-4 h-4" />
                   Save Setting
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Denial Reason Dialog */}
+        {showDenialDialog && (
+          <div
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowDenialDialog(false)}
+          >
+            <div
+              className="bg-white/95 backdrop-blur-xl rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-red-100 to-red-200 flex items-center justify-center">
+                  <X className="h-6 w-6 text-red-600" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900">Deny Leave Request</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Reason for Denial (optional)
+                  </label>
+                  <textarea
+                    value={denialReason}
+                    onChange={(e) => setDenialReason(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white/70 backdrop-blur-sm transition-all duration-200 resize-none"
+                    rows={3}
+                    placeholder="Provide a reason for denying this request..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-4 mt-8">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDenialDialog(false)
+                    setRequestToDeny(null)
+                    setDenialReason('')
+                  }}
+                  className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (requestToDeny) {
+                      handleDenyRequest(requestToDeny, denialReason || undefined)
+                    }
+                    setShowDenialDialog(false)
+                    setRequestToDeny(null)
+                    setDenialReason('')
+                  }}
+                  className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white font-semibold rounded-xl hover:from-red-700 hover:to-red-800 transition-all duration-200"
+                >
+                  Deny Request
                 </button>
               </div>
             </div>

@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AdvancedDatePicker, DateRangePicker } from '@/components/ui/advanced-date-picker'
 import { api } from '@/lib/api'
 import { CreateInvoiceData, ServicePricingCalculation } from '@/types/invoice'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface EnhancedInvoiceFormProps {
   clientId: number
@@ -63,6 +64,7 @@ export function EnhancedInvoiceForm({
   onClose, 
   onSuccess 
 }: EnhancedInvoiceFormProps) {
+  const { showAlert } = useCustomAlert()
   const queryClient = useQueryClient()
   
   // Get default dates
@@ -174,7 +176,7 @@ export function EnhancedInvoiceForm({
       onSuccess()
     },
     onError: (error: any) => {
-      alert(error.message || 'Failed to create invoice')
+      showAlert({ message: error.message || 'Failed to create invoice', type: 'error' })
     }
   })
 
@@ -188,10 +190,10 @@ export function EnhancedInvoiceForm({
       setIsAddServiceDialogOpen(false)
       setSelectedServiceToAdd(null)
       setServiceRate(0)
-      alert('Service added to client successfully!')
+      showAlert({ message: 'Service added to client successfully!', type: 'success' })
     },
     onError: (error: any) => {
-      alert(error.message || 'Failed to add service to client')
+      showAlert({ message: error.message || 'Failed to add service to client', type: 'error' })
     }
   })
 

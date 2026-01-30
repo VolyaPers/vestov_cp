@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -45,6 +46,7 @@ const isPublicHoliday = (date: Date) => {
 }
 
 export function VacationPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -114,7 +116,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to approve request: ${errorMessage}`)
+      showAlert({ message: `Failed to approve request: ${errorMessage}`, type: 'error' })
     },
   })
 
@@ -128,7 +130,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to deny request: ${errorMessage}`)
+      showAlert({ message: `Failed to deny request: ${errorMessage}`, type: 'error' })
     },
   })
 
@@ -142,7 +144,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to cancel request: ${errorMessage}`)
+      showAlert({ message: `Failed to cancel request: ${errorMessage}`, type: 'error' })
     },
   })
 
@@ -153,7 +155,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to delete request: ${errorMessage}`)
+      showAlert({ message: `Failed to delete request: ${errorMessage}`, type: 'error' })
     },
   })
 
@@ -188,7 +190,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create leave request'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     },
   })
 
@@ -229,7 +231,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create leave request'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     },
   })
 
@@ -251,7 +253,7 @@ export function VacationPage() {
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to update request: ${errorMessage}`)
+      showAlert({ message: `Failed to update request: ${errorMessage}`, type: 'error' })
     },
   })
 
@@ -272,7 +274,7 @@ export function VacationPage() {
 
   const handleAddLeave = async () => {
     if (!calendarFormData.employeeId || !calendarFormData.leaveTypeId) {
-      alert('Please select employee and leave type')
+      showAlert({ message: 'Please select employee and leave type', type: 'warning' })
       return
     }
     createLeaveMutation.mutate(calendarFormData)
@@ -280,11 +282,11 @@ export function VacationPage() {
 
   const handleAddRequest = async () => {
     if (!requestFormData.employeeId || !requestFormData.leaveTypeId) {
-      alert('Please select employee and leave type')
+      showAlert({ message: 'Please select employee and leave type', type: 'warning' })
       return
     }
     if (!requestFormData.startDate || !requestFormData.endDate) {
-      alert('Please select start and end dates')
+      showAlert({ message: 'Please select start and end dates', type: 'warning' })
       return
     }
     createRequestMutation.mutate(requestFormData)
@@ -302,19 +304,18 @@ export function VacationPage() {
     cancelMutation.mutate({ id: requestId, reason: 'Canceled by admin' })
   }
 
-  const handleDelete = (requestId: string, employeeName: string) => {
-    const firstConfirm = window.confirm(
-      `Are you sure you want to permanently delete this leave request for ${employeeName}?`
-    )
+  const handleDelete = async (requestId: string, employeeName: string) => {
+    const confirmed = await showConfirm({
+      title: 'Delete Leave Request',
+      message: `Are you sure you want to permanently delete this leave request for ${employeeName}?\n\nThis action cannot be undone.`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
 
-    if (firstConfirm) {
-      const secondConfirm = window.confirm(
-        'This action cannot be undone. Delete this request permanently?'
-      )
-
-      if (secondConfirm) {
-        deleteMutation.mutate(requestId)
-      }
+    if (confirmed) {
+      deleteMutation.mutate(requestId)
     }
   }
 
@@ -341,11 +342,11 @@ export function VacationPage() {
     const request = selectedVacation.request || selectedVacation
 
     if (!editFormData.employeeId || !editFormData.leaveTypeId) {
-      alert('Please select employee and leave type')
+      showAlert({ message: 'Please select employee and leave type', type: 'warning' })
       return
     }
     if (!editFormData.startDate || !editFormData.endDate) {
-      alert('Please select start and end dates')
+      showAlert({ message: 'Please select start and end dates', type: 'warning' })
       return
     }
 

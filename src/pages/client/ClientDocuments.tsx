@@ -6,17 +6,24 @@ import {
   Download,
   Eye,
   Calendar,
-  User,
   Folder,
   ChevronDown,
   ChevronRight,
-  Building2
+  Building2,
+  Upload,
+  UserCircle,
+  Shield
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { useCustomAlert } from '@/components/ui/custom-alert'
+import type { ClientService } from '@/types/common'
 
 interface Document {
   id: number
@@ -47,15 +54,6 @@ interface DocumentFolder {
   documents: DocumentWithUploader[]
 }
 
-interface ClientService {
-  id: number
-  clientId: number
-  serviceTypeName: string
-  serviceCategory: string
-  serviceTitle: string | null
-  startDate: string
-}
-
 interface ServiceDocuments {
   folders: DocumentFolder[]
   rootDocuments: DocumentWithUploader[]
@@ -63,6 +61,7 @@ interface ServiceDocuments {
 }
 
 export function ClientDocuments() {
+  const { showAlert } = useCustomAlert()
   const [, params] = useRoute('/client/documents/:clientId')
   if (!hasRouteParam(params, 'clientId')) {
     return <div>Client ID not found</div>
@@ -79,13 +78,34 @@ export function ClientDocuments() {
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
   const [previewDocument, setPreviewDocument] = useState<DocumentWithUploader | null>(null)
 
+  // Access level for the current user (read, write, or admin)
+  const [accessLevel, setAccessLevel] = useState<string | null>(null)
+
+  // Upload states
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
+  const [selectedService, setSelectedService] = useState<ClientService | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [documentTitle, setDocumentTitle] = useState('')
+  const [targetFolderId, setTargetFolderId] = useState<number | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [showFolderSelect, setShowFolderSelect] = useState(false)
+
+  // Check if user can upload documents (write or admin access level)
+  const canUpload = accessLevel === 'write' || accessLevel === 'admin'
+
   useEffect(() => {
     const loadServices = async () => {
       if (!clientId) return
 
       try {
-        // Get client data which includes services
+        // Get client data which includes services and access level
         const clientData = await api.getClient(clientId)
+
+        // Set the user's access level for this client
+        if (clientData?.accessLevel) {
+          setAccessLevel(clientData.accessLevel)
+        }
+
         if (clientData?.services) {
           setServices(clientData.services.filter((s: any) => s.isActive))
           // Auto-expand all services
@@ -139,6 +159,51 @@ export function ClientDocuments() {
   }
 
 
+  const openUploadDialog = (service: ClientService, folderId: number | null = null) => {
+    setSelectedService(service)
+    setTargetFolderId(folderId)
+    setShowFolderSelect(folderId === null)
+    setIsUploadDialogOpen(true)
+  }
+
+  const resetUploadForm = () => {
+    setSelectedFile(null)
+    setDocumentTitle('')
+    setTargetFolderId(null)
+    setShowFolderSelect(false)
+  }
+
+  const handleUploadDocument = async () => {
+    if (!selectedFile || !selectedService) return
+
+    try {
+      setIsUploading(true)
+      const formData = new FormData()
+      formData.append('document', selectedFile)
+      formData.append('clientId', clientId.toString())
+      formData.append('clientServiceId', selectedService.id.toString())
+      if (documentTitle.trim()) {
+        formData.append('documentTitle', documentTitle.trim())
+      }
+      // Documents uploaded by clients are always visible to clients
+      formData.append('visibleToClient', 'true')
+      if (targetFolderId) {
+        formData.append('folderId', targetFolderId.toString())
+      }
+
+      await api.uploadServiceDocument(formData)
+      await loadServiceDocuments(selectedService.id)
+      setIsUploadDialogOpen(false)
+      resetUploadForm()
+      showAlert({ message: 'Document uploaded successfully!', type: 'success' })
+    } catch (error: any) {
+      console.error('Error uploading document:', error)
+      showAlert({ message: error.message || 'Failed to upload document', type: 'error' })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   const handleDocumentDownload = async (documentId: number, filename: string) => {
     try {
       const blob = await api.requestBinary(`/documents/download/${documentId}`)
@@ -153,13 +218,8 @@ export function ClientDocuments() {
       document.body.removeChild(a)
     } catch (error: any) {
       console.error('Failed to download document:', error)
-      alert(error.message || 'Failed to download document')
+      showAlert({ message: error.message || 'Failed to download document', type: 'error' })
     }
-  }
-
-  const handleDocumentPreview = (doc: DocumentWithUploader) => {
-    setPreviewDocument(doc)
-    setIsPreviewDialogOpen(true)
   }
 
   const getPreviewUrl = (documentId: number) => {
@@ -190,69 +250,92 @@ export function ClientDocuments() {
     return total
   }
 
-  const renderDocument = (doc: DocumentWithUploader) => (
-    <Card key={doc.document.id} className="hover:shadow-md transition-shadow" data-testid="document-item">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4 flex-1 min-w-0">
-            <div className="p-2 bg-gray-100 rounded flex-shrink-0">
-              <FileText className="h-5 w-5 text-gray-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 mb-1 truncate">
-                {doc.document.documentTitle || doc.document.name}
-              </h3>
-              {doc.document.documentTitle && (
-                <p className="text-xs text-gray-400 truncate mb-1">{doc.document.name}</p>
-              )}
-              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
-                {doc.document.type && (
-                  <Badge variant="outline" className="text-xs">
-                    {doc.document.type}
-                  </Badge>
+  const renderDocument = (doc: DocumentWithUploader) => {
+    const uploadedByClient = doc.uploadedBy?.email?.includes('@') &&
+      !doc.uploadedBy?.email?.includes('vestov') &&
+      !doc.uploadedBy?.email?.includes('admin')
+
+    return (
+      <Card key={doc.document.id} className="hover:shadow-md transition-shadow" data-testid="document-item">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4 flex-1 min-w-0">
+              <div className="p-2 bg-gray-100 rounded flex-shrink-0">
+                <FileText className="h-5 w-5 text-gray-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-semibold text-gray-900 truncate">
+                    {doc.document.documentTitle || doc.document.name}
+                  </h3>
+                </div>
+                {doc.document.documentTitle && (
+                  <p className="text-xs text-gray-400 truncate mb-1">{doc.document.name}</p>
                 )}
-                <span>{formatFileSize(doc.document.fileSize)}</span>
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {new Date(doc.document.createdAt).toLocaleDateString()}
-                </span>
-                {doc.uploadedBy && (
+                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+                  {doc.document.type && (
+                    <Badge variant="outline" className="text-xs">
+                      {doc.document.type}
+                    </Badge>
+                  )}
+                  <span>{formatFileSize(doc.document.fileSize)}</span>
                   <span className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    {doc.uploadedBy.fullName}
+                    <Calendar className="h-3 w-3" />
+                    {new Date(doc.document.createdAt).toLocaleDateString()}
                   </span>
-                )}
+                  {doc.uploadedBy && (
+                    <Badge
+                      variant="outline"
+                      className={uploadedByClient
+                        ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
+                        : "bg-purple-50 text-purple-700 border-purple-200 text-xs"
+                      }
+                    >
+                      {uploadedByClient ? (
+                        <>
+                          <UserCircle className="h-3 w-3 mr-1" />
+                          You
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="h-3 w-3 mr-1" />
+                          Vestov Team
+                        </>
+                      )}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
-            {canPreview(doc.document.name) && (
+            <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
+              {canPreview(doc.document.name) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(getPreviewUrl(doc.document.id), '_blank')}
+                  className="text-green-600 hover:text-green-700"
+                  title="Open preview in new tab"
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  Preview
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(getPreviewUrl(doc.document.id), '_blank')}
-                className="text-green-600 hover:text-green-700"
-                title="Open preview in new tab"
+                onClick={() => handleDocumentDownload(doc.document.id, doc.document.name)}
+                className="text-blue-600 hover:text-blue-700"
+                title="Download this document"
               >
-                <Eye className="h-4 w-4 mr-1" />
-                Preview
+                <Download className="h-4 w-4 mr-1" />
+                Download
               </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDocumentDownload(doc.document.id, doc.document.name)}
-              className="text-blue-600 hover:text-blue-700"
-              title="Download this document"
-            >
-              <Download className="h-4 w-4 mr-1" />
-              Download
-            </Button>
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
+        </CardContent>
+      </Card>
+    )
+  }
 
   const openFolderViewDialog = (folder: DocumentFolder) => {
     setViewingFolder(folder)
@@ -414,16 +497,32 @@ export function ClientDocuments() {
                       </CardDescription>
                     </div>
                   </div>
-                  {serviceDocuments[service.id] && (
-                    <Badge variant="secondary">
-                      {serviceDocuments[service.id].rootDocuments.length +
-                        serviceDocuments[service.id].folders.reduce(
-                          (acc, f) => acc + f.documents.length,
-                          0
-                        )}{' '}
-                      documents
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {canUpload && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openUploadDialog(service)
+                        }}
+                        title="Upload a document"
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        Upload
+                      </Button>
+                    )}
+                    {serviceDocuments[service.id] && (
+                      <Badge variant="secondary">
+                        {serviceDocuments[service.id].rootDocuments.length +
+                          serviceDocuments[service.id].folders.reduce(
+                            (acc, f) => acc + f.documents.length,
+                            0
+                          )}{' '}
+                        documents
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
 
@@ -513,6 +612,95 @@ export function ClientDocuments() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Document Dialog */}
+      <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+        <DialogContent className="w-full">
+          <DialogHeader>
+            <DialogTitle>Upload Document</DialogTitle>
+            <DialogDescription>
+              Upload a document to {selectedService?.serviceTypeName}
+              {targetFolderId && serviceDocuments[selectedService?.id || 0]?.folders.find(f => f.id === targetFolderId)
+                ? ` / ${serviceDocuments[selectedService?.id || 0]?.folders.find(f => f.id === targetFolderId)?.name}`
+                : ''
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="documentFile">Select File</Label>
+              <Input
+                id="documentFile"
+                type="file"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt"
+              />
+              {selectedFile && (
+                <p className="text-sm text-gray-500 mt-1">
+                  {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="documentTitle">Document Title (optional)</Label>
+              <Input
+                id="documentTitle"
+                value={documentTitle}
+                onChange={(e) => setDocumentTitle(e.target.value)}
+                placeholder="Enter a title for this document"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Leave blank to use the filename
+              </p>
+            </div>
+
+            {/* Folder select - only show when uploading from service level */}
+            {showFolderSelect && selectedService && serviceDocuments[selectedService.id]?.folders.length > 0 && (
+              <div>
+                <Label htmlFor="selectFolder">Select Folder (optional)</Label>
+                <Select
+                  value={targetFolderId?.toString() || 'none'}
+                  onValueChange={(value) => setTargetFolderId(value === 'none' ? null : parseInt(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No folder (General Documents)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      No folder (General Documents)
+                    </SelectItem>
+                    {serviceDocuments[selectedService.id]?.folders.map((folder) => (
+                      <SelectItem key={folder.id} value={folder.id.toString()}>
+                        {folder.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty to add to General Documents
+                </p>
+              </div>
+            )}
+
+            <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+              <p>Supported formats: PDF, Word, Excel, Images, Text</p>
+              <p>Maximum file size: 10MB</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsUploadDialogOpen(false)
+              resetUploadForm()
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleUploadDocument} disabled={isUploading || !selectedFile}>
+              {isUploading ? 'Uploading...' : 'Upload'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

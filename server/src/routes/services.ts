@@ -367,6 +367,7 @@ router.get('/clients', requireAuth, async (req, res) => {
           teamSize: clients.teamSize,
           logoUrl: clients.logoUrl,
           createdAt: clients.createdAt,
+          accessLevel: clientUsers.accessLevel,
         })
         .from(clients)
         .innerJoin(clientUsers, eq(clients.id, clientUsers.clientId))
@@ -460,6 +461,7 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
     }
 
     // Check if user has access to this client
+    let userAccessLevel: string | null = null
     if (req.user?.role === 'client') {
       // Client users can only access clients they are assigned to
       const clientAccess = await db
@@ -475,6 +477,7 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
       if (clientAccess.length === 0) {
         return res.status(403).json({ error: 'Access denied to this client' })
       }
+      userAccessLevel = clientAccess[0].accessLevel
     }
 
     const [client] = await db
@@ -532,6 +535,8 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
       ...client,
       status: calculatedStatus, // Override status with calculated value
       services,
+      // Include access level for client users
+      ...(userAccessLevel && { accessLevel: userAccessLevel }),
     })
   } catch (error) {
     console.error('Error fetching client details:', error)

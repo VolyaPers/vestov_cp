@@ -61,6 +61,8 @@ export interface Client {
     paid: string
     pending: string
   }
+  // Access level for client users (only present when user is a client)
+  accessLevel?: AccessLevel
 }
 
 export interface ClientService {

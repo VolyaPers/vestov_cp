@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { format, differenceInDays } from 'date-fns'
 import { api } from '@/lib/api'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface LeaveBalance {
   leaveTypeName: string
@@ -31,6 +32,7 @@ interface LeaveRequest {
 }
 
 export function EmployeeLeaveRequest() {
+  const { showAlert } = useCustomAlert()
   const [teamMemberId, setTeamMemberId] = useState<number | null>(null)
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([])
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
@@ -109,7 +111,7 @@ export function EmployeeLeaveRequest() {
     e.preventDefault()
 
     if (!teamMemberId || !formData.leaveTypeId || !formData.startDate || !formData.endDate) {
-      alert('Please fill in all required fields')
+      showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -135,11 +137,11 @@ export function EmployeeLeaveRequest() {
       // Reload data
       await loadData()
 
-      alert('Leave request submitted successfully!')
+      showAlert({ message: 'Leave request submitted successfully!', type: 'success' })
     } catch (error) {
       console.error('Error submitting leave request:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.'
-      alert(errorMessage)
+      showAlert({ message: errorMessage, type: 'error' })
     } finally {
       setSubmitting(false)
     }

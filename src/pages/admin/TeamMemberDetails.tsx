@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { VacationBalanceCard } from '@/components/VacationBalanceCard'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { format, addYears, differenceInDays } from 'date-fns'
@@ -95,6 +96,7 @@ interface LeaveRequest {
 }
 
 export function TeamMemberDetails() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [match, params] = useRoute('/admin/team-detail/:id')
   const [member, setMember] = useState<TeamMember | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -272,7 +274,7 @@ export function TeamMemberDetails() {
       setCycleFormData({ cycleStart: '', isActive: true })
     } catch (error) {
       console.error('Error creating employment cycle:', error)
-      alert('Error creating employment cycle. Please try again.')
+      showAlert({ message: 'Error creating employment cycle. Please try again.', type: 'error' })
     } finally {
       setIsCreatingCycle(false)
     }
@@ -313,11 +315,11 @@ export function TeamMemberDetails() {
         setCycleFormData({ cycleStart: '', isActive: true })
       } else {
         console.error('Failed to update employment cycle')
-        alert('Failed to update employment cycle. Please try again.')
+        showAlert({ message: 'Failed to update employment cycle. Please try again.', type: 'error' })
       }
     } catch (error) {
       console.error('Error updating employment cycle:', error)
-      alert('Error updating employment cycle. Please try again.')
+      showAlert({ message: 'Error updating employment cycle. Please try again.', type: 'error' })
     } finally {
       setIsCreatingCycle(false)
     }
@@ -365,9 +367,18 @@ export function TeamMemberDetails() {
   }
 
   const handleDeleteTeamMember = async () => {
-    if (!member || !confirm(`Are you sure you want to delete ${member.name}? This action cannot be undone.`)) {
-      return
-    }
+    if (!member) return
+
+    const confirmed = await showConfirm({
+      title: 'Delete Team Member',
+      message: `Are you sure you want to delete ${member.name}? This action cannot be undone.`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.deleteTeamMember(String(member.id))
@@ -375,7 +386,7 @@ export function TeamMemberDetails() {
       window.location.href = '/admin/team'
     } catch (error) {
       console.error('Error deleting team member:', error)
-      alert('Error deleting team member. Please try again.')
+      showAlert({ message: 'Error deleting team member. Please try again.', type: 'error' })
     }
   }
 

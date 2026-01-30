@@ -18,9 +18,11 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 export function AdminDashboard() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [isSyncingAvatars, setIsSyncingAvatars] = useState(false)
 
   // WebSocket connection for real-time shift updates
@@ -47,17 +49,26 @@ export function AdminDashboard() {
   useShiftUpdateListener(handleShiftUpdate)
 
   const handleSyncSlackAvatars = async () => {
-    if (!confirm('This will sync all user avatars from Slack. Users must have matching email addresses in Slack. Continue?')) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Sync Slack Avatars',
+      message: 'This will sync all user avatars from Slack. Users must have matching email addresses in Slack. Continue?',
+      type: 'info',
+      confirmText: 'Sync',
+      cancelText: 'Cancel',
+    })
+
+    if (!confirmed) return
 
     setIsSyncingAvatars(true)
     try {
       const result = await api.syncAllSlackAvatars()
-      alert(`Sync complete!\n\nSynced: ${result.results.synced}\nNot found in Slack: ${result.results.notFound}\nErrors: ${result.results.errors}`)
+      await showAlert({
+        message: `Sync complete!\n\nSynced: ${result.results.synced}\nNot found in Slack: ${result.results.notFound}\nErrors: ${result.results.errors}`,
+        type: 'success'
+      })
     } catch (error: any) {
       console.error('Failed to sync Slack avatars:', error)
-      alert(error.message || 'Failed to sync Slack avatars')
+      await showAlert({ message: error.message || 'Failed to sync Slack avatars', type: 'error' })
     } finally {
       setIsSyncingAvatars(false)
     }

@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 interface ServiceType {
@@ -49,6 +50,7 @@ interface ServiceAnalytics {
 }
 
 export function ServicesPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [services, setServices] = useState<ServiceType[]>([])
   const [analytics, setAnalytics] = useState<ServiceAnalytics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -124,8 +126,17 @@ export function ServicesPage() {
   }
 
   const handleDeleteService = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this service type?')) return
-    
+    const confirmed = await showConfirm({
+      title: 'Delete Service Type',
+      message: 'Are you sure you want to delete this service type?',
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
     try {
       await api.request(`/services/service-types/${id}`, {
         method: 'DELETE',
@@ -135,10 +146,10 @@ export function ServicesPage() {
     } catch (error: any) {
       console.error('Failed to delete service:', error)
       // Show a user-friendly error message
-      const message = error.message === 'Cannot delete service type that is in use' 
+      const message = error.message === 'Cannot delete service type that is in use'
         ? 'Cannot delete this service type because it is currently assigned to clients. Remove all client assignments first.'
         : error.message || 'Failed to delete service type. Please try again.'
-      alert(message)
+      await showAlert({ message, type: 'error' })
     }
   }
 

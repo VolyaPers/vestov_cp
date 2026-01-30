@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 interface User {
@@ -41,6 +42,7 @@ interface UserWithClientAssignments extends User {
 }
 
 export function UsersPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [users, setUsers] = useState<UserWithClientAssignments[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -118,7 +120,7 @@ export function UsersPage() {
 
   const handleCreateUser = async () => {
     if (!userFormData.username || !userFormData.password || !userFormData.fullName || !userFormData.email) {
-      alert('Please fill in all required fields')
+      await showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -127,10 +129,10 @@ export function UsersPage() {
       await loadUsers()
       setIsUserDialogOpen(false)
       resetUserForm()
-      alert('User created successfully!')
+      await showAlert({ message: 'User created successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to create user:', error)
-      alert(error.message || 'Failed to create user')
+      await showAlert({ message: error.message || 'Failed to create user', type: 'error' })
     }
   }
 
@@ -150,7 +152,7 @@ export function UsersPage() {
 
   const handleUpdateUser = async () => {
     if (!isEditingUser || !userFormData.username || !userFormData.fullName || !userFormData.email) {
-      alert('Please fill in all required fields')
+      await showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
@@ -175,10 +177,10 @@ export function UsersPage() {
       await loadUsers()
       setIsUserDialogOpen(false)
       resetUserForm()
-      alert('User updated successfully!')
+      await showAlert({ message: 'User updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update user:', error)
-      alert(error.message || 'Failed to update user')
+      await showAlert({ message: error.message || 'Failed to update user', type: 'error' })
     }
   }
 
@@ -186,35 +188,32 @@ export function UsersPage() {
     try {
       await api.updateUser(user.id, { isActive: !user.isActive })
       await loadUsers()
-      alert(`User ${user.isActive ? 'deactivated' : 'activated'} successfully!`)
+      await showAlert({ message: `User ${user.isActive ? 'deactivated' : 'activated'} successfully!`, type: 'success' })
     } catch (error: any) {
       console.error('Failed to toggle user status:', error)
-      alert(error.message || 'Failed to update user status')
+      await showAlert({ message: error.message || 'Failed to update user status', type: 'error' })
     }
   }
 
   const handleDeleteUserPermanently = async (user: User) => {
-    const confirmMessage = `Are you sure you want to PERMANENTLY DELETE user "${user.fullName}" (${user.email})?\n\nThis action CANNOT be undone and will delete:\n- All user data\n- All related records\n- All assignments\n- All history\n\nThis is a destructive operation!`
-    
-    if (!confirm(confirmMessage)) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Delete User Permanently',
+      message: `Are you sure you want to permanently delete "${user.fullName}" (${user.email})?\n\nThis action cannot be undone and will delete:\n• All user data\n• All related records\n• All assignments\n• All history`,
+      type: 'error',
+      confirmText: 'Delete Permanently',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
 
-    const doubleConfirm = prompt(`Type "DELETE" to confirm permanent deletion of user "${user.fullName}":`)
-    if (doubleConfirm !== 'DELETE') {
-      if (doubleConfirm !== null) {
-        alert('Confirmation text did not match. Deletion cancelled.')
-      }
-      return
-    }
+    if (!confirmed) return
 
     try {
       await api.deleteUserHard(user.id)
       await loadUsers()
-      alert('User permanently deleted successfully!')
+      await showAlert({ message: 'User permanently deleted successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to delete user permanently:', error)
-      alert(error.message || 'Failed to delete user permanently')
+      await showAlert({ message: error.message || 'Failed to delete user permanently', type: 'error' })
     }
   }
 
@@ -242,7 +241,7 @@ export function UsersPage() {
 
   const handleAssignToClient = async () => {
     if (!selectedUserForAssignment || !assignmentFormData.clientId) {
-      alert('Please select a client')
+      await showAlert({ message: 'Please select a client', type: 'warning' })
       return
     }
 
@@ -259,25 +258,31 @@ export function UsersPage() {
       await loadUsers()
       setIsClientAssignmentDialogOpen(false)
       setSelectedUserForAssignment(null)
-      alert('User assigned to client successfully!')
+      await showAlert({ message: 'User assigned to client successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to assign user to client:', error)
-      alert(error.message || 'Failed to assign user to client')
+      await showAlert({ message: error.message || 'Failed to assign user to client', type: 'error' })
     }
   }
 
   const handleRemoveFromClient = async (userId: number, clientId: number, clientName: string) => {
-    if (!confirm(`Remove user from "${clientName}"?`)) {
-      return
-    }
+    const confirmed = await showConfirm({
+      title: 'Remove from Client',
+      message: `Remove user from "${clientName}"?`,
+      type: 'warning',
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+    })
+
+    if (!confirmed) return
 
     try {
       await api.removeUserFromClient(userId, clientId)
       await loadUsers()
-      alert('User removed from client successfully!')
+      await showAlert({ message: 'User removed from client successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to remove user from client:', error)
-      alert(error.message || 'Failed to remove user from client')
+      await showAlert({ message: error.message || 'Failed to remove user from client', type: 'error' })
     }
   }
 
@@ -285,10 +290,10 @@ export function UsersPage() {
     try {
       await api.updateClientAssignment(userId, clientId, { accessLevel: newAccessLevel })
       await loadUsers()
-      alert('Access level updated successfully!')
+      await showAlert({ message: 'Access level updated successfully!', type: 'success' })
     } catch (error: any) {
       console.error('Failed to update access level:', error)
-      alert(error.message || 'Failed to update access level')
+      await showAlert({ message: error.message || 'Failed to update access level', type: 'error' })
     }
   }
 

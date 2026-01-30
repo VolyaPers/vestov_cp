@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 
 interface Feedback {
@@ -37,6 +38,7 @@ interface Feedback {
 }
 
 export function AdminFeedbackPage() {
+  const { showAlert, showConfirm } = useCustomAlert()
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -83,21 +85,30 @@ export function AdminFeedbackPage() {
       setAdminResponse('')
     } catch (error) {
       console.error('Error responding to feedback:', error)
-      alert('Failed to send response')
+      showAlert({ message: 'Failed to send response', type: 'error' })
     } finally {
       setIsSaving(false)
     }
   }
 
   const handleDelete = async (feedback: Feedback) => {
-    if (!confirm(`Are you sure you want to delete this feedback from ${feedback.submittedBy.fullName}?`)) return
+    const confirmed = await showConfirm({
+      title: 'Delete Feedback',
+      message: `Are you sure you want to delete this feedback from ${feedback.submittedBy.fullName}?`,
+      type: 'warning',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+
+    if (!confirmed) return
 
     try {
       await api.deleteFeedback(feedback.id)
       await loadFeedbacks()
     } catch (error) {
       console.error('Error deleting feedback:', error)
-      alert('Failed to delete feedback')
+      showAlert({ message: 'Failed to delete feedback', type: 'error' })
     }
   }
 
