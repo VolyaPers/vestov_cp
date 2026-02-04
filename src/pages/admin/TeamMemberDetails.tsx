@@ -31,7 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { VacationBalanceCard } from '@/components/VacationBalanceCard'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseLocalDate } from '@/lib/utils'
 import { format, addYears, differenceInDays } from 'date-fns'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import type { UpdateTeamMemberData } from '@/types/common'
@@ -343,10 +343,11 @@ export function TeamMemberDetails() {
 
     try {
       setIsSubmitting(true)
-      const updateData: UpdateTeamMemberData = {
+      const updateData: UpdateTeamMemberData & { role?: string; startDate?: string; phone?: string; isBillable?: boolean; isDeveloper?: boolean } = {
         name: editingMember.name,
         email: editingMember.email,
-        position: editingMember.role,
+        role: editingMember.role,
+        position: editingMember.position,
         skills: editingMember.skills || [],
         hourlyRate: typeof editingMember.hourlyRate === 'number' ? editingMember.hourlyRate : parseFloat(String(editingMember.hourlyRate || '0')),
         experienceLevel: 'middle', // Default, TeamMember interface doesn't include this
@@ -354,6 +355,10 @@ export function TeamMemberDetails() {
         bio: editingMember.bio || undefined,
         location: editingMember.location || undefined,
         clientId: editingMember.clientId || undefined,
+        startDate: editingMember.startDate, // Include startDate
+        phone: editingMember.phone || undefined, // Include phone
+        isBillable: editingMember.isBillable, // Include isBillable
+        isDeveloper: editingMember.isDeveloper, // Include isDeveloper
       }
       const updatedMember = await api.updateTeamMember(String(editingMember.id), updateData)
       setMember(updatedMember as unknown as TeamMember)
@@ -557,7 +562,7 @@ export function TeamMemberDetails() {
                 )}
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <Calendar className="h-4 w-4 text-gray-400" />
-                  <span className="text-gray-900">Started {format(new Date(member.startDate), 'MMM d, yyyy')}</span>
+                  <span className="text-gray-900">Started {format(parseLocalDate(member.startDate), 'MMM d, yyyy')}</span>
                 </div>
               </div>
             </div>
@@ -778,7 +783,7 @@ export function TeamMemberDetails() {
                                 <div className="flex items-center gap-3">
                                   <Badge className={colors.badge}>{request.leaveTypeName}</Badge>
                                   <span className="text-sm text-gray-600">
-                                    {format(new Date(request.startDate), 'MMM d, yyyy')} - {format(new Date(request.endDate), 'MMM d, yyyy')}
+                                    {format(parseLocalDate(request.startDate), 'MMM d, yyyy')} - {format(parseLocalDate(request.endDate), 'MMM d, yyyy')}
                                   </span>
                                 </div>
                                 <span className="text-sm font-medium">{parseFloat(request.daysCount).toFixed(2)} days</span>
@@ -801,7 +806,7 @@ export function TeamMemberDetails() {
                               <div className="flex items-center gap-3">
                                 <Badge className="bg-yellow-100 text-yellow-800">{request.leaveTypeName}</Badge>
                                 <span className="text-sm text-gray-600">
-                                  {format(new Date(request.startDate), 'MMM d, yyyy')} - {format(new Date(request.endDate), 'MMM d, yyyy')}
+                                  {format(parseLocalDate(request.startDate), 'MMM d, yyyy')} - {format(parseLocalDate(request.endDate), 'MMM d, yyyy')}
                                 </span>
                               </div>
                               <span className="text-sm font-medium">{parseFloat(request.daysCount).toFixed(2)} days</span>
@@ -823,7 +828,7 @@ export function TeamMemberDetails() {
                               <div className="flex items-center gap-3">
                                 <Badge className="bg-red-100 text-red-800">{request.leaveTypeName}</Badge>
                                 <span className="text-sm text-gray-600">
-                                  {format(new Date(request.startDate), 'MMM d, yyyy')} - {format(new Date(request.endDate), 'MMM d, yyyy')}
+                                  {format(parseLocalDate(request.startDate), 'MMM d, yyyy')} - {format(parseLocalDate(request.endDate), 'MMM d, yyyy')}
                                 </span>
                               </div>
                               <span className="text-sm font-medium">{parseFloat(request.daysCount).toFixed(2)} days</span>

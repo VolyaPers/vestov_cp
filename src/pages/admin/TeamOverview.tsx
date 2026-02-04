@@ -32,7 +32,7 @@ import { useCustomAlert } from '@/components/ui/custom-alert'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, parseLocalDate } from '@/lib/utils'
 import { format } from 'date-fns'
 import { api } from '@/lib/api'
 import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus, User } from '@/types/common'
@@ -355,7 +355,7 @@ export function TeamOverview() {
         )}
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <Calendar className="h-3.5 w-3.5 text-gray-400" />
-          <span>Started {format(new Date(member.startDate), 'MMM d, yyyy')}</span>
+          <span>Started {format(parseLocalDate(member.startDate), 'MMM d, yyyy')}</span>
         </div>
       </div>
 

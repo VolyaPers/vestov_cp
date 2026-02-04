@@ -1,8 +1,19 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { parseISO } from "date-fns"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * Parse a date string (YYYY-MM-DD) as a local date without timezone conversion.
+ * This prevents the off-by-one-day bug that occurs when using new Date() with date strings,
+ * which interprets them as UTC midnight and can show the previous day in local timezone.
+ */
+export function parseLocalDate(dateString: string): Date {
+  // parseISO from date-fns correctly handles date-only strings as local dates
+  return parseISO(dateString)
 }
 
 export function formatCurrency(amount: number): string {
@@ -13,11 +24,12 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatDate(date: string | Date): string {
+  const parsedDate = typeof date === 'string' ? parseLocalDate(date) : date
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  }).format(new Date(date))
+  }).format(parsedDate)
 }
 
 export function calculateDays(

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
+import { parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { useCustomAlert } from '@/components/ui/custom-alert'
@@ -399,9 +400,9 @@ export function ClientPortal() {
                       <p className="text-sm text-gray-600 mb-2">{service.serviceDescription}</p>
                     )}
                     <div className="flex items-center gap-6 text-sm text-gray-500">
-                      <span>Started: {new Date(service.startDate).toLocaleDateString()}</span>
+                      <span>Started: {parseLocalDate(service.startDate).toLocaleDateString()}</span>
                       {service.endDate && (
-                        <span>Ended: {new Date(service.endDate).toLocaleDateString()}</span>
+                        <span>Ended: {parseLocalDate(service.endDate).toLocaleDateString()}</span>
                       )}
                     </div>
                   </div>

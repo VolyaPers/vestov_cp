@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import { parseLocalDate } from '@/lib/utils'
 
 interface Client {
   id: number
@@ -706,7 +707,7 @@ export function ClientsPage() {
                               ) : (
                                 'Pricing: Individual developers'
                               )}
-                              <span className="ml-2">Since: {new Date(service.startDate).toLocaleDateString()}</span>
+                              <span className="ml-2">Since: {parseLocalDate(service.startDate).toLocaleDateString()}</span>
                             </div>
                             {service.totalAmount !== undefined && (
                               <div className="text-xs font-medium text-green-600 mt-1">

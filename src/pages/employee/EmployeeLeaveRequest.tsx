@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { format, differenceInDays } from 'date-fns'
+import { format, differenceInDays, parseISO } from 'date-fns'
 import { api } from '@/lib/api'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 
@@ -149,8 +149,8 @@ export function EmployeeLeaveRequest() {
 
   const calculateDays = () => {
     if (!formData.startDate || !formData.endDate) return 0
-    const start = new Date(formData.startDate)
-    const end = new Date(formData.endDate)
+    const start = parseISO(formData.startDate)
+    const end = parseISO(formData.endDate)
     return differenceInDays(end, start) + 1
   }
 
@@ -327,7 +327,7 @@ export function EmployeeLeaveRequest() {
                     <div className="flex items-center gap-4 text-sm text-gray-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        {format(new Date(request.startDate), 'MMM d, yyyy')} - {format(new Date(request.endDate), 'MMM d, yyyy')}
+                        {format(parseISO(request.startDate), 'MMM d, yyyy')} - {format(parseISO(request.endDate), 'MMM d, yyyy')}
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="h-4 w-4" />

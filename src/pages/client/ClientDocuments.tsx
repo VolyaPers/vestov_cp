@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import type { ClientService } from '@/types/common'
 
@@ -492,7 +493,7 @@ export function ClientDocuments() {
                           {service.serviceCategory}
                         </Badge>
                         <span className="text-gray-500">
-                          Started {new Date(service.startDate).toLocaleDateString()}
+                          Started {parseLocalDate(service.startDate).toLocaleDateString()}
                         </span>
                       </CardDescription>
                     </div>

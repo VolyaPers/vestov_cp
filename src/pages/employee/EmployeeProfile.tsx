@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { api } from '@/lib/api'
+import { parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface TeamMember {
@@ -167,7 +168,7 @@ export function EmployeeProfile() {
               <div className="flex items-center gap-2 mt-2">
                 <Calendar className="h-4 w-4 text-gray-400" />
                 <span className="text-sm text-gray-500">
-                  Started {new Date(teamMember.startDate).toLocaleDateString('en-US', {
+                  Started {parseLocalDate(teamMember.startDate).toLocaleDateString('en-US', {
                     month: 'long',
                     year: 'numeric'
                   })}

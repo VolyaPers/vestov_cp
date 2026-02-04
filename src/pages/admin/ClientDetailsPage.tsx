@@ -21,6 +21,7 @@ import { InvoiceStatsChart } from '@/components/InvoiceStatsChart'
 import { EnhancedInvoiceForm } from '@/components/EnhancedInvoiceForm'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import { parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import type { ClientService } from '@/types/common'
@@ -1522,9 +1523,9 @@ export function ClientDetailsPage() {
                             </span>
                           )
                         )}
-                        <span>Started: {new Date(service.startDate).toLocaleDateString()}</span>
+                        <span>Started: {parseLocalDate(service.startDate).toLocaleDateString()}</span>
                         {service.endDate && (
-                          <span>Ended: {new Date(service.endDate).toLocaleDateString()}</span>
+                          <span>Ended: {parseLocalDate(service.endDate).toLocaleDateString()}</span>
                         )}
                         {service.slackChannelId && (
                           <span className="flex items-center gap-1">
@@ -1611,7 +1612,7 @@ export function ClientDetailsPage() {
                                 <span>{developer.email}</span>
                                 {developer.hourlyRate && <span>Rate: ${developer.hourlyRate}/hr</span>}
                                 {developer.fixedPrice && <span>Fixed: ${developer.fixedPrice}</span>}
-                                <span>Started: {new Date(developer.startDate).toLocaleDateString()}</span>
+                                <span>Started: {parseLocalDate(developer.startDate).toLocaleDateString()}</span>
                               </div>
                               {developer.workSchedule && (
                                 <div className="flex items-center gap-1 mt-2">
