@@ -395,12 +395,12 @@ export function ReportsPage() {
               <SelectContent>
                 <SelectItem value="all">All Clients</SelectItem>
                 {isLoadingClients && (
-                  <SelectItem value="loading" disabled>
+                  <SelectItem value="loading">
                     Loading clients...
                   </SelectItem>
                 )}
                 {!isLoadingClients && clients.length === 0 && (
-                  <SelectItem value="none" disabled>
+                  <SelectItem value="none">
                     No clients found
                   </SelectItem>
                 )}
