@@ -96,7 +96,7 @@ export function ReportsPage() {
   // Fetch all necessary data
   const { data: clients = [], isLoading: isLoadingClients } = useQuery<Client[]>({
     queryKey: ['clients'],
-    queryFn: api.getClients,
+    queryFn: () => api.getClients(),
     staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
