@@ -47,6 +47,7 @@ interface NavItem {
 // Navigation configurations per role
 const adminNavigation: NavItem[] = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: BarChart3 },
+  { name: 'Reports', href: '/admin/reports', icon: TrendingUp },
   { name: 'Services', href: '/admin/services', icon: Briefcase },
   {
     name: 'CRM',

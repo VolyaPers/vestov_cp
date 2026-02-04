@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { db, pool } from '../db/index.js'
-import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks, clientServiceTeamMembers, invoiceDevelopers, reimbursementRequests } from '../db/schema.js'
+import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks, clientServiceTeamMembers, invoiceDevelopers, invoices, invoiceServices, reimbursementRequests, documents, documentFolders } from '../db/schema.js'
 import { eq, and, sql, inArray } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { requireAuth } from '../middleware/auth.js'
@@ -697,7 +697,9 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
     const optionalDeletions = [
       {
         name: 'client_users',
-        operation: () => db.delete(clientUsers).where(eq(clientUsers.userId, userId))
+        operation: () => db.delete(clientUsers).where(
+          sql`${clientUsers.userId} = ${userId} OR ${clientUsers.assignedBy} = ${userId}`
+        )
       },
       {
         name: 'messages',
@@ -716,7 +718,7 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
       {
         name: 'feedback',
         operation: () => db.delete(feedback).where(
-          sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1}`
+          sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1} OR ${feedback.adminRespondedBy} = ${userId}`
         )
       },
       {
@@ -726,6 +728,77 @@ router.delete('/:id/hard', requireAuth, async (req, res) => {
             user.teamMemberId ? sql`${timeEntries.teamMemberId} = ${user.teamMemberId}` : sql`false`
           }`
         )
+      },
+      {
+        name: 'invoices, invoice_services, and invoice_developers',
+        operation: async () => {
+          // First get all invoices created by this user
+          const userInvoices = await db
+            .select({ id: invoices.id })
+            .from(invoices)
+            .where(eq(invoices.createdBy, userId))
+
+          if (userInvoices.length > 0) {
+            const invoiceIds = userInvoices.map((inv) => inv.id)
+
+            // Get all invoice_services for these invoices
+            const invoiceServiceIds = await db
+              .select({ id: invoiceServices.id })
+              .from(invoiceServices)
+              .where(inArray(invoiceServices.invoiceId, invoiceIds))
+
+            if (invoiceServiceIds.length > 0) {
+              const serviceIds = invoiceServiceIds.map((s) => s.id)
+              // Delete invoice_developers first (grandchild table)
+              await db.delete(invoiceDevelopers).where(inArray(invoiceDevelopers.invoiceServiceId, serviceIds))
+              console.log(`[HARD DELETE] Deleted invoice_developers for ${serviceIds.length} invoice service(s)`)
+            }
+
+            // Then delete invoice_services (child table)
+            await db.delete(invoiceServices).where(inArray(invoiceServices.invoiceId, invoiceIds))
+            // Finally delete invoices
+            await db.delete(invoices).where(inArray(invoices.id, invoiceIds))
+            console.log(`[HARD DELETE] Deleted ${userInvoices.length} invoice(s) and related services`)
+          }
+        }
+      },
+      {
+        name: 'documents',
+        operation: () => db.delete(documents).where(eq(documents.userId, userId))
+      },
+      {
+        name: 'leave_requests (by requestedBy/decisionBy) and leave_request_events',
+        operation: async () => {
+          // Find leave requests where user is requester or decision maker
+          const userLeaveRequests = await db
+            .select({ id: leaveRequests.id })
+            .from(leaveRequests)
+            .where(
+              sql`${leaveRequests.requestedBy} = ${userId} OR ${leaveRequests.decisionBy} = ${userId}`
+            )
+
+          if (userLeaveRequests.length > 0) {
+            const requestIds = userLeaveRequests.map((r) => r.id)
+            // Delete events first
+            await db.delete(leaveRequestEvents).where(inArray(leaveRequestEvents.leaveRequestId, requestIds))
+            // Then delete requests
+            await db.delete(leaveRequests).where(inArray(leaveRequests.id, requestIds))
+            console.log(`[HARD DELETE] Deleted ${userLeaveRequests.length} leave request(s) where user was requester/decision maker`)
+          }
+
+          // Also delete leave request events where user was the actor (but not already deleted above)
+          await db.delete(leaveRequestEvents).where(eq(leaveRequestEvents.actorId, userId))
+        }
+      },
+      {
+        name: 'reimbursement_requests (by requestedBy/approvedBy)',
+        operation: () => db.delete(reimbursementRequests).where(
+          sql`${reimbursementRequests.requestedBy} = ${userId} OR ${reimbursementRequests.approvedBy} = ${userId}`
+        )
+      },
+      {
+        name: 'document_folders',
+        operation: () => db.delete(documentFolders).where(eq(documentFolders.createdBy, userId))
       }
     ]
 

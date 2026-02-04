@@ -133,10 +133,8 @@ export function EmployeeVacations() {
   const { data: vacationBalance50, isLoading: isLoadingBalance, error: balanceError } = useQuery<VacationBalance>({
     queryKey: ['myVacationBalance'],
     queryFn: async () => {
-      console.log('[EmployeeVacations] Fetching vacation balance...')
       try {
         const result = await api.getMyVacationBalance()
-        console.log('[EmployeeVacations] Vacation balance fetched:', result)
         return result as VacationBalance
       } catch (error) {
         console.error('[EmployeeVacations] Error fetching vacation balance:', error)

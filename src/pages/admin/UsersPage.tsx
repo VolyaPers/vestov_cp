@@ -126,6 +126,11 @@ export function UsersPage() {
 
     try {
       await api.createUser(userFormData)
+
+      // Clear filters to ensure new user is visible
+      setSearchTerm('')
+      setRoleFilter('')
+
       await loadUsers()
       setIsUserDialogOpen(false)
       resetUserForm()

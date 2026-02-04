@@ -41,25 +41,15 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
       } else if (response?.users && Array.isArray(response.users)) {
         allUsers = response.users
       } else if (response && typeof response === 'object') {
-        // If response is an object but not the expected format, log it
-        console.warn('[UserImpersonation] Unexpected response format:', response)
         allUsers = []
       }
-      
+
       // Filter users: exclude current user and only include explicitly active users
       // Only show users where isActive is explicitly true
       const filteredUsers = allUsers
         .filter((u) => u.id !== currentUser?.id)
         .filter((u) => u.isActive === true)
-      
-      console.log('[UserImpersonation] Loaded users:', {
-        total: allUsers.length,
-        currentUserId: currentUser?.id,
-        afterExcludingSelf: allUsers.filter((u) => u.id !== currentUser?.id).length,
-        filtered: filteredUsers.length,
-        users: filteredUsers.map(u => ({ id: u.id, name: u.fullName, email: u.email, isActive: u.isActive }))
-      })
-      
+
       setUsers(filteredUsers)
     } catch (error) {
       console.error('[UserImpersonation] Error loading users:', error)

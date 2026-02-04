@@ -32,8 +32,6 @@ class ApiClient {
       },
     }
 
-    console.log('[API REQUEST]', { url, method: options.method || 'GET', API_BASE, envApiUrl: import.meta.env.VITE_API_URL })
-
     let response: Response
     try {
       response = await fetch(url, config)
@@ -94,15 +92,9 @@ class ApiClient {
       return {}
     }
 
-    // Check content type
-    if (contentType && !contentType.includes('application/json')) {
-      console.warn('[API REQUEST] Non-JSON response received:', { url, status: response.status, contentType, text: text.slice(0, 200) })
-      // Still try to parse as JSON in case content-type is wrong
-    }
-
+    // Check content type and try to parse as JSON
     try {
       const parsed = JSON.parse(text)
-      console.log('[API REQUEST] Success:', { url, status: response.status, hasData: !!parsed })
       return parsed
     } catch (error) {
       console.error('[API REQUEST] Failed to parse JSON response:', {

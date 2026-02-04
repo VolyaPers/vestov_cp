@@ -139,9 +139,7 @@ export function ClientsPage() {
         response.map(async (client: Client) => {
           try {
             // Get client invoice totals
-            console.log('Fetching invoice totals for client:', client.id)
             const invoiceTotals = await api.getClientInvoiceTotals(client.id)
-            console.log('Invoice totals for client', client.id, ':', invoiceTotals)
 
             return {
               ...client,
@@ -641,10 +639,7 @@ export function ClientsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        console.log('Navigating to client:', client.id, 'URL:', `/admin/clients/${client.id}`)
-                        setLocation(`/admin/clients/${client.id}`)
-                      }}
+                      onClick={() => setLocation(`/admin/clients/${client.id}`)}
                       className="rounded-xl border-gray-300 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
                       title="View client details"
                     >

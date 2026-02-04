@@ -6,6 +6,7 @@ import {
   X
 } from 'lucide-react'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
+import { ReportsPage } from '@/pages/admin/ReportsPage'
 import { ClientsPage } from '@/pages/admin/ClientsPage'
 import { ClientDetailsPage } from '@/pages/admin/ClientDetailsPage'
 import { InvoicesPage } from '@/pages/admin/InvoicesPage'
@@ -97,6 +98,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
             <div className="max-w-[95%] mx-auto">
               <Switch>
                 <Route path="/admin/dashboard" component={AdminDashboard} />
+                <Route path="/admin/reports" component={ReportsPage} />
                 <Route path="/admin/services" component={ServicesPage} />
                 <Route path="/admin/clients/:id">
                   {() => <ClientDetailsPage />}

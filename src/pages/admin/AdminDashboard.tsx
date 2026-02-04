@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { Link } from 'wouter'
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 import {
   Users,
@@ -150,10 +151,12 @@ export function AdminDashboard() {
               <CheckCircle className="h-4 w-4 mr-2" />
               All Systems Online
             </div>
-            <button className="stripe-btn-primary rounded-lg" title="View analytics and reports">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              View Reports
-            </button>
+            <Link href="/admin/reports">
+              <button className="stripe-btn-primary rounded-lg" title="View analytics and reports">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                View Reports
+              </button>
+            </Link>
           </div>
         </div>
       </div>

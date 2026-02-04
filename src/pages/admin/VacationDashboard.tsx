@@ -233,7 +233,6 @@ export default function VacationDashboard() {
           setEmployeeId(members[0].id)
         } else {
           // No team member found - this might be an admin-only user
-          console.warn('No team member found for email:', email)
           // For admin users, don't set an error, just proceed without employee data
           setLoading(false)
           // If user is admin, they can still use the admin features

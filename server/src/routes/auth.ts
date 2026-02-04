@@ -7,6 +7,7 @@ import { db } from '../db/index.js'
 import { users, teamMembers } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { createUserAccount } from '../services/userService.js'
+import { getSlackAvatarByEmail } from '../utils/slack.js'
 import type { UserWithoutPassword } from '../types/passport.js'
 
 interface GoogleAuthInfo {
@@ -165,6 +166,28 @@ router.post('/register', async (req, res) => {
         teamMemberId: updated.teamMemberId ?? null,
         clientId: null // Will be populated by deserializeUser on next request
       }
+
+      // Auto-sync Slack avatar for non-Google signups if no avatar exists (async, don't wait for it)
+      if (!isGoogleSignup && !updated.avatarUrl) {
+        getSlackAvatarByEmail(normalizedEmail).then(async (slackAvatar) => {
+          if (slackAvatar) {
+            const slackAvatarUrl = slackAvatar.avatar192 || slackAvatar.avatar512 || slackAvatar.avatar72
+            if (slackAvatarUrl) {
+              try {
+                await db.update(users).set({ avatarUrl: slackAvatarUrl }).where(eq(users.id, updated.id))
+                if (updated.teamMemberId) {
+                  await db.update(teamMembers).set({ avatarUrl: slackAvatarUrl }).where(eq(teamMembers.id, updated.teamMemberId))
+                }
+                console.log(`[SLACK] Auto-synced avatar for existing user claim: ${normalizedEmail}`)
+              } catch (err) {
+                console.error(`[SLACK] Failed to save avatar for existing user claim: ${normalizedEmail}`, err)
+              }
+            }
+          }
+        }).catch(err => {
+          console.error(`[SLACK] Failed to fetch avatar for existing user claim: ${normalizedEmail}`, err)
+        })
+      }
     } else {
       const position =
         role === 'admin'
@@ -247,6 +270,28 @@ router.post('/register', async (req, res) => {
         isActive: finalUser.isActive,
         teamMemberId: teamMemberId ?? finalUser.teamMemberId ?? null,
         clientId: null // Default for new users, will be linked via clientUsers if needed
+      }
+
+      // Auto-sync Slack avatar for non-Google signups (async, don't wait for it)
+      if (!isGoogleSignup && !finalUser.avatarUrl) {
+        getSlackAvatarByEmail(normalizedEmail).then(async (slackAvatar) => {
+          if (slackAvatar) {
+            const slackAvatarUrl = slackAvatar.avatar192 || slackAvatar.avatar512 || slackAvatar.avatar72
+            if (slackAvatarUrl) {
+              try {
+                await db.update(users).set({ avatarUrl: slackAvatarUrl }).where(eq(users.id, finalUser.id))
+                if (teamMemberId) {
+                  await db.update(teamMembers).set({ avatarUrl: slackAvatarUrl }).where(eq(teamMembers.id, teamMemberId))
+                }
+                console.log(`[SLACK] Auto-synced avatar for new registration: ${normalizedEmail}`)
+              } catch (err) {
+                console.error(`[SLACK] Failed to save avatar for new registration: ${normalizedEmail}`, err)
+              }
+            }
+          }
+        }).catch(err => {
+          console.error(`[SLACK] Failed to fetch avatar for new registration: ${normalizedEmail}`, err)
+        })
       }
     }
 
