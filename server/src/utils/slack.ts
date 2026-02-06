@@ -134,6 +134,7 @@ interface NotifyShiftEventOptions {
   shiftId?: number | null
   breakType?: string | null
   breakNote?: string | null
+  comment?: string | null
   timestamp?: Date
   channelId?: string // Optional: service-specific Slack channel ID
 }
@@ -148,16 +149,17 @@ export async function notifyShiftEvent(options: NotifyShiftEventOptions) {
     shiftId,
     breakType,
     breakNote,
+    comment,
     channelId // Extract channelId from options
   } = options
 
   const actor = employeeName || employeeEmail
-  const note = breakNote?.trim()
+  const note = (breakNote || comment)?.trim()
 
   const textByEvent: Record<ShiftEvent, string> = {
-    shift_started: `🚀 ${actor} Started the Shift`,
+    shift_started: `🚀 ${actor} Started the Shift${comment?.trim() ? ` | 💬 ${comment.trim()}` : ''}`,
     shift_ended: `🏁 ${actor} Ended the Shift`,
-    break_started: `☕ ${actor} On Break${note ? ` | Note: ${note}` : ''}`,
+    break_started: `☕ ${actor} On Break${note ? ` | 💬 ${note}` : ''}`,
     break_ended: `↩️ ${actor} Ended the Break`
   }
 

@@ -38,6 +38,7 @@ export function ShiftControls() {
   const [error, setError] = useState<string | null>(null)
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
+  const [shiftNote, setShiftNote] = useState('')
   const [isFullTime, setIsFullTime] = useState(false)
   const [hasTeamMember, setHasTeamMember] = useState<boolean | null>(null)
 
@@ -112,9 +113,11 @@ export function ShiftControls() {
 
     try {
       // Service selection is optional - if not selected, notifications go to default channel
-      const response = await api.startShift(selectedServiceId || undefined)
+      const note = shiftNote?.trim() || ''
+      const response = await api.startShift(selectedServiceId || undefined, note || undefined)
       setCurrentShift(response.shift)
       setActiveBreak(null)
+      setShiftNote('')
     } catch (err: any) {
       setError(err.message || 'Failed to start shift')
     } finally {
@@ -267,6 +270,22 @@ export function ShiftControls() {
           <p className="mt-2 text-xs text-gray-500">
             Select the client/service you're working on. Leave empty for general work (notifications go to default channel).
           </p>
+        </div>
+      )}
+
+      {!currentShift && (
+        <div className="mb-6">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Shift Note (optional)
+          </label>
+          <textarea
+            value={shiftNote}
+            onChange={(e) => setShiftNote(e.target.value)}
+            disabled={loading}
+            placeholder="Optional note (e.g. started 40 mins ago)..."
+            rows={2}
+            className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm resize-none"
+          />
         </div>
       )}
 

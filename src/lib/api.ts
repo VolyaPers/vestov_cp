@@ -648,10 +648,10 @@ class ApiClient {
     return this.request('/shifts/current')
   }
 
-  async startShift(serviceId?: number) {
+  async startShift(serviceId?: number, comment?: string) {
     return this.request('/shifts/start', {
       method: 'POST',
-      body: JSON.stringify({ serviceId }),
+      body: JSON.stringify({ serviceId, comment: comment || undefined }),
     })
   }
 

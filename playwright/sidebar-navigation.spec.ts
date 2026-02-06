@@ -62,9 +62,9 @@ test.describe('Sidebar Navigation Visibility by Profile', () => {
       await expect(sidebar.getByText('Admin Dashboard')).toBeVisible()
     })
 
-    test('should show Vestov Portal logo', async ({ page }) => {
+    test('should show Vestov Hub logo', async ({ page }) => {
       const sidebar = page.locator('.hidden.lg\\:flex')
-      await expect(sidebar.getByText('Vestov Portal')).toBeVisible()
+      await expect(sidebar.getByText('Vestov Hub')).toBeVisible()
     })
 
     test('should show Super Admin impersonation widget', async ({ page }) => {
@@ -112,9 +112,9 @@ test.describe('Sidebar Navigation Visibility by Profile', () => {
       await expect(sidebar.getByText('Employee Portal')).toBeVisible()
     })
 
-    test('should show Vestov Portal logo', async ({ page }) => {
+    test('should show Vestov Hub logo', async ({ page }) => {
       const sidebar = page.locator('.hidden.lg\\:flex')
-      await expect(sidebar.getByText('Vestov Portal')).toBeVisible()
+      await expect(sidebar.getByText('Vestov Hub')).toBeVisible()
     })
 
     test('should show ShiftWidget in sidebar', async ({ page }) => {

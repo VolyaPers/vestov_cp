@@ -35,6 +35,7 @@ export function ShiftWidget() {
   const [activeBreak, setActiveBreak] = useState<ShiftBreak | null>(null)
   const [loading, setLoading] = useState(false)
   const [breakNote, setBreakNote] = useState('')
+  const [shiftNote, setShiftNote] = useState('')
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const holdTimer = useRef<number | null>(null)
   const holdTriggered = useRef(false)
@@ -112,8 +113,10 @@ export function ShiftWidget() {
     // Notifications will go to the default channel if no service is selected
 
     try {
-      const response = await api.startShift(selectedServiceId || undefined)
+      const note = shiftNote?.trim() || ''
+      const response = await api.startShift(selectedServiceId || undefined, note || undefined)
       setCurrentShift(response.shift)
+      setShiftNote('')
       setConfirmAction(null)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start shift'
@@ -478,6 +481,16 @@ export function ShiftWidget() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white rounded-lg shadow-xl p-4 max-w-md w-full border border-amber-200">
             <div className="text-base font-semibold text-gray-900">{actionLabel(confirmAction)}</div>
+            {confirmAction === 'startShift' && (
+              <textarea
+                className="mt-3 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                placeholder="Optional note (e.g. started 40 mins ago)..."
+                value={shiftNote}
+                onChange={(e) => setShiftNote(e.target.value)}
+                rows={2}
+                disabled={loading}
+              />
+            )}
             {confirmAction === 'startBreak' && (
               <textarea
                 className="mt-3 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500"

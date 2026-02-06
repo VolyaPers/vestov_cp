@@ -48,8 +48,8 @@ describe('Sidebar Navigation Visibility by Profile', () => {
       cy.get('.hidden.lg\\:flex').contains('Admin Dashboard').should('be.visible')
     })
 
-    it('should show Vestov Portal logo', () => {
-      cy.get('.hidden.lg\\:flex').contains('Vestov Portal').should('be.visible')
+    it('should show Vestov Hub logo', () => {
+      cy.get('.hidden.lg\\:flex').contains('Vestov Hub').should('be.visible')
     })
 
     it('should show user info section at bottom of sidebar', () => {
@@ -108,8 +108,8 @@ describe('Sidebar Navigation Visibility by Profile', () => {
       cy.get('.hidden.lg\\:flex').contains('Employee Portal').should('be.visible')
     })
 
-    it('should show Vestov Portal logo', () => {
-      cy.get('.hidden.lg\\:flex').contains('Vestov Portal').should('be.visible')
+    it('should show Vestov Hub logo', () => {
+      cy.get('.hidden.lg\\:flex').contains('Vestov Hub').should('be.visible')
     })
 
     it('should show user info with avatar', () => {

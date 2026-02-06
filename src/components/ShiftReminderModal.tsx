@@ -22,6 +22,7 @@ export function ShiftReminderModal() {
   const [starting, setStarting] = useState(false)
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
+  const [shiftNote, setShiftNote] = useState('')
 
   const dismiss = useCallback(() => {
     setVisible(false)
@@ -80,7 +81,8 @@ export function ShiftReminderModal() {
   const handleStartShift = async () => {
     setStarting(true)
     try {
-      await api.startShift(selectedServiceId || undefined)
+      const note = shiftNote?.trim() || ''
+      await api.startShift(selectedServiceId || undefined, note || undefined)
       setVisible(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to start shift'
@@ -143,6 +145,21 @@ export function ShiftReminderModal() {
               </p>
             </div>
           )}
+
+          {/* Shift note */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Note
+            </label>
+            <textarea
+              value={shiftNote}
+              onChange={(e) => setShiftNote(e.target.value)}
+              disabled={starting}
+              placeholder="Optional note (e.g. started 40 mins ago)..."
+              rows={2}
+              className="w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
         </div>
 
         {/* Actions */}

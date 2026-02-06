@@ -136,7 +136,7 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
             <img src={vestovLogo} alt="Vestov Logo" className="h-10 w-auto drop-shadow-lg" />
             <div>
               <h1 className="text-xl font-bold stripe-text-primary">
-                Vestov Portal
+                Vestov Hub
               </h1>
               <p className="text-xs stripe-text-muted font-medium">{roleSubtitles[role]}</p>
             </div>

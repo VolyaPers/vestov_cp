@@ -314,7 +314,7 @@ router.post('/start', async (req, res) => {
     }
 
     // NEW: Handle service selection for Slack notifications
-    const { serviceId } = req.body
+    const { serviceId, comment } = req.body
     let validatedServiceId = null
     let slackChannelId = null
 
@@ -369,6 +369,7 @@ router.post('/start', async (req, res) => {
       employeeName: employee.name || (employee as any).fullName || null,
       employeeEmail: employee.email,
       shiftId: createdShift.id,
+      comment: comment?.trim() || undefined,
       timestamp: now,
       channelId: slackChannelId || undefined // NEW: Use service channel
     }).catch((err) => console.error('[SLACK] shift start notify failed:', err))
