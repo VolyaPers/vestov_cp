@@ -13,6 +13,7 @@ import { EmployeeVacations } from '@/pages/employee/EmployeeVacations'
 import { EmployeeReimbursements } from '@/pages/employee/EmployeeReimbursements'
 import { EmployeeRoadmap } from '@/pages/employee/EmployeeRoadmap'
 import { Sidebar } from '@/components/Sidebar'
+import { ShiftReminderModal } from '@/components/ShiftReminderModal'
 
 interface TeamMemberLayoutProps {
   user?: any
@@ -33,6 +34,8 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--stripe-background)' }}>
+      <ShiftReminderModal />
+
       {/* Mobile sidebar */}
       <div className={cn(
         'fixed inset-0 flex z-50 lg:hidden',
