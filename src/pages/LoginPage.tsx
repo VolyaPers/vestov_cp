@@ -115,11 +115,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     
     try {
       const response = await api.login(username, password)
-      onLogin(response.user)
       window.dispatchEvent(new CustomEvent('user-login', { detail: response.user }))
-
-      // Redirect immediately based on role to avoid stuck loading
-      redirectByRole(response.user?.role)
+      onLogin(response.user)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Login failed')
     } finally {

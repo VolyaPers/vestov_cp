@@ -100,16 +100,19 @@ describe('Team Member Workflows', () => {
       cy.intercept('POST', '/api/shifts/end').as('endShift')
     })
 
+    // Helper to get desktop sidebar
+    const getDesktopSidebar = () => cy.get('.hidden.lg\\:flex')
+
     it('should show shift status on dashboard', () => {
       cy.visit('/employee/dashboard')
       cy.url().should('include', '/employee')
       cy.wait(2000)
 
-      // Should show either Start Shift or End Shift button
-      cy.get('body').should('satisfy', ($body) => {
-        const hasStartShift = $body.find('button:contains("Start Shift")').length > 0
-        const hasEndShift = $body.find('button:contains("End Shift")').length > 0 ||
-          $body.find('button:contains("End")').length > 0
+      // Should show either Start Shift or End Shift button in desktop sidebar
+      getDesktopSidebar().should('satisfy', ($sidebar) => {
+        const hasStartShift = $sidebar.find('button:contains("Start Shift")').length > 0
+        const hasEndShift = $sidebar.find('button:contains("End Shift")').length > 0 ||
+          $sidebar.find('button:contains("End")').length > 0
         return hasStartShift || hasEndShift
       })
     })
@@ -118,21 +121,23 @@ describe('Team Member Workflows', () => {
       cy.visit('/employee/dashboard')
       cy.wait(2000)
 
-      cy.get('body').then(($body) => {
+      getDesktopSidebar().then(($sidebar) => {
         // If Start Shift is visible, try to start shift
-        if ($body.find('button:contains("Start Shift")').length > 0) {
-          cy.contains('button', 'Start Shift').click({ force: true })
+        if ($sidebar.find('button:contains("Start Shift")').length > 0) {
+          getDesktopSidebar().contains('button', 'Start Shift').click()
+          // Click Yes to confirm
+          cy.contains('button', 'Yes').click()
           // Either wait for API or verify state changed
           cy.wait(2000)
-          cy.get('body').should('satisfy', ($updatedBody) => {
-            const text = $updatedBody.text().toLowerCase()
-            return text.includes('end shift') ||
-              text.includes('on shift') ||
-              text.includes('started')
+          getDesktopSidebar().should('satisfy', ($updatedSidebar) => {
+            const text = $updatedSidebar.text().toLowerCase()
+            return text.includes('end') ||
+              text.includes('working') ||
+              text.includes('break')
           })
-        } else if ($body.find('button:contains("End Shift")').length > 0) {
+        } else if ($sidebar.find('button:contains("End")').length > 0) {
           // Already on shift, verify state
-          cy.contains('button', 'End Shift').should('exist')
+          getDesktopSidebar().contains('button', 'End').should('exist')
         } else {
           cy.log('No shift buttons found')
         }

@@ -2,15 +2,19 @@ describe('Admin Impersonation', () => {
   beforeEach(() => {
     cy.loginAsAdmin()
     cy.visit('/admin/dashboard')
+    cy.wait(2000)
   })
+
+  // Helper to get desktop sidebar
+  const getDesktopSidebar = () => cy.get('.hidden.lg\\:flex')
 
   describe('Impersonation Widget Visibility', () => {
     it('should show "Switch to User" button for admin users', () => {
       // Wait for sidebar to load
       cy.get('body').should('contain.text', 'Super Admin')
 
-      // Should show the Switch to User button
-      cy.contains('button', 'Switch to User').should('be.visible')
+      // Should show the Switch to User button in desktop sidebar
+      getDesktopSidebar().contains('button', 'Switch to User').should('be.visible')
     })
 
     it('should not show impersonation widget for non-admin users', () => {
@@ -33,42 +37,42 @@ describe('Admin Impersonation', () => {
     })
 
     it('should show user list when clicking Switch to User', () => {
-      // Click the Switch to User button
-      cy.contains('button', 'Switch to User').click()
+      // Click the Switch to User button in desktop sidebar
+      getDesktopSidebar().contains('button', 'Switch to User').click()
 
       // Wait for users to load
       cy.wait('@getUsers')
 
       // Should show "Select User:" text
-      cy.contains('Select User:').should('be.visible')
+      getDesktopSidebar().contains('Select User:').should('be.visible')
 
       // Should show at least one user to impersonate
-      cy.get('.max-h-64 button').should('have.length.greaterThan', 0)
+      getDesktopSidebar().find('.max-h-64 button').should('have.length.greaterThan', 0)
     })
 
     it('should show Cancel button to close user list', () => {
-      cy.contains('button', 'Switch to User').click()
+      getDesktopSidebar().contains('button', 'Switch to User').click()
       cy.wait('@getUsers')
 
       // Should show Cancel button
-      cy.contains('button', 'Cancel').should('be.visible')
+      getDesktopSidebar().contains('button', 'Cancel').should('be.visible')
 
       // Click Cancel
-      cy.contains('button', 'Cancel').click()
+      getDesktopSidebar().contains('button', 'Cancel').click()
 
       // User list should be hidden
-      cy.contains('Select User:').should('not.exist')
+      getDesktopSidebar().contains('Select User:').should('not.exist')
 
       // Switch to User button should be visible again
-      cy.contains('button', 'Switch to User').should('be.visible')
+      getDesktopSidebar().contains('button', 'Switch to User').should('be.visible')
     })
 
     it('should impersonate a team member user', () => {
-      cy.contains('button', 'Switch to User').click()
+      getDesktopSidebar().contains('button', 'Switch to User').click()
       cy.wait('@getUsers')
 
       // Find and click on a team member user (look for "team_member" role text)
-      cy.get('.max-h-64 button').then($buttons => {
+      getDesktopSidebar().find('.max-h-64 button').then($buttons => {
         // Find a button that contains "team_member" role
         const teamMemberButton = $buttons.filter((_, el) => {
           return el.innerText.toLowerCase().includes('team_member')
@@ -89,11 +93,11 @@ describe('Admin Impersonation', () => {
     })
 
     it('should impersonate a client user', () => {
-      cy.contains('button', 'Switch to User').click()
+      getDesktopSidebar().contains('button', 'Switch to User').click()
       cy.wait('@getUsers')
 
       // Find and click on a client user
-      cy.get('.max-h-64 button').then($buttons => {
+      getDesktopSidebar().find('.max-h-64 button').then($buttons => {
         const clientButton = $buttons.filter((_, el) => {
           const text = el.innerText.toLowerCase()
           return text.includes('client') && !text.includes('team_member') && !text.includes('admin')
@@ -123,39 +127,39 @@ describe('Admin Impersonation', () => {
 
     it('should show Stop button when impersonating', () => {
       // Start impersonating
-      cy.contains('button', 'Switch to User').click()
+      getDesktopSidebar().contains('button', 'Switch to User').click()
       cy.wait('@getUsers')
 
       // Click first available user
-      cy.get('.max-h-64 button').first().click()
+      getDesktopSidebar().find('.max-h-64 button').first().click()
       cy.wait('@impersonate')
 
       // Wait for page to load after impersonation
       cy.wait(2000)
 
-      // Should show Impersonating section with Stop button
-      cy.contains('Impersonating').should('be.visible')
-      cy.contains('button', 'Stop').should('be.visible')
+      // Should show Impersonating section with Stop button (in the new page's sidebar)
+      cy.get('.hidden.lg\\:flex').contains('Impersonating').should('be.visible')
+      cy.get('.hidden.lg\\:flex').contains('button', 'Stop').should('be.visible')
     })
 
     it('should return to admin dashboard when stopping impersonation', () => {
       // Start impersonating
-      cy.contains('button', 'Switch to User').click()
+      getDesktopSidebar().contains('button', 'Switch to User').click()
       cy.wait('@getUsers')
 
-      cy.get('.max-h-64 button').first().click()
+      getDesktopSidebar().find('.max-h-64 button').first().click()
       cy.wait('@impersonate')
       cy.wait(2000)
 
-      // Click Stop button
-      cy.contains('button', 'Stop').click()
+      // Click Stop button (in the new page's sidebar)
+      cy.get('.hidden.lg\\:flex').contains('button', 'Stop').click()
       cy.wait('@stopImpersonation').its('response.statusCode').should('eq', 200)
 
       // Should return to admin dashboard
       cy.url({ timeout: 10000 }).should('include', '/admin')
 
       // Should show Switch to User again (not impersonating anymore)
-      cy.contains('button', 'Switch to User', { timeout: 10000 }).should('be.visible')
+      cy.get('.hidden.lg\\:flex').contains('button', 'Switch to User', { timeout: 10000 }).should('be.visible')
     })
   })
 })
