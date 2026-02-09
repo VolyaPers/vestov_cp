@@ -91,6 +91,34 @@ interface LeaveRequestResponse {
   }
 }
 
+// Public holidays configuration
+const getPublicHolidays = (year: number) => {
+  const getThanksgiving = (year: number) => {
+    const november = new Date(year, 10, 1)
+    const firstDay = november.getDay()
+    const firstThursday = firstDay <= 4 ? 5 - firstDay : 12 - firstDay
+    return new Date(year, 10, firstThursday + 21)
+  }
+
+  return [
+    { date: new Date(year, 0, 1), name: "New Year's Day" },
+    { date: new Date(year, 4, 1), name: "International Workers' Day" },
+    { date: getThanksgiving(year), name: "Thanksgiving" },
+    { date: new Date(year, 11, 24), name: "Christmas Eve" },
+    { date: new Date(year, 11, 25), name: "Christmas Day" },
+    { date: new Date(year, 11, 31), name: "New Year's Eve" },
+  ]
+}
+
+const isPublicHoliday = (date: Date) => {
+  const holidays = getPublicHolidays(date.getFullYear())
+  return holidays.find(holiday =>
+    holiday.date.getDate() === date.getDate() &&
+    holiday.date.getMonth() === date.getMonth() &&
+    holiday.date.getFullYear() === date.getFullYear()
+  )
+}
+
 export function EmployeeVacations() {
   const { showAlert } = useCustomAlert()
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null)
@@ -476,6 +504,20 @@ export function EmployeeVacations() {
                   <CardDescription className="mt-1">
                     Click the + button on any day to create a leave request
                   </CardDescription>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                      <span className="text-sm text-gray-600">Vacation</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-red-500 rounded"></div>
+                      <span className="text-sm text-gray-600">Sick Leave</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-green-500 rounded"></div>
+                      <span className="text-sm text-gray-600">Public Holiday</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
@@ -512,12 +554,16 @@ export function EmployeeVacations() {
                 {daysInMonth.map(day => {
                   const dayLeave = getLeaveForDay(day)
                   const isCurrentDay = isToday(day)
+                  const holiday = isPublicHoliday(day)
 
                   return (
                     <div
                       key={day.toISOString()}
                       className={cn(
-                        'min-h-28 p-2 border border-gray-200 rounded-lg',
+                        'min-h-28 p-2 border rounded-lg',
+                        holiday
+                          ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-400'
+                          : 'border-gray-200',
                         isCurrentDay && 'border-blue-500 border-2'
                       )}
                     >
@@ -539,6 +585,13 @@ export function EmployeeVacations() {
                           <Plus className="w-3 h-3 text-primary" />
                         </button>
                       </div>
+
+                      {/* Public Holiday Badge */}
+                      {holiday && (
+                        <div className="mb-1 px-1.5 py-1 bg-green-600 text-white text-[10px] font-semibold rounded text-center" title={holiday.name}>
+                          {holiday.name}
+                        </div>
+                      )}
 
                       {dayLeave.length > 0 && (
                         <div className="space-y-1">
