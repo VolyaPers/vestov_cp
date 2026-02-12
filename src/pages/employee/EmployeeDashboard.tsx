@@ -94,7 +94,8 @@ export function EmployeeDashboard() {
       // Handle case where reimbursements might be empty array
       const reimbursements = Array.isArray(reimbursementData) ? reimbursementData : []
 
-      // Calculate vacation stats
+      // Calculate vacation stats - only count actual vacation requests, not sick leave
+      const isVacationType = (type: string) => /^(vacation|annual leave|paid time off|pto)$/i.test(type)
       const approvedVacations = vacationRequests.filter((v: any) => v.status === 'approved')
       const pendingVacations = vacationRequests.filter((v: any) => v.status === 'pending')
       const upcomingVacations = approvedVacations.filter((v: any) =>
@@ -102,12 +103,14 @@ export function EmployeeDashboard() {
       )
 
       let vacationDaysUsed = 0
-      approvedVacations.forEach((vacation: any) => {
-        const start = new Date(vacation.startDate)
-        const end = new Date(vacation.endDate)
-        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-        vacationDaysUsed += days
-      })
+      approvedVacations
+        .filter((v: any) => isVacationType(v.type))
+        .forEach((vacation: any) => {
+          const start = new Date(vacation.startDate)
+          const end = new Date(vacation.endDate)
+          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+          vacationDaysUsed += days
+        })
 
       // Calculate reimbursement stats - only count reimbursements from current career year
       // If careerYear is null (migration not run yet), count all approved reimbursements
@@ -398,14 +401,16 @@ export function EmployeeDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {data.vacations.recent.slice(0, 3).map((vacation) => (
+              {data.vacations.recent.slice(0, 3).map((vacation) => {
+                const isSick = /sick/i.test(vacation.type)
+                return (
                 <div key={`vacation-${vacation.id}`} className="flex items-start gap-3 pb-3 border-b last:border-0">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <Calendar className="w-4 h-4 text-blue-600" />
+                  <div className={`w-8 h-8 rounded-lg ${isSick ? 'bg-orange-100' : 'bg-blue-100'} flex items-center justify-center flex-shrink-0`}>
+                    <Calendar className={`w-4 h-4 ${isSick ? 'text-orange-600' : 'text-blue-600'}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-gray-900">Vacation Request</p>
+                      <p className="text-sm font-medium text-gray-900">{vacation.type} Request</p>
                       <Badge className={getStatusColor(vacation.status)}>
                         {vacation.status}
                       </Badge>
@@ -418,7 +423,8 @@ export function EmployeeDashboard() {
                     </p>
                   </div>
                 </div>
-              ))}
+                )
+              })}
               {data.reimbursements.recent.slice(0, 2).map((reimbursement) => (
                 <div key={`reimb-${reimbursement.id}`} className="flex items-start gap-3 pb-3 border-b last:border-0">
                   <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">

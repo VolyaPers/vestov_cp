@@ -299,14 +299,18 @@ export async function notifyVacationRequest(options: NotifyVacationRequestOption
   const startDateFormatted = new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const endDateFormatted = new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-  const text = `🏖️ New Vacation Request from ${actor}`
+  const isSickLeave = /sick/i.test(leaveTypeName)
+  const emoji = isSickLeave ? '🏥' : '🏖️'
+  const requestLabel = isSickLeave ? 'Sick Leave Request' : 'Vacation Request'
+
+  const text = `${emoji} New ${requestLabel} from ${actor}`
 
   const blocks: SlackBlock[] = [
     {
       type: 'header',
       text: {
         type: 'plain_text',
-        text: '🏖️ New Vacation Request'
+        text: `${emoji} New ${requestLabel}`
       }
     },
     {

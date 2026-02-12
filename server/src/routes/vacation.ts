@@ -1507,61 +1507,148 @@ router.put('/requests/:requestId/status', auth, async (req, res) => {
       return res.status(400).json({ error: 'Only pending requests can be updated' })
     }
 
-    // If approving, validate using 50/50 milestone rule
+    // If approving, validate based on leave type
     if (status === 'approved') {
       console.log(`[APPROVE REQUEST] Approving request ${requestId} for employee ${request.employeeId}`)
       console.log(`[APPROVE REQUEST] Request details: ${request.startDate} - ${request.endDate}, ${request.daysCount} days`)
 
-      // Use the 50/50 validation function
-      const validation = await validateVacationRequest(
-        request.employeeId,
-        new Date(request.startDate),
-        parseFloat(request.daysCount.toString())
-      )
+      // Determine the leave type to apply the correct validation
+      const vacationTypes = await db
+        .select()
+        .from(leaveTypes)
+        .where(
+          sql`LOWER(${leaveTypes.name}) IN ('vacation', 'annual leave', 'paid time off', 'pto')`
+        )
+        .limit(1)
 
-      if (!validation.allowed) {
-        console.log(`[APPROVE REQUEST] Validation failed: ${validation.reason}`)
-        return res.status(400).json({
-          error: validation.reason || 'Insufficient leave balance'
-        })
+      const sickLeaveTypes = await db
+        .select()
+        .from(leaveTypes)
+        .where(
+          sql`LOWER(${leaveTypes.name}) IN ('sick leave', 'sick', 'sick day', 'sick days')`
+        )
+        .limit(1)
+
+      const isVacationRequest = vacationTypes.length > 0 && request.leaveTypeId === vacationTypes[0].id
+      const isSickLeaveRequest = sickLeaveTypes.length > 0 && request.leaveTypeId === sickLeaveTypes[0].id
+
+      if (isVacationRequest) {
+        // Vacation request - validate using 50/50 milestone rule
+        const validation = await validateVacationRequest(
+          request.employeeId,
+          new Date(request.startDate),
+          parseFloat(request.daysCount.toString())
+        )
+
+        if (!validation.allowed) {
+          console.log(`[APPROVE REQUEST] Vacation validation failed: ${validation.reason}`)
+          return res.status(400).json({
+            error: validation.reason || 'Insufficient vacation days available'
+          })
+        }
+      } else if (isSickLeaveRequest) {
+        // Sick leave request - validate against sick leave balance (7 days/cycle, no 50/50 rule)
+        const cycles = await db
+          .select()
+          .from(employmentCycles)
+          .where(
+            and(
+              eq(employmentCycles.employeeId, request.employeeId),
+              eq(employmentCycles.isActive, true)
+            )
+          )
+          .limit(1)
+
+        if (cycles.length > 0) {
+          const cycle = cycles[0]
+
+          const sickLeaveRequestsInCycle = await db
+            .select()
+            .from(leaveRequests)
+            .where(
+              and(
+                eq(leaveRequests.employeeId, request.employeeId),
+                eq(leaveRequests.leaveTypeId, sickLeaveTypes[0].id),
+                eq(leaveRequests.status, 'approved'),
+                gte(leaveRequests.startDate, cycle.cycleStart),
+                lte(leaveRequests.startDate, cycle.cycleEnd)
+              )
+            )
+
+          const totalSickLeaveUsed = sickLeaveRequestsInCycle.reduce(
+            (sum, req) => sum + parseFloat(req.daysCount),
+            0
+          )
+
+          const balances = await db
+            .select()
+            .from(leaveBalances)
+            .where(
+              and(
+                eq(leaveBalances.employeeId, request.employeeId),
+                eq(leaveBalances.employmentCycleId, cycle.id),
+                eq(leaveBalances.leaveTypeId, sickLeaveTypes[0].id)
+              )
+            )
+            .limit(1)
+
+          let totalSickLeaveAllocation = 7
+          if (balances.length > 0) {
+            const allocatedDays = parseFloat(balances[0].totalDays || '7')
+            const adjustmentDays = parseFloat(balances[0].adjustmentDays || '0')
+            totalSickLeaveAllocation = allocatedDays + adjustmentDays
+          }
+
+          const remainingSickLeave = totalSickLeaveAllocation - totalSickLeaveUsed
+          const requestedDays = parseFloat(request.daysCount.toString())
+
+          if (requestedDays > remainingSickLeave) {
+            console.log(`[APPROVE REQUEST] Sick leave validation failed: ${remainingSickLeave} days remaining`)
+            return res.status(400).json({
+              error: `Insufficient sick leave. Employee has ${remainingSickLeave.toFixed(1)} days remaining out of ${totalSickLeaveAllocation} days for this employment cycle.`
+            })
+          }
+        }
       }
 
       console.log(`[APPROVE REQUEST] Validation passed, updating request status to approved`)
 
-      // Find the cycle that contains the vacation date
-      const vacationDate = new Date(request.startDate)
-      const allCycles = await db
-        .select()
-        .from(employmentCycles)
-        .where(eq(employmentCycles.employeeId, request.employeeId))
-        .orderBy(employmentCycles.cycleStart)
+      // Find the cycle that contains the leave date (only activate cycles for vacation requests)
+      if (isVacationRequest) {
+        const vacationDate = new Date(request.startDate)
+        const allCycles = await db
+          .select()
+          .from(employmentCycles)
+          .where(eq(employmentCycles.employeeId, request.employeeId))
+          .orderBy(employmentCycles.cycleStart)
 
-      const cycleForVacation = allCycles.find(c => {
-        const cStart = new Date(c.cycleStart)
-        const cEnd = new Date(c.cycleEnd)
-        return vacationDate >= cStart && vacationDate <= cEnd
-      })
+        const cycleForVacation = allCycles.find(c => {
+          const cStart = new Date(c.cycleStart)
+          const cEnd = new Date(c.cycleEnd)
+          return vacationDate >= cStart && vacationDate <= cEnd
+        })
 
-      // If the vacation is in a future cycle, activate that cycle and deactivate older ones
-      if (cycleForVacation && !cycleForVacation.isActive) {
-        const cycleStart = new Date(cycleForVacation.cycleStart)
-        const currentDate = new Date()
+        // If the vacation is in a future cycle, activate that cycle and deactivate older ones
+        if (cycleForVacation && !cycleForVacation.isActive) {
+          const cycleStart = new Date(cycleForVacation.cycleStart)
+          const currentDate = new Date()
 
-        // If cycle is in the future or starts today, activate it
-        if (cycleStart >= currentDate || cycleStart.toDateString() === currentDate.toDateString()) {
-          // Deactivate all other cycles for this employee
-          await db
-            .update(employmentCycles)
-            .set({ isActive: false })
-            .where(eq(employmentCycles.employeeId, request.employeeId))
+          // If cycle is in the future or starts today, activate it
+          if (cycleStart >= currentDate || cycleStart.toDateString() === currentDate.toDateString()) {
+            // Deactivate all other cycles for this employee
+            await db
+              .update(employmentCycles)
+              .set({ isActive: false })
+              .where(eq(employmentCycles.employeeId, request.employeeId))
 
-          // Activate the cycle for this vacation
-          await db
-            .update(employmentCycles)
-            .set({ isActive: true })
-            .where(eq(employmentCycles.id, cycleForVacation.id))
+            // Activate the cycle for this vacation
+            await db
+              .update(employmentCycles)
+              .set({ isActive: true })
+              .where(eq(employmentCycles.id, cycleForVacation.id))
 
-          console.log(`Activated cycle ${cycleForVacation.id} for employee ${request.employeeId} due to approved vacation`)
+            console.log(`Activated cycle ${cycleForVacation.id} for employee ${request.employeeId} due to approved vacation`)
+          }
         }
       }
     }
