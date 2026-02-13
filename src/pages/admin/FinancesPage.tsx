@@ -679,21 +679,22 @@ export function FinancesPage() {
     }
   }
 
-  // Chart data
+  // Chart data — break expenses into Salaries vs Other Expenses (stacked)
   const chartData = overviewData?.monthlyBreakdown
     ? MONTHS.map((name, idx) => {
         const entry = overviewData.monthlyBreakdown.find((m) => m.month === idx + 1)
         const income = entry
           ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0))
           : 0
-        const expenses = entry
-          ? parseFloat(String(entry.expense || 0)) +
-            parseFloat(String(entry.salary || 0)) +
-            parseFloat(String(entry.extra_payment || 0))
+        const salaries = entry
+          ? parseFloat(String(entry.salary || 0))
           : 0
-        return { name, Income: income, Expenses: expenses }
+        const otherExpenses = entry
+          ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0))
+          : 0
+        return { name, Income: income, Salaries: salaries, 'Other Expenses': otherExpenses }
       })
-    : MONTHS.map((name) => ({ name, Income: 0, Expenses: 0 }))
+    : MONTHS.map((name) => ({ name, Income: 0, Salaries: 0, 'Other Expenses': 0 }))
 
   // Year options
   const yearOptions = []
@@ -919,9 +920,15 @@ export function FinancesPage() {
                     </div>
                   </div>
                   <p className="text-2xl font-bold text-red-600">
-                    {formatCurrency(overviewData?.manualExpenses || 0)}
+                    {formatCurrency(
+                      (overviewData?.manualExpenses || 0) +
+                      (overviewData?.totalSalaries || 0) +
+                      (overviewData?.totalExtraPayments || 0)
+                    )}
                   </p>
-                  <p className="text-xs stripe-text-muted mt-1">Manual expenses</p>
+                  <p className="text-xs stripe-text-muted mt-1">
+                    Salaries + extras + other expenses
+                  </p>
                 </div>
 
                 {/* Total Salaries */}
@@ -990,7 +997,8 @@ export function FinancesPage() {
                       />
                       <Legend />
                       <Bar dataKey="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Salaries" stackId="expenses" fill="#3b82f6" />
+                      <Bar dataKey="Other Expenses" stackId="expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
