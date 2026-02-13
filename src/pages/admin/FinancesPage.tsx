@@ -318,7 +318,7 @@ export function FinancesPage() {
       if (txStartDate) params.startDate = txStartDate
       if (txEndDate) params.endDate = txEndDate
 
-      const [txData, cpData] = await Promise.all([
+      const [txResult, cpResult] = await Promise.allSettled([
         api.getFinancialTransactions(params),
         api.getClientPayments(
           txStartDate || txEndDate
@@ -326,8 +326,8 @@ export function FinancesPage() {
             : undefined
         ),
       ])
-      setTransactions(txData)
-      setClientPayments(cpData)
+      setTransactions(txResult.status === 'fulfilled' ? txResult.value : [])
+      setClientPayments(cpResult.status === 'fulfilled' ? cpResult.value : [])
     } catch (error) {
       console.error('Failed to load transactions:', error)
     } finally {

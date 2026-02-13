@@ -30,7 +30,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
-import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns } from './utils/migrations.js'
+import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureFinanceTables } from './utils/migrations.js'
 import { initializeSocket } from './socket.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -101,11 +101,12 @@ async function runMigrations() {
     }
     
     await ensureUserColumns(pool)
+    await ensureFinanceTables(pool)
     const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
     if (columnExistsAfter) {
       console.log('[MIGRATIONS] ✓ Column is_active verified - exists in database')
     }
-    
+
     console.log('========================================')
     console.log('[MIGRATIONS] ✓ All migrations completed successfully!')
     console.log('========================================')
@@ -119,10 +120,11 @@ async function runMigrations() {
     console.error('[MIGRATIONS] Error detail:', err.detail)
     console.error('[MIGRATIONS] Full error:', error)
     console.error('========================================')
-    
+
     try {
       await ensureUserColumns(pool)
-      console.log('[MIGRATIONS] ✓ Added missing user columns as fallback')
+      await ensureFinanceTables(pool)
+      console.log('[MIGRATIONS] ✓ Added missing user columns and finance tables as fallback')
     } catch (fallbackError) {
       console.error('[MIGRATIONS] Fallback failed:', fallbackError)
     }

@@ -96,3 +96,65 @@ export async function ensureUserColumns(pool: Pool): Promise<void> {
   }
 }
 
+export async function ensureFinanceTables(pool: Pool): Promise<void> {
+  // financial_transactions
+  try {
+    const hasFT = await pool.query(`
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'financial_transactions'
+    `)
+    if (hasFT.rows.length === 0) {
+      console.log('[MIGRATIONS] Creating missing table: financial_transactions')
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "financial_transactions" (
+          "id" serial PRIMARY KEY NOT NULL,
+          "type" varchar(20) NOT NULL,
+          "category" text,
+          "amount" numeric(12, 2) NOT NULL,
+          "description" text,
+          "transaction_date" date NOT NULL,
+          "team_member_id" integer REFERENCES "team_members"("id"),
+          "client_id" integer REFERENCES "clients"("id"),
+          "invoice_id" integer REFERENCES "invoices"("id"),
+          "is_recurring" boolean DEFAULT false,
+          "created_by" integer NOT NULL REFERENCES "users"("id"),
+          "created_at" timestamp DEFAULT now() NOT NULL,
+          "updated_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "idx_ft_type" ON "financial_transactions" ("type");
+        CREATE INDEX IF NOT EXISTS "idx_ft_date" ON "financial_transactions" ("transaction_date");
+        CREATE INDEX IF NOT EXISTS "idx_ft_team_member" ON "financial_transactions" ("team_member_id");
+      `)
+    }
+  } catch (error) {
+    const err = error as Error
+    console.warn('[MIGRATIONS] Could not ensure financial_transactions:', err.message)
+  }
+
+  // integration_settings
+  try {
+    const hasIS = await pool.query(`
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'integration_settings'
+    `)
+    if (hasIS.rows.length === 0) {
+      console.log('[MIGRATIONS] Creating missing table: integration_settings')
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "integration_settings" (
+          "id" serial PRIMARY KEY NOT NULL,
+          "provider" varchar(50) NOT NULL,
+          "credentials" text NOT NULL DEFAULT '',
+          "is_active" boolean DEFAULT false,
+          "last_sync_at" timestamp,
+          "created_at" timestamp DEFAULT now() NOT NULL,
+          "updated_at" timestamp DEFAULT now() NOT NULL,
+          CONSTRAINT "integration_settings_provider_unique" UNIQUE("provider")
+        );
+      `)
+    }
+  } catch (error) {
+    const err = error as Error
+    console.warn('[MIGRATIONS] Could not ensure integration_settings:', err.message)
+  }
+}
+
