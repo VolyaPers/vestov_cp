@@ -1271,12 +1271,6 @@ export function FinancesPage() {
               {/* Team Member Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(salariesData?.members || []).map((member) => {
-                  const currentMonth = new Date().getMonth() + 1
-                  const expectedPaid = member.monthlyRate * currentMonth
-                  const paidPercent =
-                    expectedPaid > 0
-                      ? Math.min(100, Math.round((member.totalPaidThisYear / expectedPaid) * 100))
-                      : 0
                   const initials = member.name.split(' ').map((n) => n[0]).join('')
 
                   return (
@@ -1329,31 +1323,6 @@ export function FinancesPage() {
                             {formatCurrency(member.totalPaidThisYear)}
                           </span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="stripe-text-secondary">Expected</span>
-                          <span className="font-medium stripe-text-muted">
-                            {formatCurrency(expectedPaid)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Progress bar */}
-                      <div className="mb-4">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all ${
-                              paidPercent >= 100
-                                ? 'bg-green-500'
-                                : paidPercent >= 75
-                                  ? 'bg-blue-500'
-                                  : paidPercent >= 50
-                                    ? 'bg-yellow-500'
-                                    : 'bg-red-500'
-                            }`}
-                            style={{ width: `${paidPercent}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-xs stripe-text-muted mt-1 text-right">{paidPercent}%</p>
                       </div>
 
                       <button
