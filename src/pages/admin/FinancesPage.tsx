@@ -177,6 +177,7 @@ export function FinancesPage() {
   const [salariesLoading, setSalariesLoading] = useState(true)
   const [showSalaryModal, setShowSalaryModal] = useState(false)
   const [selectedMember, setSelectedMember] = useState<SalaryMember | null>(null)
+  const [editingSalaryPayment, setEditingSalaryPayment] = useState<SalaryPayment | null>(null)
   const [salaryForm, setSalaryForm] = useState({
     baseSalary: '',
     extras: [] as { label: string; amount: string }[],
@@ -479,6 +480,7 @@ export function FinancesPage() {
 
   // Salary payment
   const openRecordSalary = (member: SalaryMember) => {
+    setEditingSalaryPayment(null)
     setSelectedMember(member)
     setSalaryForm({
       baseSalary: String(member.monthlyRate || 0),
@@ -521,8 +523,8 @@ export function FinancesPage() {
     if (!selectedMember || salaryTotal <= 0) return
     try {
       setSalarySaving(true)
-      const now = new Date()
-      const monthName = MONTHS[now.getMonth()]
+      const txDate = new Date(salaryForm.transactionDate)
+      const monthName = MONTHS[txDate.getMonth()]
 
       // Build description with breakdown
       const parts: string[] = [`Base Salary: $${parseFloat(salaryForm.baseSalary).toFixed(2)}`]
@@ -532,16 +534,25 @@ export function FinancesPage() {
         }
       }
       if (salaryForm.note) parts.push(`Note: ${salaryForm.note}`)
-      const description = `${monthName} ${now.getFullYear()} — ${parts.join(' + ')}`
+      const description = `${monthName} ${txDate.getFullYear()} — ${parts.join(' + ')}`
 
-      await api.recordSalaryPayment({
-        teamMemberId: selectedMember.id,
-        amount: salaryTotal,
-        transactionDate: salaryForm.transactionDate,
-        description,
-      })
+      if (editingSalaryPayment) {
+        await api.updateFinancialTransaction(editingSalaryPayment.id, {
+          amount: salaryTotal,
+          transactionDate: salaryForm.transactionDate,
+          description,
+        })
+      } else {
+        await api.recordSalaryPayment({
+          teamMemberId: selectedMember.id,
+          amount: salaryTotal,
+          transactionDate: salaryForm.transactionDate,
+          description,
+        })
+      }
       setShowSalaryModal(false)
       setSelectedMember(null)
+      setEditingSalaryPayment(null)
       await loadSalaries()
       loadOverview()
     } catch (error) {
@@ -549,6 +560,47 @@ export function FinancesPage() {
     } finally {
       setSalarySaving(false)
     }
+  }
+
+  // Edit salary payment — parse description back into form fields
+  const openEditSalaryPayment = (payment: SalaryPayment) => {
+    const member = salariesData?.members.find((m) => m.id === payment.teamMemberId)
+    if (!member) return
+
+    let baseSalary = String(member.monthlyRate || 0)
+    const extras: { label: string; amount: string }[] = []
+    let note = ''
+
+    // Parse description: "Jan 2026 — Base Salary: $3000.00 + Cursor: $20.00 + Note: some text"
+    const desc = payment.description || ''
+    const dashIdx = desc.indexOf('—')
+    const breakdown = dashIdx >= 0 ? desc.slice(dashIdx + 1).trim() : desc
+    const parts = breakdown.split(/\s*\+\s*/)
+
+    for (const part of parts) {
+      const match = part.match(/^(.+?):\s*\$?([\d.]+)$/)
+      if (match) {
+        const label = match[1].trim()
+        const amount = match[2]
+        if (label === 'Base Salary') {
+          baseSalary = amount
+        } else {
+          extras.push({ label, amount })
+        }
+      } else if (part.startsWith('Note:')) {
+        note = part.slice(5).trim()
+      }
+    }
+
+    setEditingSalaryPayment(payment)
+    setSelectedMember(member)
+    setSalaryForm({
+      baseSalary,
+      extras,
+      transactionDate: toInputDate(payment.transactionDate),
+      note,
+    })
+    setShowSalaryModal(true)
   }
 
   // Delete salary payment
@@ -1275,13 +1327,22 @@ export function FinancesPage() {
                               {formatCurrency(payment.amount)}
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <button
-                                onClick={() => handleDeleteSalaryPayment(payment.id)}
-                                className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-red-400 hover:text-red-600"
-                                title="Delete salary payment"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => openEditSalaryPayment(payment)}
+                                  className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors text-gray-400 hover:text-blue-600"
+                                  title="Edit salary payment"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSalaryPayment(payment.id)}
+                                  className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-red-400 hover:text-red-600"
+                                  title="Delete salary payment"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1536,13 +1597,15 @@ export function FinancesPage() {
       {showSalaryModal && selectedMember && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowSalaryModal(false)}
+          onClick={() => { setShowSalaryModal(false); setEditingSalaryPayment(null) }}
         >
           <div
             className="stripe-card p-6 w-full max-w-lg rounded-xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold stripe-text-primary mb-1">Record Salary Payment</h3>
+            <h3 className="text-lg font-semibold stripe-text-primary mb-1">
+              {editingSalaryPayment ? 'Edit Salary Payment' : 'Record Salary Payment'}
+            </h3>
             <p className="text-sm stripe-text-muted mb-5">
               {selectedMember.name} — {selectedMember.role || 'Team Member'}
             </p>
@@ -1671,7 +1734,7 @@ export function FinancesPage() {
               {/* Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => setShowSalaryModal(false)}
+                  onClick={() => { setShowSalaryModal(false); setEditingSalaryPayment(null) }}
                   className="flex-1 px-4 py-2 border rounded-lg stripe-border stripe-text-primary text-sm font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
@@ -1681,7 +1744,10 @@ export function FinancesPage() {
                   disabled={salarySaving || salaryTotal <= 0}
                   className="flex-1 stripe-btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                 >
-                  {salarySaving ? 'Recording...' : `Record ${formatCurrency(salaryTotal)}`}
+                  {salarySaving
+                    ? (editingSalaryPayment ? 'Saving...' : 'Recording...')
+                    : (editingSalaryPayment ? `Save ${formatCurrency(salaryTotal)}` : `Record ${formatCurrency(salaryTotal)}`)
+                  }
                 </button>
               </div>
             </div>
