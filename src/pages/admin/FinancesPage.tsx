@@ -105,9 +105,20 @@ interface SalaryMember {
   monthlyRate: number
   hourlyRate: number | null
   isBillable: boolean
+  avatarUrl: string | null
+  status: string
   totalPaidThisYear: number
   lastPaymentDate: string | null
   paymentCount: number
+}
+
+interface RateHistoryEntry {
+  id: number
+  monthlyRate: string | number
+  effectiveDate: string
+  note: string | null
+  createdBy: string | null
+  createdAt: string
 }
 
 interface SalaryPayment {
@@ -185,6 +196,14 @@ export function FinancesPage() {
     note: '',
   })
   const [salarySaving, setSalarySaving] = useState(false)
+
+  // Rate editing state
+  const [showRateModal, setShowRateModal] = useState(false)
+  const [rateMember, setRateMember] = useState<SalaryMember | null>(null)
+  const [rateForm, setRateForm] = useState({ monthlyRate: '', effectiveDate: toInputDate(), note: '' })
+  const [rateSaving, setRateSaving] = useState(false)
+  const [rateHistory, setRateHistory] = useState<RateHistoryEntry[]>([])
+  const [rateHistoryLoading, setRateHistoryLoading] = useState(false)
 
   // Extra Payments state
   const [extraPayments, setExtraPayments] = useState<Transaction[]>([])
@@ -612,6 +631,46 @@ export function FinancesPage() {
       loadOverview()
     } catch (error) {
       console.error('Failed to delete salary payment:', error)
+    }
+  }
+
+  // Rate editing
+  const openRateModal = async (member: SalaryMember) => {
+    setRateMember(member)
+    setRateForm({
+      monthlyRate: String(member.monthlyRate || 0),
+      effectiveDate: toInputDate(),
+      note: '',
+    })
+    setShowRateModal(true)
+    // Load history
+    setRateHistoryLoading(true)
+    try {
+      const history = await api.getSalaryRateHistory(member.id)
+      setRateHistory(history)
+    } catch {
+      setRateHistory([])
+    } finally {
+      setRateHistoryLoading(false)
+    }
+  }
+
+  const handleSaveRate = async () => {
+    if (!rateMember || !rateForm.monthlyRate || parseFloat(rateForm.monthlyRate) < 0) return
+    try {
+      setRateSaving(true)
+      await api.updateSalaryRate(rateMember.id, {
+        monthlyRate: parseFloat(rateForm.monthlyRate),
+        effectiveDate: rateForm.effectiveDate,
+        note: rateForm.note || undefined,
+      })
+      setShowRateModal(false)
+      setRateMember(null)
+      await loadSalaries()
+    } catch (error) {
+      console.error('Failed to update salary rate:', error)
+    } finally {
+      setRateSaving(false)
     }
   }
 
@@ -1218,27 +1277,51 @@ export function FinancesPage() {
                     expectedPaid > 0
                       ? Math.min(100, Math.round((member.totalPaidThisYear / expectedPaid) * 100))
                       : 0
+                  const initials = member.name.split(' ').map((n) => n[0]).join('')
 
                   return (
                     <div key={member.id} className="stripe-card p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h4 className="font-semibold stripe-text-primary text-base">
+                      <div className="flex items-start gap-3 mb-4">
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0">
+                          {member.avatarUrl ? (
+                            <img
+                              src={member.avatarUrl}
+                              alt={member.name}
+                              className="w-11 h-11 rounded-full object-cover ring-2 ring-gray-100"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-full bg-slate-700 text-white font-medium flex items-center justify-center text-sm ring-2 ring-gray-100">
+                              {initials}
+                            </div>
+                          )}
+                          <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white ${
+                            member.status === 'active' ? 'bg-green-400' : 'bg-yellow-400'
+                          }`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold stripe-text-primary text-base truncate">
                             {member.name}
                           </h4>
-                          <p className="text-sm stripe-text-muted">{member.role || 'Team Member'}</p>
-                        </div>
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4 text-blue-600" />
+                          <p className="text-sm stripe-text-muted truncate">{member.role || 'Team Member'}</p>
                         </div>
                       </div>
 
                       <div className="space-y-2 mb-4">
-                        <div className="flex justify-between text-sm">
-                          <span className="stripe-text-secondary">Monthly Rate</span>
-                          <span className="font-medium stripe-text-primary">
-                            {formatCurrency(member.monthlyRate)}
-                          </span>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="stripe-text-secondary">Monthly Base</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium stripe-text-primary">
+                              {formatCurrency(member.monthlyRate)}
+                            </span>
+                            <button
+                              onClick={() => openRateModal(member)}
+                              className="p-0.5 rounded hover:bg-gray-100 transition-colors text-gray-400 hover:text-blue-600"
+                              title="Edit monthly rate"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="stripe-text-secondary">Paid This Year</span>
@@ -1757,6 +1840,126 @@ export function FinancesPage() {
                     : (editingSalaryPayment ? `Save ${formatCurrency(salaryTotal)}` : `Record ${formatCurrency(salaryTotal)}`)
                   }
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========== SALARY RATE EDIT MODAL ========== */}
+      {showRateModal && rateMember && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowRateModal(false)}
+        >
+          <div
+            className="stripe-card p-6 w-full max-w-lg rounded-xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-5">
+              <div className="relative flex-shrink-0">
+                {rateMember.avatarUrl ? (
+                  <img src={rateMember.avatarUrl} alt={rateMember.name} className="w-10 h-10 rounded-full object-cover" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-slate-700 text-white font-medium flex items-center justify-center text-sm">
+                    {rateMember.name.split(' ').map((n) => n[0]).join('')}
+                  </div>
+                )}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold stripe-text-primary">Edit Monthly Base</h3>
+                <p className="text-sm stripe-text-muted">{rateMember.name}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Monthly Rate */}
+              <div>
+                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">Monthly Rate</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm stripe-text-muted">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={rateForm.monthlyRate}
+                    onChange={(e) => setRateForm({ ...rateForm, monthlyRate: e.target.value })}
+                    className="w-full pl-7 pr-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Effective Date */}
+              <div>
+                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">Effective Date</label>
+                <input
+                  type="date"
+                  value={rateForm.effectiveDate}
+                  onChange={(e) => setRateForm({ ...rateForm, effectiveDate: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                />
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">Note (optional)</label>
+                <input
+                  type="text"
+                  value={rateForm.note}
+                  onChange={(e) => setRateForm({ ...rateForm, note: e.target.value })}
+                  placeholder="e.g. Annual raise, promotion"
+                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowRateModal(false)}
+                  className="flex-1 px-4 py-2 border rounded-lg stripe-border stripe-text-primary text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveRate}
+                  disabled={rateSaving || !rateForm.monthlyRate}
+                  className="flex-1 stripe-btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  {rateSaving ? 'Saving...' : 'Save Rate'}
+                </button>
+              </div>
+
+              {/* Rate History */}
+              <div className="pt-3 border-t stripe-border">
+                <h4 className="text-sm font-semibold stripe-text-primary mb-3">Rate History</h4>
+                {rateHistoryLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : rateHistory.length === 0 ? (
+                  <p className="text-xs stripe-text-muted italic py-2">No rate changes recorded yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {rateHistory.map((entry) => (
+                      <div key={entry.id} className="flex items-start justify-between py-2 px-3 rounded-lg stripe-surface text-sm">
+                        <div>
+                          <span className="font-medium stripe-text-primary">
+                            {formatCurrency(entry.monthlyRate)}
+                          </span>
+                          <span className="stripe-text-muted ml-2">
+                            from {formatDate(entry.effectiveDate)}
+                          </span>
+                          {entry.note && (
+                            <p className="text-xs stripe-text-muted mt-0.5">{entry.note}</p>
+                          )}
+                        </div>
+                        <span className="text-xs stripe-text-muted whitespace-nowrap ml-3">
+                          {entry.createdBy || 'System'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

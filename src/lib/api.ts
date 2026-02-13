@@ -549,6 +549,14 @@ class ApiClient {
     return this.request('/finances/salaries/record', { method: 'POST', body: JSON.stringify(data) })
   }
 
+  async updateSalaryRate(teamMemberId: number, data: { monthlyRate: number; effectiveDate?: string; note?: string }) {
+    return this.request(`/finances/salaries/${teamMemberId}/rate`, { method: 'PUT', body: JSON.stringify(data) })
+  }
+
+  async getSalaryRateHistory(teamMemberId: number) {
+    return this.request(`/finances/salaries/${teamMemberId}/rate-history`)
+  }
+
   async getFinanceCategories() {
     return this.request('/finances/categories')
   }

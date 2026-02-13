@@ -8,6 +8,7 @@ import {
   clients,
   teamMembers,
   users,
+  salaryRateHistory,
 } from '../db/schema.js'
 import { decrypt } from '../lib/encryption.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -339,6 +340,8 @@ router.get('/salaries', async (req, res) => {
         monthlyRate: teamMembers.monthlyRate,
         hourlyRate: teamMembers.hourlyRate,
         isBillable: teamMembers.isBillable,
+        avatarUrl: teamMembers.avatarUrl,
+        status: teamMembers.status,
       })
       .from(teamMembers)
       .orderBy(teamMembers.name)
@@ -552,6 +555,69 @@ router.get('/balances', async (req, res) => {
   } catch (error) {
     console.error('Balances error:', error)
     res.status(500).json({ error: 'Failed to fetch balances' })
+  }
+})
+
+// PUT /salaries/:teamMemberId/rate - Update monthly base salary and log history
+router.put('/salaries/:teamMemberId/rate', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const teamMemberId = parseInt(req.params.teamMemberId)
+    const { monthlyRate, effectiveDate, note } = req.body
+
+    if (!monthlyRate || parseFloat(monthlyRate) < 0) {
+      return res.status(400).json({ error: 'Valid monthlyRate is required' })
+    }
+
+    const rate = String(parseFloat(monthlyRate).toFixed(2))
+    const effDate = effectiveDate || new Date().toISOString().split('T')[0]
+
+    // Update team member's monthly rate
+    await db
+      .update(teamMembers)
+      .set({ monthlyRate: rate, updatedAt: new Date() })
+      .where(eq(teamMembers.id, teamMemberId))
+
+    // Log to salary rate history
+    await db.insert(salaryRateHistory).values({
+      teamMemberId,
+      monthlyRate: rate,
+      effectiveDate: effDate,
+      note: note || null,
+      createdBy: req.user!.id,
+    })
+
+    res.json({ success: true, monthlyRate: rate })
+  } catch (error) {
+    console.error('Update salary rate error:', error)
+    res.status(500).json({ error: 'Failed to update salary rate' })
+  }
+})
+
+// GET /salaries/:teamMemberId/rate-history - Get salary rate change history
+router.get('/salaries/:teamMemberId/rate-history', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const teamMemberId = parseInt(req.params.teamMemberId)
+
+    const history = await db
+      .select({
+        id: salaryRateHistory.id,
+        monthlyRate: salaryRateHistory.monthlyRate,
+        effectiveDate: salaryRateHistory.effectiveDate,
+        note: salaryRateHistory.note,
+        createdBy: users.fullName,
+        createdAt: salaryRateHistory.createdAt,
+      })
+      .from(salaryRateHistory)
+      .leftJoin(users, eq(salaryRateHistory.createdBy, users.id))
+      .where(eq(salaryRateHistory.teamMemberId, teamMemberId))
+      .orderBy(desc(salaryRateHistory.effectiveDate))
+
+    res.json(history)
+  } catch (error) {
+    console.error('Salary rate history error:', error)
+    res.status(500).json({ error: 'Failed to fetch salary rate history' })
   }
 })
 

@@ -156,5 +156,32 @@ export async function ensureFinanceTables(pool: Pool): Promise<void> {
     const err = error as Error
     console.warn('[MIGRATIONS] Could not ensure integration_settings:', err.message)
   }
+
+  // salary_rate_history
+  try {
+    const hasSRH = await pool.query(`
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'salary_rate_history'
+    `)
+    if (hasSRH.rows.length === 0) {
+      console.log('[MIGRATIONS] Creating missing table: salary_rate_history')
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS "salary_rate_history" (
+          "id" serial PRIMARY KEY NOT NULL,
+          "team_member_id" integer NOT NULL REFERENCES "team_members"("id"),
+          "monthly_rate" numeric(10, 2) NOT NULL,
+          "effective_date" date NOT NULL,
+          "note" text,
+          "created_by" integer NOT NULL REFERENCES "users"("id"),
+          "created_at" timestamp DEFAULT now() NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "idx_srh_team_member" ON "salary_rate_history" ("team_member_id");
+        CREATE INDEX IF NOT EXISTS "idx_srh_effective_date" ON "salary_rate_history" ("effective_date");
+      `)
+    }
+  } catch (error) {
+    const err = error as Error
+    console.warn('[MIGRATIONS] Could not ensure salary_rate_history:', err.message)
+  }
 }
 

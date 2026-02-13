@@ -220,6 +220,17 @@ export const integrationSettings = pgTable('integration_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
+// Salary Rate History table
+export const salaryRateHistory = pgTable('salary_rate_history', {
+  id: serial('id').primaryKey(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
+  monthlyRate: decimal('monthly_rate', { precision: 10, scale: 2 }).notNull(),
+  effectiveDate: date('effective_date').notNull(),
+  note: text('note'),
+  createdBy: integer('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 // Feedback table
 export const feedback = pgTable('feedback', {
   id: serial('id').primaryKey(),
