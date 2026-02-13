@@ -21,6 +21,8 @@ import reimbursementsRouter from './routes/reimbursements.js'
 import roadmapRouter from './routes/roadmap.js'
 import shiftsRouter from './routes/shifts.js'
 import { feedbackRouter } from './routes/feedback.js'
+import { financesRouter } from './routes/finances.js'
+import { settingsRouter } from './routes/settings.js'
 import { setupPassport } from './auth/passport.js'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -315,6 +317,8 @@ app.use('/api/reimbursements', reimbursementsRouter)
 app.use('/api/roadmap', roadmapRouter)
 app.use('/api/shifts', shiftsRouter)
 app.use('/api/feedback', feedbackRouter)
+app.use('/api/finances', financesRouter)
+app.use('/api/settings', settingsRouter)
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 

@@ -192,6 +192,34 @@ export const financialData = pgTable('financial_data', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// Financial Transactions table
+export const financialTransactions = pgTable('financial_transactions', {
+  id: serial('id').primaryKey(),
+  type: varchar('type', { length: 20 }).notNull(), // 'income' | 'expense' | 'salary' | 'extra_payment'
+  category: text('category'),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  description: text('description'),
+  transactionDate: date('transaction_date').notNull(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id),
+  clientId: integer('client_id').references(() => clients.id),
+  invoiceId: integer('invoice_id').references(() => invoices.id),
+  isRecurring: boolean('is_recurring').default(false),
+  createdBy: integer('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Integration Settings table
+export const integrationSettings = pgTable('integration_settings', {
+  id: serial('id').primaryKey(),
+  provider: varchar('provider', { length: 50 }).notNull().unique(), // 'stripe', 'payoneer'
+  credentials: text('credentials').notNull().default(''), // AES-256-GCM encrypted JSON
+  isActive: boolean('is_active').default(false),
+  lastSyncAt: timestamp('last_sync_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // Feedback table
 export const feedback = pgTable('feedback', {
   id: serial('id').primaryKey(),

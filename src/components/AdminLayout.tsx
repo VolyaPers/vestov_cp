@@ -20,6 +20,7 @@ import { AdminReimbursements } from '@/pages/admin/AdminReimbursements'
 import { AdminShifts } from '@/pages/admin/AdminShifts'
 import { AdminDocumentsPage } from '@/pages/admin/AdminDocumentsPage'
 import { AdminFeedbackPage } from '@/pages/admin/AdminFeedbackPage'
+import { FinancesPage } from '@/pages/admin/FinancesPage'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -116,6 +117,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 <Route path="/admin/shifts" component={AdminShifts} />
                 <Route path="/admin/documents" component={AdminDocumentsPage} />
                 <Route path="/admin/feedback" component={AdminFeedbackPage} />
+                <Route path="/admin/finances" component={FinancesPage} />
                 <Route path="/admin" component={AdminDashboard} />
                 <Route path="*">
                   {() => (

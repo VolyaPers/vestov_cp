@@ -501,6 +501,88 @@ class ApiClient {
     })
   }
 
+  // Finances
+  async getFinancesOverview(params?: { startDate?: string; endDate?: string }) {
+    const sp = new URLSearchParams()
+    if (params?.startDate) sp.append('startDate', params.startDate)
+    if (params?.endDate) sp.append('endDate', params.endDate)
+    const q = sp.toString()
+    return this.request(`/finances/overview${q ? `?${q}` : ''}`)
+  }
+
+  async getFinancialTransactions(params?: { type?: string; startDate?: string; endDate?: string; teamMemberId?: number; category?: string }) {
+    const sp = new URLSearchParams()
+    if (params?.type) sp.append('type', params.type)
+    if (params?.startDate) sp.append('startDate', params.startDate)
+    if (params?.endDate) sp.append('endDate', params.endDate)
+    if (params?.teamMemberId) sp.append('teamMemberId', params.teamMemberId.toString())
+    if (params?.category) sp.append('category', params.category)
+    const q = sp.toString()
+    return this.request(`/finances/transactions${q ? `?${q}` : ''}`)
+  }
+
+  async createFinancialTransaction(data: { type: string; amount: number; transactionDate: string; category?: string; description?: string; teamMemberId?: number; clientId?: number; invoiceId?: number; isRecurring?: boolean }) {
+    return this.request('/finances/transactions', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async updateFinancialTransaction(id: number, data: Record<string, any>) {
+    return this.request(`/finances/transactions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  }
+
+  async deleteFinancialTransaction(id: number) {
+    return this.request(`/finances/transactions/${id}`, { method: 'DELETE' })
+  }
+
+  async getClientPayments(params?: { startDate?: string; endDate?: string }) {
+    const sp = new URLSearchParams()
+    if (params?.startDate) sp.append('startDate', params.startDate)
+    if (params?.endDate) sp.append('endDate', params.endDate)
+    const q = sp.toString()
+    return this.request(`/finances/client-payments${q ? `?${q}` : ''}`)
+  }
+
+  async getFinancesSalaries(year?: number) {
+    return this.request(`/finances/salaries${year ? `?year=${year}` : ''}`)
+  }
+
+  async recordSalaryPayment(data: { teamMemberId: number; amount: number; transactionDate: string; description?: string }) {
+    return this.request('/finances/salaries/record', { method: 'POST', body: JSON.stringify(data) })
+  }
+
+  async getFinanceCategories() {
+    return this.request('/finances/categories')
+  }
+
+  async getFinancesBalances(): Promise<{
+    stripe: { available: number; pending: number; currency: string } | null
+    payoneer: { available: number; currency: string } | null
+    fetchedAt: string
+  }> {
+    return this.request('/finances/balances')
+  }
+
+  // Integration Settings
+  async getIntegrations() {
+    return this.request('/settings/integrations')
+  }
+
+  async getIntegration(provider: string) {
+    return this.request(`/settings/integrations/${provider}`)
+  }
+
+  async saveIntegration(provider: string, credentials: Record<string, string>) {
+    return this.request(`/settings/integrations/${provider}`, {
+      method: 'PUT',
+      body: JSON.stringify({ credentials }),
+    })
+  }
+
+  async deleteIntegration(provider: string) {
+    return this.request(`/settings/integrations/${provider}`, {
+      method: 'DELETE',
+    })
+  }
+
   // User Management
   async getUsers(params?: { page?: number; limit?: number; role?: string; search?: string; clientId?: number }) {
     const searchParams = new URLSearchParams()

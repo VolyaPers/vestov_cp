@@ -20,7 +20,8 @@ import {
   Building,
   Briefcase,
   Handshake,
-  Receipt
+  Receipt,
+  Wallet
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -58,6 +59,7 @@ const adminNavigation: NavItem[] = [
       { name: 'Invoices', href: '/admin/invoices', icon: DollarSign },
     ]
   },
+  { name: 'Finances', href: '/admin/finances', icon: Wallet },
   { name: 'Users', href: '/admin/users', icon: UserCog },
   { name: 'Team', href: '/admin/team', icon: Users },
   { name: 'Shifts', href: '/admin/shifts', icon: Clock },
