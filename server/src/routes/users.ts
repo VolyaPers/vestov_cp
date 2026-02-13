@@ -113,7 +113,7 @@ async function deleteCriticalTeamMemberData(tx: any, teamMemberId: number): Prom
   console.log(`[HARD DELETE] Deleted team member ${teamMemberId}`)
 }
 
-// Get users with role='team_member' that don't have a team member linked yet
+// Get users that don't have a team member linked yet (team_member or admin roles)
 router.get('/available-team-member-users', async (req, res) => {
   try {
     const availableUsers = await db
@@ -129,7 +129,7 @@ router.get('/available-team-member-users', async (req, res) => {
       .from(users)
       .where(
         and(
-          eq(users.role, 'team_member'),
+          sql`${users.role} IN ('team_member', 'admin')`,
           sql`${users.teamMemberId} IS NULL`,
           eq(users.isActive, true)
         )

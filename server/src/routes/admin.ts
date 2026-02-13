@@ -453,8 +453,8 @@ router.post('/team-members', async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    if (user.role !== 'team_member') {
-      return res.status(400).json({ error: 'User must have role="team_member" to create a team member' })
+    if (user.role !== 'team_member' && user.role !== 'admin') {
+      return res.status(400).json({ error: 'User must have role="team_member" or "admin" to create a team member' })
     }
 
     if (user.teamMemberId) {
