@@ -1035,22 +1035,28 @@ export function VacationPage() {
                                   </div>
                                 )
                               })}
-                              {(workingMembers.length + dayEvents.length) > 2 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setAllMembersModalWorking(workingMembers)
-                                    setAllMembersModalLeaves(dayEvents)
-                                    setAllMembersModalDate(date)
-                                    setAllMembersSearch('')
-                                    setShowAllMembersModal(true)
-                                  }}
-                                  className="w-full text-[10px] text-gray-700 font-semibold bg-gray-100 hover:bg-gray-200 rounded px-1.5 py-1 text-center border border-gray-200 cursor-pointer transition-colors"
-                                >
-                                  +{(workingMembers.length + dayEvents.length) - 2} members
-                                </button>
-                              )}
+                              {(() => {
+                                const totalMembers = workingMembers.length + dayEvents.length
+                                const visibleBadges = Math.min(dayEvents.length, 2) + Math.min(workingMembers.length, 2)
+                                const hiddenCount = totalMembers - visibleBadges
+                                if (hiddenCount <= 0) return null
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setAllMembersModalWorking(workingMembers)
+                                      setAllMembersModalLeaves(dayEvents)
+                                      setAllMembersModalDate(date)
+                                      setAllMembersSearch('')
+                                      setShowAllMembersModal(true)
+                                    }}
+                                    className="w-full text-[10px] text-gray-700 font-semibold bg-gray-100 hover:bg-gray-200 rounded px-1.5 py-1 text-center border border-gray-200 cursor-pointer transition-colors"
+                                  >
+                                    +{hiddenCount} members
+                                  </button>
+                                )
+                              })()}
                             </div>
                           )}
                         </div>
