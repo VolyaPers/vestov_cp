@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import { TimezoneSelect } from '@/components/TimezoneSelect'
 
 interface User {
   id: number
@@ -19,6 +20,7 @@ interface User {
   email: string
   role: 'admin' | 'team_member' | 'client'
   position?: string
+  timezone?: string
   avatarUrl?: string
   teamMemberId?: number
   isDeveloper?: boolean
@@ -56,6 +58,7 @@ export function UsersPage() {
     email: '',
     role: 'client' as 'admin' | 'team_member' | 'client',
     position: '',
+    timezone: '',
     isDeveloper: false,
   })
   const [availableClients, setAvailableClients] = useState<Array<{id: number, name: string}>>([])
@@ -150,6 +153,7 @@ export function UsersPage() {
       email: user.email,
       role: user.role,
       position: user.position || '',
+      timezone: user.timezone || '',
       isDeveloper: user.isDeveloper || false,
     })
     setIsUserDialogOpen(true)
@@ -168,6 +172,7 @@ export function UsersPage() {
         email: userFormData.email,
         role: userFormData.role,
         position: userFormData.isDeveloper ? 'Developer' : (userFormData.position || undefined),
+        timezone: userFormData.timezone || undefined,
         isDeveloper: userFormData.isDeveloper,
       }
 
@@ -230,6 +235,7 @@ export function UsersPage() {
       email: '',
       role: 'client',
       position: '',
+      timezone: '',
       isDeveloper: false,
     })
     setIsEditingUser(null)
@@ -719,6 +725,18 @@ export function UsersPage() {
                 {userFormData.isDeveloper
                   ? 'Position is set to Developer when toggle is enabled'
                   : 'Enter the position for non-developer users'}
+              </p>
+            </div>
+
+            <div>
+              <Label>Timezone</Label>
+              <TimezoneSelect
+                value={userFormData.timezone || undefined}
+                onChange={(value) => setUserFormData({ ...userFormData, timezone: value })}
+                placeholder="Select timezone..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Used for displaying shift times in the correct timezone
               </p>
             </div>
 

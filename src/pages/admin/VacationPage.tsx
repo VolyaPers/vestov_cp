@@ -11,6 +11,7 @@ import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns'
+import { convertTime, getBrowserTimezone } from '@/lib/timezone'
 import type { TeamMember, LeaveType, CreateLeaveRequestData } from '@/types/common'
 import type { LeaveRequestWithNested } from '@/types/vacation'
 
@@ -57,6 +58,11 @@ export function VacationPage() {
   const [selectedVacation, setSelectedVacation] = useState<LeaveRequest | null>(null)
   const [selectedDayEvents, setSelectedDayEvents] = useState<LeaveRequest[]>([])
   const [selectedDate, setSelectedDate] = useState<string>('')
+  const [showAllMembersModal, setShowAllMembersModal] = useState(false)
+  const [allMembersModalWorking, setAllMembersModalWorking] = useState<any[]>([])
+  const [allMembersModalLeaves, setAllMembersModalLeaves] = useState<any[]>([])
+  const [allMembersModalDate, setAllMembersModalDate] = useState<Date | null>(null)
+  const [allMembersSearch, setAllMembersSearch] = useState('')
   const [calendarFormData, setCalendarFormData] = useState({
     employeeId: '',
     leaveTypeId: '',
@@ -99,6 +105,64 @@ export function VacationPage() {
     queryKey: ['leaveTypes'],
     queryFn: api.getLeaveTypes,
   })
+
+  // Fetch current user for timezone
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: api.getCurrentUser,
+  })
+
+  // Fetch all preferred shifts for calendar display
+  const { data: preferredShiftsData } = useQuery({
+    queryKey: ['allPreferredShifts'],
+    queryFn: api.getAllPreferredShifts,
+  })
+
+  // Fetch all shift overrides for the current month
+  const currentMonthStr = format(currentMonth, 'yyyy-MM')
+  const { data: overridesData } = useQuery({
+    queryKey: ['allShiftOverrides', currentMonthStr],
+    queryFn: () => api.getAllShiftOverrides(currentMonthStr),
+  })
+
+  const viewerTimezone = currentUser?.timezone || getBrowserTimezone()
+
+  // Helper: get shift time for a member on a specific date
+  const getShiftTimeForMember = (memberId: number, date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+
+    // Check overrides first
+    const override = overridesData?.overrides?.find(
+      (o: any) => o.override.employeeId === memberId && o.override.overrideDate === dateStr
+    )
+    if (override) {
+      if (override.override.isDayOff) return { isDayOff: true, startTime: '', endTime: '', isOverride: true, memberTz: '' }
+      const memberData = preferredShiftsData?.members?.find((m: any) => m.employee.id === memberId)
+      const memberTz = memberData?.employee?.timezone
+      if (memberTz) {
+        const start = convertTime(override.override.startTime, memberTz, viewerTimezone)
+        const end = convertTime(override.override.endTime, memberTz, viewerTimezone)
+        return { isDayOff: false, startTime: start.time, endTime: end.time, isOverride: true, memberTz, abbreviation: start.abbreviation }
+      }
+      return { isDayOff: false, startTime: override.override.startTime, endTime: override.override.endTime, isOverride: true, memberTz: '' }
+    }
+
+    // Fall back to preferred schedule
+    const memberData = preferredShiftsData?.members?.find((m: any) => m.employee.id === memberId)
+    if (!memberData) return null
+
+    const dayOfWeek = date.getDay() // 0=Sun, 1=Mon, ...
+    const schedule = memberData.schedules.find((s: any) => s.dayOfWeek === dayOfWeek && s.isActive)
+    if (!schedule) return null
+
+    const memberTz = memberData.employee?.timezone
+    if (memberTz) {
+      const start = convertTime(schedule.startTime, memberTz, viewerTimezone)
+      const end = convertTime(schedule.endTime, memberTz, viewerTimezone)
+      return { isDayOff: false, startTime: start.time, endTime: end.time, isOverride: false, memberTz, abbreviation: start.abbreviation }
+    }
+    return { isDayOff: false, startTime: schedule.startTime, endTime: schedule.endTime, isOverride: false, memberTz: '' }
+  }
 
   // Mutations for leave request actions
   const approveMutation = useMutation({
@@ -479,10 +543,10 @@ export function VacationPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Vacation & Leave Management
+              Team Calendar
             </h1>
             <p className="stripe-text-secondary text-lg">
-              View and manage team vacation requests
+              View team schedules, shifts, and leave requests
             </p>
           </div>
         </div>
@@ -928,12 +992,16 @@ export function VacationPage() {
                                 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
                                 const dayName = dayNames[date.getDay()]
                                 const isHalfDay = (member as any).workSchedule?.[dayName] === 'half'
+                                const shiftInfo = getShiftTimeForMember(member.id, date)
 
                                 return (
                                   <div
                                     key={member.id}
-                                    className="flex items-center gap-1.5 px-1.5 py-1 rounded border bg-green-50 border-green-200 hover:bg-green-100 transition-colors"
-                                    title={`${member.name} - ${isHalfDay ? 'Half Day' : 'Full Day'}`}
+                                    className={cn(
+                                      "flex items-center gap-1.5 px-1.5 py-1 rounded border hover:bg-green-100 transition-colors",
+                                      shiftInfo?.isOverride ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"
+                                    )}
+                                    title={`${member.name} - ${shiftInfo?.isDayOff ? 'Day Off' : isHalfDay ? 'Half Day' : 'Full Day'}${shiftInfo && !shiftInfo.isDayOff ? ` (${shiftInfo.startTime}-${shiftInfo.endTime})` : ''}`}
                                   >
                                     <Avatar className="h-5 w-5 border border-green-300 flex-shrink-0">
                                       <AvatarImage src={(member as any).avatarUrl} alt={member.name || 'Team Member'} />
@@ -945,6 +1013,14 @@ export function VacationPage() {
                                       <div className="text-[10px] font-semibold text-green-900 truncate">
                                         {member.name}
                                       </div>
+                                      {shiftInfo && !shiftInfo.isDayOff && (
+                                        <div className={cn(
+                                          "text-[9px] truncate",
+                                          shiftInfo.isOverride ? "text-amber-700 font-medium" : "text-green-700"
+                                        )}>
+                                          {shiftInfo.startTime}-{shiftInfo.endTime}
+                                        </div>
+                                      )}
                                     </div>
                                     {isHalfDay && (
                                       <span className="text-[8px] font-bold text-green-700 bg-green-200 px-1 py-0.5 rounded flex-shrink-0">
@@ -954,10 +1030,21 @@ export function VacationPage() {
                                   </div>
                                 )
                               })}
-                              {workingMembers.length > 2 && (
-                                <div className="text-[10px] text-gray-700 font-semibold bg-gray-100 rounded px-1.5 py-1 text-center border border-gray-200">
-                                  +{workingMembers.length - 2} more working
-                                </div>
+                              {(workingMembers.length + dayEvents.length) > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setAllMembersModalWorking(workingMembers)
+                                    setAllMembersModalLeaves(dayEvents)
+                                    setAllMembersModalDate(date)
+                                    setAllMembersSearch('')
+                                    setShowAllMembersModal(true)
+                                  }}
+                                  className="w-full text-[10px] text-gray-700 font-semibold bg-gray-100 hover:bg-gray-200 rounded px-1.5 py-1 text-center border border-gray-200 cursor-pointer transition-colors"
+                                >
+                                  +{(workingMembers.length + dayEvents.length) - 2} members
+                                </button>
                               )}
                             </div>
                           )}
@@ -1431,7 +1518,187 @@ export function VacationPage() {
         </div>
       )}
 
-      {/* Day Details Modal - Show all leave requests for a specific day */}
+      {/* All Members Modal — working + on leave */}
+      {showAllMembersModal && allMembersModalDate && (() => {
+        const filteredWorking = allMembersModalWorking.filter((member: TeamMember) =>
+          !allMembersSearch || member.name?.toLowerCase().includes(allMembersSearch.toLowerCase())
+        )
+        const filteredLeaves = allMembersModalLeaves.filter((item: LeaveRequest) =>
+          !allMembersSearch || item.employee?.name?.toLowerCase().includes(allMembersSearch.toLowerCase())
+        )
+        const totalCount = allMembersModalWorking.length + allMembersModalLeaves.length
+
+        return (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowAllMembersModal(false)}
+          >
+            <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <CardHeader>
+                <CardTitle>Team — {format(allMembersModalDate, 'MMMM d, yyyy')}</CardTitle>
+                <CardDescription>
+                  {totalCount} {totalCount === 1 ? 'member' : 'members'} · {allMembersModalWorking.length} working · {allMembersModalLeaves.length} on leave
+                </CardDescription>
+                <div className="relative mt-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name..."
+                    value={allMembersSearch}
+                    onChange={(e) => setAllMembersSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="overflow-y-auto max-h-[55vh]">
+                {/* On Leave Section */}
+                {filteredLeaves.length > 0 && (
+                  <div className="mb-4">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">On Leave</div>
+                    <div className="space-y-2">
+                      {filteredLeaves.map((item: LeaveRequest, index: number) => {
+                        const employee = item.employee
+                        const leaveType = item.leaveType
+                        const request = item.request || item
+
+                        return (
+                          <button
+                            key={`leave-${index}`}
+                            type="button"
+                            onClick={() => {
+                              handleVacationClick(item)
+                              setShowAllMembersModal(false)
+                            }}
+                            className={cn(
+                              "w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left",
+                              leaveType?.name === 'Vacation'
+                                ? "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                                : leaveType?.name === 'Sick Leave'
+                                ? "bg-red-50 border-red-200 hover:bg-red-100"
+                                : "bg-yellow-50 border-yellow-200 hover:bg-yellow-100"
+                            )}
+                          >
+                            <Avatar className="h-10 w-10 flex-shrink-0">
+                              <AvatarImage src={employee?.avatarUrl} alt={employee?.name} />
+                              <AvatarFallback className={cn(
+                                "text-sm font-bold",
+                                leaveType?.name === 'Vacation' ? "bg-blue-200 text-blue-900" :
+                                leaveType?.name === 'Sick Leave' ? "bg-red-200 text-red-900" :
+                                "bg-yellow-200 text-yellow-900"
+                              )}>
+                                {employee?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-gray-900">{employee?.name || 'Unknown'}</div>
+                              <div className="text-sm text-gray-600">
+                                {formatDate(request.startDate)} — {formatDate(request.endDate)}
+                                {request.reason && <span className="ml-1 italic text-gray-500">"{request.reason}"</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={cn(
+                                "text-xs font-medium px-2 py-0.5 rounded",
+                                leaveType?.name === 'Vacation' ? "bg-blue-100 text-blue-800" :
+                                leaveType?.name === 'Sick Leave' ? "bg-red-100 text-red-800" :
+                                "bg-yellow-100 text-yellow-800"
+                              )}>
+                                {leaveType?.name || 'Leave'}
+                              </span>
+                              {(request as any).status === 'pending' && (
+                                <span className="text-xs font-bold text-yellow-900 bg-yellow-400 px-2 py-0.5 rounded-full">
+                                  PENDING
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Working Section */}
+                {filteredWorking.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Working</div>
+                    <div className="space-y-2">
+                      {filteredWorking.map((member: TeamMember) => {
+                        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+                        const dayName = dayNames[allMembersModalDate.getDay()]
+                        const isHalfDay = (member as any).workSchedule?.[dayName] === 'half'
+                        const shiftInfo = getShiftTimeForMember(member.id, allMembersModalDate)
+
+                        return (
+                          <div
+                            key={member.id}
+                            className={cn(
+                              "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                              shiftInfo?.isOverride ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200"
+                            )}
+                          >
+                            <Avatar className="h-10 w-10 border-2 border-green-300 flex-shrink-0">
+                              <AvatarImage src={(member as any).avatarUrl} alt={member.name || 'Team Member'} />
+                              <AvatarFallback className="text-sm font-bold bg-green-200 text-green-900">
+                                {member.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-gray-900">{member.name}</div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {shiftInfo && !shiftInfo.isDayOff ? (
+                                  <span className={cn(
+                                    "text-sm",
+                                    shiftInfo.isOverride ? "text-amber-700 font-medium" : "text-green-700"
+                                  )}>
+                                    {shiftInfo.startTime} - {shiftInfo.endTime}
+                                    {shiftInfo.isOverride && <span className="ml-1 text-xs">(custom)</span>}
+                                  </span>
+                                ) : shiftInfo?.isDayOff ? (
+                                  <span className="text-sm text-gray-500">Day Off</span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {isHalfDay && (
+                                <span className="text-xs font-bold text-green-700 bg-green-200 px-2 py-0.5 rounded">
+                                  Half Day
+                                </span>
+                              )}
+                              <span className={cn(
+                                "text-xs font-medium px-2 py-0.5 rounded",
+                                shiftInfo?.isOverride ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800"
+                              )}>
+                                {shiftInfo?.isOverride ? 'Custom' : 'Regular'}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {filteredWorking.length === 0 && filteredLeaves.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    No members found matching "{allMembersSearch}"
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAllMembersModal(false)}
+                    className="w-full"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )
+      })()}
+
       {showDayDetailsModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"

@@ -21,6 +21,7 @@ export const users = pgTable('users', {
   role: varchar('role', { length: 20 }).notNull().default('client'), // 'admin' | 'team_member' | 'client'
   position: text('position'),
   avatarUrl: text('avatar_url'),
+  timezone: text('timezone'), // IANA timezone e.g. "America/New_York"
   teamMemberId: integer('team_member_id'), // Foreign key to team_members table (for role='team_member')
   isActive: boolean('is_active').default(true),
   lastLoginAt: timestamp('last_login_at'),
@@ -68,6 +69,7 @@ export const teamMembers = pgTable('team_members', {
   clientId: integer('client_id').references(() => clients.id),
   startDate: date('start_date').notNull(),
   location: text('location'),
+  timezone: text('timezone'), // IANA timezone e.g. "Europe/Kyiv"
   avatarUrl: text('avatar_url'),
   position: text('position'),
   isDeveloper: boolean('is_developer').notNull().default(false),
@@ -420,6 +422,18 @@ export const shiftSchedules = pgTable('shift_schedules', {
   startTime: varchar('start_time', { length: 5 }).notNull(), // Format: "HH:MM" (e.g., "09:00")
   endTime: varchar('end_time', { length: 5 }).notNull(), // Format: "HH:MM" (e.g., "18:00")
   isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Shift Schedule Overrides table (day-specific shift time overrides)
+export const shiftScheduleOverrides = pgTable('shift_schedule_overrides', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
+  overrideDate: varchar('override_date', { length: 10 }).notNull(), // YYYY-MM-DD
+  startTime: varchar('start_time', { length: 5 }).notNull(),
+  endTime: varchar('end_time', { length: 5 }).notNull(),
+  isDayOff: boolean('is_day_off').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

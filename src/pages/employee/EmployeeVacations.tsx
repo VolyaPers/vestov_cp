@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, Clock, FileText, ChevronLeft, ChevronRight, Plane, Heart, Plus, Wallet } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -121,6 +121,7 @@ const isPublicHoliday = (date: Date) => {
 
 export function EmployeeVacations() {
   const { showAlert } = useCustomAlert()
+  const queryClient = useQueryClient()
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null)
   const [employmentCycle, setEmploymentCycle] = useState<EmploymentCycle | null>(null)
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([])
@@ -131,6 +132,97 @@ export function EmployeeVacations() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [activeTab, setActiveTab] = useState('balance')
   const [showCalendarModal, setShowCalendarModal] = useState(false)
+  const [showShiftModal, setShowShiftModal] = useState(false)
+  const [selectedShiftDate, setSelectedShiftDate] = useState<Date | null>(null)
+  const [shiftFormData, setShiftFormData] = useState({ startTime: '09:00', endTime: '18:00', isDayOff: false })
+  const [savingShift, setSavingShift] = useState(false)
+
+  // Fetch preferred shifts
+  const { data: preferredShiftsData } = useQuery({
+    queryKey: ['myPreferredShifts'],
+    queryFn: api.getMyPreferredShifts,
+  })
+
+  // Fetch shift overrides for current month
+  const currentMonthStr = format(currentMonth, 'yyyy-MM')
+  const { data: overridesData } = useQuery({
+    queryKey: ['myShiftOverrides', currentMonthStr],
+    queryFn: () => api.getMyShiftOverrides(currentMonthStr),
+  })
+
+  // Helper: get shift info for a specific date
+  const getShiftForDate = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    const dayOfWeek = date.getDay()
+
+    // Check overrides first
+    const override = overridesData?.overrides?.find((o: any) => o.overrideDate === dateStr)
+    if (override) {
+      return {
+        startTime: override.startTime,
+        endTime: override.endTime,
+        isDayOff: override.isDayOff,
+        isOverride: true,
+      }
+    }
+
+    // Fall back to preferred schedule
+    const schedules = preferredShiftsData?.schedules || []
+    const schedule = schedules.find((s: any) => s.dayOfWeek === dayOfWeek && s.isActive)
+    if (schedule) {
+      return {
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        isDayOff: false,
+        isOverride: false,
+      }
+    }
+
+    return null
+  }
+
+  const handleShiftClick = (date: Date) => {
+    const existing = getShiftForDate(date)
+    setSelectedShiftDate(date)
+    setShiftFormData({
+      startTime: existing?.startTime || '09:00',
+      endTime: existing?.endTime || '18:00',
+      isDayOff: existing?.isDayOff || false,
+    })
+    setShowShiftModal(true)
+  }
+
+  const handleSaveShiftOverride = async () => {
+    if (!selectedShiftDate) return
+    try {
+      setSavingShift(true)
+      const dateStr = format(selectedShiftDate, 'yyyy-MM-dd')
+      await api.updateMyShiftOverride(dateStr, shiftFormData)
+      queryClient.invalidateQueries({ queryKey: ['myShiftOverrides'] })
+      setShowShiftModal(false)
+      showAlert({ message: 'Shift override saved', type: 'success' })
+    } catch (error) {
+      showAlert({ message: 'Failed to save shift override', type: 'error' })
+    } finally {
+      setSavingShift(false)
+    }
+  }
+
+  const handleResetShiftOverride = async () => {
+    if (!selectedShiftDate) return
+    try {
+      setSavingShift(true)
+      const dateStr = format(selectedShiftDate, 'yyyy-MM-dd')
+      await api.deleteMyShiftOverride(dateStr)
+      queryClient.invalidateQueries({ queryKey: ['myShiftOverrides'] })
+      setShowShiftModal(false)
+      showAlert({ message: 'Shift reset to default', type: 'success' })
+    } catch (error) {
+      showAlert({ message: 'Failed to reset shift', type: 'error' })
+    } finally {
+      setSavingShift(false)
+    }
+  }
 
   // Fetch vacation balance (50/50 rule)
   interface VacationBalance {
@@ -398,10 +490,10 @@ export function EmployeeVacations() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              My Vacations
+              My Calendar
             </h1>
             <p className="stripe-text-secondary text-lg">
-              Manage your time off and view your schedule
+              Manage your schedule, shifts, and time off
             </p>
           </div>
         </div>
@@ -555,6 +647,8 @@ export function EmployeeVacations() {
                   const dayLeave = getLeaveForDay(day)
                   const isCurrentDay = isToday(day)
                   const holiday = isPublicHoliday(day)
+                  const shiftInfo = getShiftForDate(day)
+                  const isWeekday = day.getDay() >= 1 && day.getDay() <= 5
 
                   return (
                     <div
@@ -618,6 +712,36 @@ export function EmployeeVacations() {
                             )
                           })}
                         </div>
+                      )}
+
+                      {/* Shift Time Badge */}
+                      {isWeekday && !holiday && shiftInfo && (
+                        <button
+                          onClick={() => handleShiftClick(day)}
+                          className={cn(
+                            'w-full mt-1 px-1.5 py-1 rounded text-[10px] font-medium text-left transition-colors',
+                            shiftInfo.isDayOff
+                              ? 'bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200'
+                              : shiftInfo.isOverride
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                          )}
+                          title="Click to edit shift for this day"
+                        >
+                          {shiftInfo.isDayOff ? 'Day Off' : `${shiftInfo.startTime} - ${shiftInfo.endTime}`}
+                          {shiftInfo.isOverride && !shiftInfo.isDayOff && (
+                            <span className="ml-1 text-[8px] text-amber-500">*</span>
+                          )}
+                        </button>
+                      )}
+                      {isWeekday && !holiday && !shiftInfo && (
+                        <button
+                          onClick={() => handleShiftClick(day)}
+                          className="w-full mt-1 px-1.5 py-1 rounded text-[10px] text-gray-400 border border-dashed border-gray-200 hover:bg-gray-50 transition-colors"
+                          title="Click to set shift for this day"
+                        >
+                          + Set shift
+                        </button>
                       )}
                     </div>
                   )
@@ -868,6 +992,91 @@ export function EmployeeVacations() {
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Shift Override Modal */}
+      {showShiftModal && selectedShiftDate && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowShiftModal(false)}
+        >
+          <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <CardHeader>
+              <CardTitle className="text-lg">Edit Shift - {format(selectedShiftDate, 'EEEE, MMM d')}</CardTitle>
+              <CardDescription>Set custom shift hours for this day</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Day Off Toggle */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                  <Label htmlFor="dayOff" className="cursor-pointer">Mark as Day Off</Label>
+                  <input
+                    id="dayOff"
+                    type="checkbox"
+                    checked={shiftFormData.isDayOff}
+                    onChange={(e) => setShiftFormData({ ...shiftFormData, isDayOff: e.target.checked })}
+                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
+                  />
+                </div>
+
+                {!shiftFormData.isDayOff && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Start Time</Label>
+                      <Input
+                        type="time"
+                        value={shiftFormData.startTime}
+                        onChange={(e) => setShiftFormData({ ...shiftFormData, startTime: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>End Time</Label>
+                      <Input
+                        type="time"
+                        value={shiftFormData.endTime}
+                        onChange={(e) => setShiftFormData({ ...shiftFormData, endTime: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Existing override indicator */}
+                {getShiftForDate(selectedShiftDate)?.isOverride && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    <p className="text-xs text-amber-700">This day has a custom override. You can reset to the default schedule.</p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  {getShiftForDate(selectedShiftDate)?.isOverride && (
+                    <Button
+                      variant="outline"
+                      onClick={handleResetShiftOverride}
+                      disabled={savingShift}
+                      className="flex-1 text-sm"
+                    >
+                      Reset to Default
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowShiftModal(false)}
+                    className="flex-1 text-sm"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveShiftOverride}
+                    disabled={savingShift}
+                    className="flex-1 text-sm"
+                  >
+                    {savingShift ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

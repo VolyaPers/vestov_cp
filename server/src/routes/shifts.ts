@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { db } from '../db/index.js'
-import { shifts, shiftBreaks, shiftSchedules, teamMembers, clientUsers, clientServices, serviceTypes, clientServiceTeamMembers } from '../db/schema.js'
+import { shifts, shiftBreaks, shiftSchedules, shiftScheduleOverrides, teamMembers, clientUsers, clientServices, serviceTypes, clientServiceTeamMembers } from '../db/schema.js'
 import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm'
 import { notifyShiftEvent } from '../utils/slack.js'
 import { emitShiftStarted, emitShiftEnded, emitBreakStarted, emitBreakEnded } from '../socket.js'
@@ -1079,6 +1079,399 @@ router.get('/client/team', async (req, res) => {
   } catch (error) {
     console.error('Error fetching client team shifts:', error)
     res.status(500).json({ error: 'Failed to fetch team shifts' })
+  }
+})
+
+// ============ TIMEZONE ============
+
+// Employee: update my timezone
+router.put('/timezone/me', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+
+    const { timezone } = req.body
+    if (!timezone || typeof timezone !== 'string') {
+      return res.status(400).json({ error: 'timezone is required' })
+    }
+
+    let employee
+    if ((req.user as any).teamMemberId) {
+      const members = await db.select().from(teamMembers).where(eq(teamMembers.id, (req.user as any).teamMemberId))
+      employee = members[0]
+    } else {
+      employee = await getEmployeeByUser(req.user.email!)
+    }
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Team member profile not found' })
+    }
+
+    await db.update(teamMembers).set({ timezone }).where(eq(teamMembers.id, employee.id))
+
+    res.json({ timezone })
+  } catch (error) {
+    console.error('Error updating timezone:', error)
+    res.status(500).json({ error: 'Failed to update timezone' })
+  }
+})
+
+// ============ PREFERRED SHIFTS (Schedules) ============
+
+// Employee: get my preferred shifts
+router.get('/preferred/me', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+
+    let employee
+    if ((req.user as any).teamMemberId) {
+      const members = await db.select().from(teamMembers).where(eq(teamMembers.id, (req.user as any).teamMemberId))
+      employee = members[0]
+    } else {
+      employee = await getEmployeeByUser(req.user.email!)
+    }
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Team member profile not found' })
+    }
+
+    const schedules = await db
+      .select()
+      .from(shiftSchedules)
+      .where(eq(shiftSchedules.employeeId, employee.id))
+      .orderBy(shiftSchedules.dayOfWeek)
+
+    res.json({ schedules, timezone: employee.timezone || null })
+  } catch (error) {
+    console.error('Error fetching preferred shifts:', error)
+    res.status(500).json({ error: 'Failed to fetch preferred shifts' })
+  }
+})
+
+// Employee: set my preferred shifts (bulk upsert)
+router.put('/preferred/me', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+
+    let employee
+    if ((req.user as any).teamMemberId) {
+      const members = await db.select().from(teamMembers).where(eq(teamMembers.id, (req.user as any).teamMemberId))
+      employee = members[0]
+    } else {
+      employee = await getEmployeeByUser(req.user.email!)
+    }
+
+    if (!employee) {
+      return res.status(404).json({ error: 'Team member profile not found' })
+    }
+
+    const { schedules } = req.body as {
+      schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }>
+    }
+
+    if (!schedules || !Array.isArray(schedules)) {
+      return res.status(400).json({ error: 'schedules array is required' })
+    }
+
+    // Delete existing schedules for this employee
+    await db.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, employee.id))
+
+    // Insert new schedules
+    if (schedules.length > 0) {
+      await db.insert(shiftSchedules).values(
+        schedules.map((s) => ({
+          employeeId: employee.id,
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          isActive: s.isActive,
+        }))
+      )
+    }
+
+    // Fetch and return the updated schedules
+    const updated = await db
+      .select()
+      .from(shiftSchedules)
+      .where(eq(shiftSchedules.employeeId, employee.id))
+      .orderBy(shiftSchedules.dayOfWeek)
+
+    res.json({ schedules: updated, timezone: employee.timezone || null })
+  } catch (error) {
+    console.error('Error updating preferred shifts:', error)
+    res.status(500).json({ error: 'Failed to update preferred shifts' })
+  }
+})
+
+// Admin: get preferred shifts for a specific employee
+router.get('/preferred/:employeeId', async (req, res) => {
+  try {
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'client')) {
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    const employeeId = Number(req.params.employeeId)
+
+    const [employee] = await db.select().from(teamMembers).where(eq(teamMembers.id, employeeId))
+    if (!employee) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    const schedules = await db
+      .select()
+      .from(shiftSchedules)
+      .where(eq(shiftSchedules.employeeId, employeeId))
+      .orderBy(shiftSchedules.dayOfWeek)
+
+    res.json({ schedules, timezone: employee.timezone || null, employeeName: employee.name })
+  } catch (error) {
+    console.error('Error fetching employee preferred shifts:', error)
+    res.status(500).json({ error: 'Failed to fetch preferred shifts' })
+  }
+})
+
+// Admin: update preferred shifts for a specific employee (bulk upsert)
+router.put('/preferred/:employeeId', async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' })
+    }
+
+    const employeeId = Number(req.params.employeeId)
+
+    const [employee] = await db.select().from(teamMembers).where(eq(teamMembers.id, employeeId))
+    if (!employee) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    const { schedules } = req.body as {
+      schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }>
+    }
+
+    if (!schedules || !Array.isArray(schedules)) {
+      return res.status(400).json({ error: 'schedules array is required' })
+    }
+
+    // Delete existing schedules for this employee
+    await db.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, employeeId))
+
+    // Insert new schedules
+    if (schedules.length > 0) {
+      await db.insert(shiftSchedules).values(
+        schedules.map((s) => ({
+          employeeId,
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          isActive: s.isActive,
+        }))
+      )
+    }
+
+    const updated = await db
+      .select()
+      .from(shiftSchedules)
+      .where(eq(shiftSchedules.employeeId, employeeId))
+      .orderBy(shiftSchedules.dayOfWeek)
+
+    res.json({ schedules: updated, timezone: employee.timezone || null })
+  } catch (error) {
+    console.error('Error updating employee preferred shifts:', error)
+    res.status(500).json({ error: 'Failed to update preferred shifts' })
+  }
+})
+
+// Admin: get all team members' preferred shifts (summary)
+router.get('/preferred', async (req, res) => {
+  try {
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'client')) {
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    const allSchedules = await db
+      .select({
+        schedule: shiftSchedules,
+        employee: {
+          id: teamMembers.id,
+          name: teamMembers.name,
+          timezone: teamMembers.timezone,
+          avatarUrl: teamMembers.avatarUrl,
+          status: teamMembers.status,
+        },
+      })
+      .from(shiftSchedules)
+      .innerJoin(teamMembers, eq(shiftSchedules.employeeId, teamMembers.id))
+      .where(eq(teamMembers.status, 'active'))
+      .orderBy(teamMembers.name, shiftSchedules.dayOfWeek)
+
+    // Group by employee
+    const byEmployee = new Map<number, { employee: any; schedules: any[] }>()
+    for (const row of allSchedules) {
+      if (!byEmployee.has(row.employee.id)) {
+        byEmployee.set(row.employee.id, { employee: row.employee, schedules: [] })
+      }
+      byEmployee.get(row.employee.id)!.schedules.push(row.schedule)
+    }
+
+    res.json({ members: Array.from(byEmployee.values()) })
+  } catch (error) {
+    console.error('Error fetching all preferred shifts:', error)
+    res.status(500).json({ error: 'Failed to fetch preferred shifts' })
+  }
+})
+
+// ==================== Shift Schedule Overrides ====================
+
+// GET /overrides/me - Employee gets their own overrides for a month
+router.get('/overrides/me', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' })
+
+    const employee = await getEmployeeByUser(req.user.email)
+    if (!employee) return res.status(404).json({ error: 'Employee not found' })
+
+    const month = req.query.month as string // YYYY-MM
+    let whereClause = eq(shiftScheduleOverrides.employeeId, employee.id)
+
+    if (month) {
+      const startDate = `${month}-01`
+      const endDate = `${month}-31`
+      whereClause = and(
+        whereClause,
+        gte(shiftScheduleOverrides.overrideDate, startDate),
+        lte(shiftScheduleOverrides.overrideDate, endDate),
+      )! as any
+    }
+
+    const overrides = await db
+      .select()
+      .from(shiftScheduleOverrides)
+      .where(whereClause)
+      .orderBy(shiftScheduleOverrides.overrideDate)
+
+    res.json({ overrides })
+  } catch (error) {
+    console.error('Error fetching my shift overrides:', error)
+    res.status(500).json({ error: 'Failed to fetch shift overrides' })
+  }
+})
+
+// PUT /overrides/me/:date - Employee creates/updates override for a specific date
+router.put('/overrides/me/:date', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' })
+
+    const employee = await getEmployeeByUser(req.user.email)
+    if (!employee) return res.status(404).json({ error: 'Employee not found' })
+
+    const { date } = req.params
+    const { startTime, endTime, isDayOff } = req.body
+
+    if (!isDayOff && (!startTime || !endTime)) {
+      return res.status(400).json({ error: 'startTime and endTime are required when not a day off' })
+    }
+
+    // Upsert: try update first, then insert
+    const existing = await db
+      .select()
+      .from(shiftScheduleOverrides)
+      .where(and(
+        eq(shiftScheduleOverrides.employeeId, employee.id),
+        eq(shiftScheduleOverrides.overrideDate, date),
+      ))
+      .limit(1)
+
+    if (existing.length > 0) {
+      await db
+        .update(shiftScheduleOverrides)
+        .set({
+          startTime: isDayOff ? '00:00' : startTime,
+          endTime: isDayOff ? '00:00' : endTime,
+          isDayOff: isDayOff || false,
+          updatedAt: new Date(),
+        })
+        .where(eq(shiftScheduleOverrides.id, existing[0].id))
+    } else {
+      await db
+        .insert(shiftScheduleOverrides)
+        .values({
+          employeeId: employee.id,
+          overrideDate: date,
+          startTime: isDayOff ? '00:00' : startTime,
+          endTime: isDayOff ? '00:00' : endTime,
+          isDayOff: isDayOff || false,
+        })
+    }
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Error saving shift override:', error)
+    res.status(500).json({ error: 'Failed to save shift override' })
+  }
+})
+
+// DELETE /overrides/me/:date - Employee removes override (reverts to default)
+router.delete('/overrides/me/:date', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' })
+
+    const employee = await getEmployeeByUser(req.user.email)
+    if (!employee) return res.status(404).json({ error: 'Employee not found' })
+
+    const { date } = req.params
+
+    await db
+      .delete(shiftScheduleOverrides)
+      .where(and(
+        eq(shiftScheduleOverrides.employeeId, employee.id),
+        eq(shiftScheduleOverrides.overrideDate, date),
+      ))
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting shift override:', error)
+    res.status(500).json({ error: 'Failed to delete shift override' })
+  }
+})
+
+// GET /overrides/all - Admin gets all overrides for a month
+router.get('/overrides/all', async (req, res) => {
+  try {
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'client')) {
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    const month = req.query.month as string // YYYY-MM
+    if (!month) return res.status(400).json({ error: 'month query parameter required (YYYY-MM)' })
+
+    const startDate = `${month}-01`
+    const endDate = `${month}-31`
+
+    const overrides = await db
+      .select({
+        override: shiftScheduleOverrides,
+        employee: {
+          id: teamMembers.id,
+          name: teamMembers.name,
+        },
+      })
+      .from(shiftScheduleOverrides)
+      .innerJoin(teamMembers, eq(shiftScheduleOverrides.employeeId, teamMembers.id))
+      .where(and(
+        gte(shiftScheduleOverrides.overrideDate, startDate),
+        lte(shiftScheduleOverrides.overrideDate, endDate),
+      ))
+      .orderBy(shiftScheduleOverrides.overrideDate)
+
+    res.json({ overrides })
+  } catch (error) {
+    console.error('Error fetching all shift overrides:', error)
+    res.status(500).json({ error: 'Failed to fetch shift overrides' })
   }
 })
 

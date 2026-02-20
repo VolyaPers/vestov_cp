@@ -230,6 +230,7 @@ export function setupPassport(pool: Pool) {
           role: users.role,
           position: users.position,
           avatarUrl: users.avatarUrl,
+          timezone: users.timezone,
           teamMemberId: users.teamMemberId,
           isActive: users.isActive,
         })

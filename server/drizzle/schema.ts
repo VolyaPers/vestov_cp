@@ -367,6 +367,7 @@ export const teamMembers = pgTable("team_members", {
 	clientId: integer("client_id"),
 	startDate: date("start_date").notNull(),
 	location: text(),
+	timezone: text(),
 	avatarUrl: text("avatar_url"),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
@@ -504,6 +505,24 @@ export const shiftSchedules = pgTable("shift_schedules", {
 		}),
 ]);
 
+export const shiftScheduleOverrides = pgTable("shift_schedule_overrides", {
+	id: serial().primaryKey().notNull(),
+	employeeId: integer("employee_id").notNull(),
+	overrideDate: varchar("override_date", { length: 10 }).notNull(),
+	startTime: varchar("start_time", { length: 5 }).notNull(),
+	endTime: varchar("end_time", { length: 5 }).notNull(),
+	isDayOff: boolean("is_day_off").default(false).notNull(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.employeeId],
+			foreignColumns: [teamMembers.id],
+			name: "shift_schedule_overrides_employee_id_fkey"
+		}),
+	unique("shift_schedule_overrides_employee_id_override_date_key").on(table.employeeId, table.overrideDate),
+]);
+
 export const scriptExecutionLog = pgTable("script_execution_log", {
 	id: serial().primaryKey().notNull(),
 	scriptName: varchar("script_name", { length: 255 }).notNull(),
@@ -566,6 +585,7 @@ export const users = pgTable("users", {
 	role: varchar({ length: 20 }).default('client').notNull(),
 	position: text(),
 	avatarUrl: text("avatar_url"),
+	timezone: text(),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
 	isActive: boolean("is_active").default(true),

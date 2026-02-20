@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
+import { PreferredShiftsDisplay } from '@/components/PreferredShiftsDisplay'
 
 interface Shift {
   id: number
@@ -60,9 +61,16 @@ export function AdminShifts() {
 
   useShiftUpdateListener(handleShiftUpdate)
 
+  const { data: preferredShiftsData, isLoading: isLoadingPreferred } = useQuery({
+    queryKey: ['allPreferredShifts'],
+    queryFn: () => api.getAllPreferredShifts(),
+    refetchInterval: 5 * 60 * 1000,
+  })
+
   const activeShifts: Shift[] = activeShiftsData?.shifts ?? []
   const lateShifts = lateShiftsData?.lateShifts ?? []
   const missedShifts = lateShiftsData?.missedShifts ?? []
+  const preferredMembers = preferredShiftsData?.members ?? []
   const loading = isLoadingActive || isLoadingLate
 
   const formatTime = (dateString: string) => {
@@ -258,6 +266,69 @@ export function AdminShifts() {
               <div className="text-center text-gray-500">
                 <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No active shifts at the moment</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Team Preferred Shifts */}
+      <div>
+        <div className="mb-4">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-indigo-600" />
+            Team Preferred Shifts
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">Preferred working hours for each team member (shown in your timezone)</p>
+        </div>
+
+        {isLoadingPreferred ? (
+          <Card>
+            <CardContent className="py-8">
+              <div className="text-center text-gray-500">Loading preferred shifts...</div>
+            </CardContent>
+          </Card>
+        ) : preferredMembers.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {preferredMembers.map((item: any) => (
+              <Card key={item.employee.id} className="border-gray-200">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                      <AvatarImage src={item.employee.avatarUrl} alt={item.employee.name} />
+                      <AvatarFallback className="bg-indigo-100 text-indigo-700 font-semibold text-sm">
+                        {item.employee.name
+                          .split(' ')
+                          .map((n: string) => n[0])
+                          .join('')
+                          .toUpperCase()
+                          .slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle className="text-sm font-semibold">{item.employee.name}</CardTitle>
+                      {item.employee.timezone && (
+                        <CardDescription className="text-xs">{item.employee.timezone}</CardDescription>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <PreferredShiftsDisplay
+                    schedules={item.schedules}
+                    employeeTimezone={item.employee.timezone}
+                    showEmployeeTime={true}
+                  />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="py-8">
+              <div className="text-center text-gray-500">
+                <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No team members have set preferred shifts yet</p>
               </div>
             </CardContent>
           </Card>

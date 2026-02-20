@@ -29,8 +29,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { VacationBalanceCard } from '@/components/VacationBalanceCard'
+import { PreferredShiftsDisplay } from '@/components/PreferredShiftsDisplay'
+import { PreferredShiftsEditor } from '@/components/PreferredShiftsEditor'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import type { ShiftSchedule } from '@/types/common'
 import { formatCurrency, parseLocalDate } from '@/lib/utils'
 import { format, addYears, differenceInDays } from 'date-fns'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
@@ -53,6 +56,7 @@ interface TeamMember {
   status: string
   startDate: string
   location?: string
+  timezone?: string
   avatarUrl?: string
   clientId?: number
   clientName?: string
@@ -116,6 +120,10 @@ export function TeamMemberDetails() {
     cycleStart: '',
     isActive: true
   })
+  const [preferredShifts, setPreferredShifts] = useState<ShiftSchedule[]>([])
+  const [shiftTimezone, setShiftTimezone] = useState<string | null>(null)
+  const [isEditingShifts, setIsEditingShifts] = useState(false)
+  const [savingShifts, setSavingShifts] = useState(false)
 
   // Log for debugging
 
@@ -137,8 +145,40 @@ export function TeamMemberDetails() {
     if (memberId) {
       loadTeamMember()
       loadVacationData()
+      loadPreferredShifts()
     }
   }, [memberId])
+
+  const loadPreferredShifts = async () => {
+    try {
+      const result = await api.getEmployeePreferredShifts(parseInt(memberId))
+      setPreferredShifts(result.schedules || [])
+      setShiftTimezone(result.timezone || null)
+    } catch (error) {
+      console.error('Error loading preferred shifts:', error)
+    }
+  }
+
+  const handleSaveShifts = async (schedules: ShiftSchedule[]) => {
+    try {
+      setSavingShifts(true)
+      const result = await api.updateEmployeePreferredShifts(
+        parseInt(memberId),
+        schedules.map((s) => ({
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          isActive: s.isActive,
+        }))
+      )
+      setPreferredShifts(result.schedules || [])
+      setIsEditingShifts(false)
+    } catch (error) {
+      console.error('Error saving preferred shifts:', error)
+    } finally {
+      setSavingShifts(false)
+    }
+  }
 
   const loadTeamMember = async () => {
     try {
@@ -354,6 +394,7 @@ export function TeamMemberDetails() {
         status: editingMember.status as 'active' | 'bench' | 'unavailable',
         bio: editingMember.bio || undefined,
         location: editingMember.location || undefined,
+        timezone: editingMember.timezone || undefined,
         clientId: editingMember.clientId || undefined,
         startDate: editingMember.startDate, // Include startDate
         phone: editingMember.phone || undefined, // Include phone
@@ -635,6 +676,46 @@ export function TeamMemberDetails() {
             error={balanceError as Error | null}
           />
         )}
+
+        {/* Preferred Shifts */}
+        <Card className="bg-white shadow-sm border border-gray-200">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg text-gray-900 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-600" />
+                Preferred Shifts
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditingShifts(!isEditingShifts)}
+              >
+                <Edit3 className="h-4 w-4 mr-1" />
+                {isEditingShifts ? 'Cancel' : 'Edit'}
+              </Button>
+            </div>
+            {member?.timezone && (
+              <CardDescription>
+                {member.name}'s timezone: {member.timezone}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            {isEditingShifts ? (
+              <PreferredShiftsEditor
+                schedules={preferredShifts}
+                onSave={handleSaveShifts}
+                isSaving={savingShifts}
+                timezone={shiftTimezone}
+              />
+            ) : (
+              <PreferredShiftsDisplay
+                schedules={preferredShifts}
+                employeeTimezone={shiftTimezone}
+              />
+            )}
+          </CardContent>
+        </Card>
 
         {/* Current Employment Cycle */}
         <Card className="bg-white shadow-sm border border-gray-200">

@@ -26,6 +26,7 @@ export interface User {
   role: UserRole
   position?: string
   avatarUrl?: string
+  timezone?: string
   teamMemberId?: number
   isActive: boolean
   lastLoginAt?: string
@@ -102,9 +103,28 @@ export interface TeamMember {
   status: TeamMemberStatus
   bio?: string
   location?: string
+  timezone?: string
   clientId?: number
   createdAt?: string
   updatedAt?: string
+}
+
+export interface ShiftSchedule {
+  id?: number
+  employeeId?: number
+  dayOfWeek: number  // 1=Monday ... 5=Friday
+  startTime: string  // HH:MM in employee's timezone
+  endTime: string    // HH:MM in employee's timezone
+  isActive: boolean
+}
+
+export interface ShiftScheduleOverride {
+  id?: number
+  employeeId?: number
+  overrideDate: string  // YYYY-MM-DD
+  startTime: string     // HH:MM
+  endTime: string       // HH:MM
+  isDayOff: boolean
 }
 
 export interface LeaveRequest {
@@ -210,6 +230,7 @@ export interface CreateTeamMemberData {
   status: TeamMemberStatus
   startDate: string
   location?: string
+  timezone?: string
   position?: string
   isDeveloper?: boolean
   experienceLevel?: 'junior' | 'middle' | 'senior' | 'lead'

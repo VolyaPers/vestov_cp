@@ -342,7 +342,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    const { username, fullName, email, role, position, avatarUrl, isActive, password, isDeveloper } = req.body
+    const { username, fullName, email, role, position, avatarUrl, timezone, isActive, password, isDeveloper } = req.body
 
     const updateData: {
       username?: string
@@ -351,6 +351,7 @@ router.put('/:id', async (req, res) => {
       role?: string
       position?: string | null
       avatarUrl?: string | null
+      timezone?: string | null
       isActive?: boolean
       password?: string
       updatedAt: Date
@@ -361,6 +362,7 @@ router.put('/:id', async (req, res) => {
     if (role !== undefined) updateData.role = role
     if (position !== undefined) updateData.position = position
     if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl
+    if (timezone !== undefined) updateData.timezone = timezone
     if (isActive !== undefined) updateData.isActive = isActive
     if (password !== undefined && password.trim() !== '') {
       // Hash the password before storing

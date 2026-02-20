@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Pencil } from 'lucide-react'
+import { TimezoneSelect } from '@/components/TimezoneSelect'
 
 export interface EditTeamMemberData {
   id: number
@@ -21,6 +22,7 @@ export interface EditTeamMemberData {
   status: 'active' | 'bench' | 'unavailable' | string
   startDate: string
   location?: string
+  timezone?: string
   position?: string
   isDeveloper: boolean
   clientId?: number
@@ -110,6 +112,13 @@ export function EditTeamMemberDialog({
                   onChange={(e) => onMemberChange({ location: e.target.value })}
                   placeholder="e.g. San Francisco, CA"
                   className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Timezone</Label>
+                <TimezoneSelect
+                  value={member.timezone}
+                  onChange={(value) => onMemberChange({ timezone: value })}
                 />
               </div>
               <div className="space-y-2">

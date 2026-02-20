@@ -63,7 +63,7 @@ const adminNavigation: NavItem[] = [
   { name: 'Users', href: '/admin/users', icon: UserCog },
   { name: 'Team', href: '/admin/team', icon: Users },
   { name: 'Shifts', href: '/admin/shifts', icon: Clock },
-  { name: 'Vacation', href: '/admin/vacation', icon: Calendar },
+  { name: 'Calendar', href: '/admin/vacation', icon: Calendar },
   { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt },
   { name: 'Documents', href: '/admin/documents', icon: FileText },
   { name: 'Feedback', href: '/admin/feedback', icon: Star },
@@ -72,7 +72,7 @@ const adminNavigation: NavItem[] = [
 const teamMemberNavigation: NavItem[] = [
   { name: 'Dashboard', href: '/employee/dashboard', icon: BarChart3 },
   { name: 'Roadmap', href: '/employee/roadmap', icon: TrendingUp },
-  { name: 'Vacations', href: '/employee/vacations', icon: Calendar },
+  { name: 'Calendar', href: '/employee/vacations', icon: Calendar },
   { name: 'Reimbursements', href: '/employee/reimbursements', icon: Receipt },
   { name: 'Profile', href: '/employee/profile', icon: User },
   { name: 'Knowledge Base', href: 'https://www.notion.so/Vestov-Knowledge-Base-2611a26473ed80c08f2dd2178bccc864', icon: BookOpen, external: true },

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'wouter'
+import { useQuery } from '@tanstack/react-query'
 import {
   Users,
   DollarSign,
@@ -18,7 +19,8 @@ import {
   X,
   Edit3,
   Trash2,
-  Eye
+  Eye,
+  Globe
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -35,6 +37,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatCurrency, parseLocalDate } from '@/lib/utils'
 import { format } from 'date-fns'
 import { api } from '@/lib/api'
+import { convertTime, getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus, User } from '@/types/common'
 
 // Local TeamMember interface extends common type with additional fields from API
@@ -52,6 +55,7 @@ interface LocalTeamMember {
   status: string
   startDate: string
   location?: string
+  timezone?: string
   position?: string
   isDeveloper: boolean
   avatarUrl?: string
@@ -91,6 +95,43 @@ export function TeamOverview() {
     skills: [] as string[],
     clientId: undefined as number | undefined
   })
+
+  // Fetch current user for timezone
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: api.getCurrentUser,
+  })
+
+  // Fetch all preferred shifts
+  const { data: preferredShiftsData } = useQuery({
+    queryKey: ['allPreferredShifts'],
+    queryFn: api.getAllPreferredShifts,
+  })
+
+  const viewerTimezone = currentUser?.timezone || getBrowserTimezone()
+
+  // Helper: get typical shift range for a member (Mon-Fri summary)
+  const getMemberShiftSummary = (memberId: number) => {
+    const memberData = preferredShiftsData?.members?.find((m: any) => m.employee.id === memberId)
+    if (!memberData || !memberData.schedules?.length) return null
+
+    const activeSchedules = memberData.schedules.filter((s: any) => s.isActive)
+    if (activeSchedules.length === 0) return null
+
+    const memberTz = memberData.employee?.timezone
+    // Get most common start/end times
+    const startTimes = activeSchedules.map((s: any) => s.startTime)
+    const endTimes = activeSchedules.map((s: any) => s.endTime)
+    const typicalStart = startTimes.sort((a: string, b: string) => startTimes.filter((t: string) => t === a).length - startTimes.filter((t: string) => t === b).length).pop()
+    const typicalEnd = endTimes.sort((a: string, b: string) => endTimes.filter((t: string) => t === a).length - endTimes.filter((t: string) => t === b).length).pop()
+
+    if (memberTz && memberTz !== viewerTimezone) {
+      const start = convertTime(typicalStart, memberTz, viewerTimezone)
+      const end = convertTime(typicalEnd, memberTz, viewerTimezone)
+      return { startTime: start.time, endTime: end.time, abbreviation: start.abbreviation, memberTz }
+    }
+    return { startTime: typicalStart, endTime: typicalEnd, abbreviation: memberTz ? getTimezoneAbbreviation(memberTz) : '', memberTz }
+  }
 
   useEffect(() => {
     loadTeamMembers()
@@ -210,6 +251,7 @@ export function TeamOverview() {
         status: editingMember.status as TeamMemberStatus,
         bio: editingMember.bio || undefined,
         location: editingMember.location || undefined,
+        timezone: editingMember.timezone || undefined,
         clientId: editingMember.clientId,
         startDate: editingMember.startDate, // Include startDate
         phone: editingMember.phone || undefined, // Include phone
@@ -306,6 +348,22 @@ export function TeamOverview() {
                 <span>{member.location}</span>
               </div>
             )}
+            {(() => {
+              const shiftSummary = getMemberShiftSummary(member.id)
+              const tz = member.timezone
+              if (!tz && !shiftSummary) return null
+              return (
+                <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                  {tz ? <Globe className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                  {tz && <span>{getTimezoneAbbreviation(tz)}</span>}
+                  {shiftSummary && (
+                    <span className="text-indigo-600 font-medium">
+                      {tz ? ' · ' : ''}{shiftSummary.startTime} - {shiftSummary.endTime}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
 

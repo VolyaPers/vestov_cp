@@ -19,6 +19,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Link } from 'wouter'
 import { api } from '@/lib/api'
+import { PreferredShiftsEditor } from '@/components/PreferredShiftsEditor'
+import { TimezoneSelect } from '@/components/TimezoneSelect'
+import { Label } from '@/components/ui/label'
+import type { ShiftSchedule } from '@/types/common'
 
 interface DashboardData {
   profile: {
@@ -72,12 +76,61 @@ export function EmployeeDashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [preferredShifts, setPreferredShifts] = useState<ShiftSchedule[]>([])
+  const [shiftTimezone, setShiftTimezone] = useState<string | null>(null)
+  const [savingShifts, setSavingShifts] = useState(false)
+  const [savingTimezone, setSavingTimezone] = useState(false)
 
   useEffect(() => {
     loadDashboardData()
+    loadPreferredShifts()
     const timer = setInterval(() => setCurrentTime(new Date()), 60000) // Update every minute
     return () => clearInterval(timer)
   }, [])
+
+  const loadPreferredShifts = async () => {
+    try {
+      const result = await api.getMyPreferredShifts()
+      setPreferredShifts(result.schedules || [])
+      setShiftTimezone(result.timezone || null)
+    } catch (error) {
+      console.error('Error loading preferred shifts:', error)
+    }
+  }
+
+  const handleSaveShifts = async (schedules: ShiftSchedule[]) => {
+    try {
+      setSavingShifts(true)
+      const result = await api.updateMyPreferredShifts(
+        schedules.map((s) => ({
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          isActive: s.isActive,
+        }))
+      )
+      setPreferredShifts(result.schedules || [])
+    } catch (error) {
+      console.error('Error saving preferred shifts:', error)
+    } finally {
+      setSavingShifts(false)
+    }
+  }
+
+  const handleTimezoneChange = async (timezone: string) => {
+    try {
+      setSavingTimezone(true)
+      setShiftTimezone(timezone)
+      await api.request('/shifts/timezone/me', {
+        method: 'PUT',
+        body: JSON.stringify({ timezone }),
+      })
+    } catch (error) {
+      console.error('Error updating timezone:', error)
+    } finally {
+      setSavingTimezone(false)
+    }
+  }
 
   const loadDashboardData = async () => {
     try {
@@ -386,6 +439,52 @@ export function EmployeeDashboard() {
               </a>
             </Link>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Preferred Shifts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-indigo-600" />
+            My Preferred Shifts
+          </CardTitle>
+          <CardDescription>Set your preferred working hours for each day</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!shiftTimezone ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-800 font-medium">Please set your timezone first</p>
+                <p className="text-xs text-amber-600 mt-1">Your timezone is needed to correctly display shift times to others</p>
+              </div>
+              <div className="space-y-2 max-w-sm">
+                <Label className="text-sm font-medium text-gray-700">Your Timezone</Label>
+                <TimezoneSelect
+                  value={shiftTimezone || undefined}
+                  onChange={handleTimezoneChange}
+                  disabled={savingTimezone}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 max-w-sm">
+                <Label className="text-sm font-medium text-gray-700 whitespace-nowrap">Timezone:</Label>
+                <TimezoneSelect
+                  value={shiftTimezone}
+                  onChange={handleTimezoneChange}
+                  disabled={savingTimezone}
+                />
+              </div>
+              <PreferredShiftsEditor
+                schedules={preferredShifts}
+                onSave={handleSaveShifts}
+                isSaving={savingShifts}
+                timezone={shiftTimezone}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

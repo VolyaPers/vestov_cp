@@ -60,7 +60,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
       const allowedFields = [
         'name', 'role', 'email', 'phone', 'skills', 'bio',
         'hourlyRate', 'monthlyRate', 'isBillable', 'status',
-        'clientId', 'startDate', 'location', 'avatarUrl',
+        'clientId', 'startDate', 'location', 'timezone', 'avatarUrl',
         'position', 'isDeveloper'
       ]
 
@@ -91,8 +91,8 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
         }
       }
     } else {
-      // Non-admins can only update specific fields (phone, location, bio)
-      const allowedFields = ['phone', 'location', 'bio']
+      // Non-admins can only update specific fields (phone, location, timezone, bio)
+      const allowedFields = ['phone', 'location', 'timezone', 'bio']
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           updateData[field] = req.body[field]
@@ -379,6 +379,7 @@ router.get('/team-members', async (req, res) => {
         status: teamMembers.status,
         startDate: teamMembers.startDate,
         location: teamMembers.location,
+        timezone: teamMembers.timezone,
         avatarUrl: teamMembers.avatarUrl,
         position: teamMembers.position,
         isDeveloper: teamMembers.isDeveloper,
@@ -413,6 +414,7 @@ router.get('/team-members/:id', async (req, res) => {
         status: teamMembers.status,
         startDate: teamMembers.startDate,
         location: teamMembers.location,
+        timezone: teamMembers.timezone,
         avatarUrl: teamMembers.avatarUrl,
         position: teamMembers.position,
         isDeveloper: teamMembers.isDeveloper,

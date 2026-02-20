@@ -804,6 +804,55 @@ class ApiClient {
     return this.request('/vacation/client/team/schedules')
   }
 
+  // Preferred Shifts Methods
+  async getMyPreferredShifts() {
+    return this.request('/shifts/preferred/me')
+  }
+
+  async updateMyPreferredShifts(schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }>) {
+    return this.request('/shifts/preferred/me', {
+      method: 'PUT',
+      body: JSON.stringify({ schedules }),
+    })
+  }
+
+  async getEmployeePreferredShifts(employeeId: number) {
+    return this.request(`/shifts/preferred/${employeeId}`)
+  }
+
+  async updateEmployeePreferredShifts(employeeId: number, schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }>) {
+    return this.request(`/shifts/preferred/${employeeId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ schedules }),
+    })
+  }
+
+  async getAllPreferredShifts() {
+    return this.request('/shifts/preferred')
+  }
+
+  // Shift Override Methods
+  async getMyShiftOverrides(month: string) {
+    return this.request(`/shifts/overrides/me?month=${month}`)
+  }
+
+  async updateMyShiftOverride(date: string, data: { startTime: string; endTime: string; isDayOff: boolean }) {
+    return this.request(`/shifts/overrides/me/${date}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteMyShiftOverride(date: string) {
+    return this.request(`/shifts/overrides/me/${date}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getAllShiftOverrides(month: string) {
+    return this.request(`/shifts/overrides/all?month=${month}`)
+  }
+
   // Document Management Methods
   async getClientsWithServices() {
     return this.request('/documents/clients-with-services')
