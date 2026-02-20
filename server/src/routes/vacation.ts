@@ -3341,6 +3341,7 @@ router.get('/employees', auth, async (req, res) => {
         email: teamMembers.email,
         role: teamMembers.role,
         status: teamMembers.status,
+        showOnCalendar: teamMembers.showOnCalendar,
       })
       .from(teamMembers)
       .where(eq(teamMembers.status, 'active'))

@@ -508,6 +508,11 @@ export function VacationPage() {
       .map((item: any) => item.employee?.id)
 
     return teamMembers.filter((member: any) => {
+      // Skip if hidden from calendar
+      if (member.showOnCalendar === false) {
+        return false
+      }
+
       // Skip if on approved vacation or sick leave
       if (vacationingEmployeeIds.includes(member.id)) {
         return false
