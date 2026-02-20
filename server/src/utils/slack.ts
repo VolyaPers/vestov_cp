@@ -368,6 +368,81 @@ export async function notifyVacationRequest(options: NotifyVacationRequestOption
   })
 }
 
+interface NotifyShiftOverrideOptions {
+  employeeName: string | null
+  employeeEmail: string
+  date: string
+  startTime: string
+  endTime: string
+  isDayOff: boolean
+  action: 'updated' | 'removed'
+}
+
+export async function notifyShiftOverride(options: NotifyShiftOverrideOptions) {
+  if (!isConfigured()) return
+
+  const { employeeName, employeeEmail, date, startTime, endTime, isDayOff, action } = options
+  const actor = employeeName || employeeEmail
+  const frontendUrl = getFrontendUrl()
+  const adminUrl = `${frontendUrl}/admin/vacation`
+
+  const dateFormatted = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+
+  const isRemoved = action === 'removed'
+  const emoji = isRemoved ? '🔄' : '📅'
+  const title = isRemoved ? 'Shift Reset to Default' : 'Shift Schedule Change'
+  const timeDisplay = isRemoved ? 'Reverted to default schedule' : isDayOff ? 'Day Off' : `${startTime} – ${endTime}`
+
+  const text = `${emoji} ${title} — ${actor}`
+
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: `${emoji} ${title}`
+      }
+    },
+    {
+      type: 'section',
+      fields: [
+        {
+          type: 'mrkdwn',
+          text: `*👤 Employee:*\n${actor}`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*📆 Date:*\n${dateFormatted}`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*🕐 Schedule:*\n${timeDisplay}`
+        }
+      ]
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: 'View Calendar'
+          },
+          url: adminUrl,
+          style: 'primary'
+        }
+      ]
+    }
+  ]
+
+  await postToSlack({
+    text,
+    channel: SLACK_ADMIN_CHANNEL || SLACK_CHANNEL || '',
+    blocks
+  })
+}
+
 const SLACK_API_TIMEOUT = 10000 // 10 seconds
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000 // 1 second

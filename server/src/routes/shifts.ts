@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { db } from '../db/index.js'
 import { shifts, shiftBreaks, shiftSchedules, shiftScheduleOverrides, teamMembers, clientUsers, clientServices, serviceTypes, clientServiceTeamMembers } from '../db/schema.js'
 import { eq, and, isNull, desc, gte, lte, sql } from 'drizzle-orm'
-import { notifyShiftEvent } from '../utils/slack.js'
+import { notifyShiftEvent, notifyShiftOverride } from '../utils/slack.js'
 import { emitShiftStarted, emitShiftEnded, emitBreakStarted, emitBreakEnded } from '../socket.js'
 
 const router = Router()
@@ -1340,7 +1340,9 @@ router.get('/overrides/me', async (req, res) => {
 
     if (month) {
       const startDate = `${month}-01`
-      const endDate = `${month}-31`
+      const [y, m] = month.split('-')
+      const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate()
+      const endDate = `${month}-${String(lastDay).padStart(2, '0')}`
       whereClause = and(
         whereClause,
         gte(shiftScheduleOverrides.overrideDate, startDate),
@@ -1409,6 +1411,17 @@ router.put('/overrides/me/:date', async (req, res) => {
     }
 
     res.json({ success: true })
+
+    // Notify Slack about shift override
+    notifyShiftOverride({
+      employeeName: employee.name || null,
+      employeeEmail: req.user.email,
+      date,
+      startTime: isDayOff ? '' : startTime,
+      endTime: isDayOff ? '' : endTime,
+      isDayOff: isDayOff || false,
+      action: 'updated',
+    }).catch(err => console.error('[SLACK] shift override notify failed:', err))
   } catch (error) {
     console.error('Error saving shift override:', error)
     res.status(500).json({ error: 'Failed to save shift override' })
@@ -1433,6 +1446,17 @@ router.delete('/overrides/me/:date', async (req, res) => {
       ))
 
     res.json({ success: true })
+
+    // Notify Slack about shift override removal
+    notifyShiftOverride({
+      employeeName: employee.name || null,
+      employeeEmail: req.user.email,
+      date,
+      startTime: '',
+      endTime: '',
+      isDayOff: false,
+      action: 'removed',
+    }).catch(err => console.error('[SLACK] shift override remove notify failed:', err))
   } catch (error) {
     console.error('Error deleting shift override:', error)
     res.status(500).json({ error: 'Failed to delete shift override' })
@@ -1450,7 +1474,9 @@ router.get('/overrides/all', async (req, res) => {
     if (!month) return res.status(400).json({ error: 'month query parameter required (YYYY-MM)' })
 
     const startDate = `${month}-01`
-    const endDate = `${month}-31`
+    const [yearStr, monthStr] = month.split('-')
+    const lastDay = new Date(parseInt(yearStr), parseInt(monthStr), 0).getDate()
+    const endDate = `${month}-${String(lastDay).padStart(2, '0')}`
 
     const overrides = await db
       .select({

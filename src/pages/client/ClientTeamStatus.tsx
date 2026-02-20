@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Clock, Coffee, Calendar, Users, TrendingUp, AlertCircle, ChevronLeft, ChevronRight, TreePalm, HeartPulse } from 'lucide-react'
 import { api } from '@/lib/api'
+import { convertTime, getBrowserTimezone } from '@/lib/timezone'
+import { format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -123,10 +125,58 @@ export function ClientTeamStatus() {
 
   useShiftUpdateListener(handleShiftUpdate)
 
+  // Fetch current user for timezone
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: api.getCurrentUser,
+  })
+
+  // Fetch preferred shifts for all team members
+  const { data: preferredShiftsData } = useQuery({
+    queryKey: ['allPreferredShifts'],
+    queryFn: () => api.getAllPreferredShifts(),
+  })
+
+  // Fetch shift overrides for current month
+  const currentMonthStr = format(currentMonth, 'yyyy-MM')
+  const { data: overridesData } = useQuery({
+    queryKey: ['allShiftOverrides', currentMonthStr],
+    queryFn: () => api.getAllShiftOverrides(currentMonthStr),
+  })
+
+  const viewerTimezone = currentUser?.timezone || getBrowserTimezone()
+
   const activeShifts: Shift[] = shiftsData?.shifts ?? []
   const vacations: Vacation[] = vacationsData?.vacations ?? []
   const teamMembers: TeamMember[] = schedulesData?.teamMembers ?? []
   const loading = isLoadingShifts || isLoadingVacations || isLoadingSchedules
+
+  // Get shift time for a member on a specific date, converted to viewer's timezone
+  const getShiftTimeForMember = (memberId: number, date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    const dayOfWeek = date.getDay()
+
+    // Check overrides first
+    const overrides = overridesData?.overrides || []
+    const override = overrides.find((o: any) => o.employeeId === memberId && o.override?.overrideDate === dateStr)
+    if (override) {
+      const memberTz = override.employee?.timezone || viewerTimezone
+      const start = convertTime(override.override.startTime, memberTz, viewerTimezone)
+      const end = convertTime(override.override.endTime, memberTz, viewerTimezone)
+      return { startTime: start.time, endTime: end.time, isDayOff: override.override.isDayOff, isOverride: true, abbreviation: start.abbreviation }
+    }
+
+    // Fall back to preferred schedule
+    const memberData = preferredShiftsData?.members?.find((m: any) => m.employee.id === memberId)
+    if (!memberData) return null
+    const schedule = memberData.schedules.find((s: any) => s.dayOfWeek === dayOfWeek && s.isActive)
+    if (!schedule) return null
+
+    const memberTz = memberData.employee.timezone || viewerTimezone
+    const start = convertTime(schedule.startTime, memberTz, viewerTimezone)
+    const end = convertTime(schedule.endTime, memberTz, viewerTimezone)
+    return { startTime: start.time, endTime: end.time, isDayOff: false, isOverride: false, abbreviation: start.abbreviation }
+  }
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('en-US', {
@@ -160,7 +210,7 @@ export function ClientTeamStatus() {
   const getFirstDayOfMonth = (date: Date) => {
     const year = date.getFullYear()
     const month = date.getMonth()
-    return new Date(year, month, 1).getDay()
+    return (new Date(year, month, 1).getDay() + 6) % 7
   }
 
   const isSameDay = (date1: Date, date2: Date) => {
@@ -585,7 +635,7 @@ export function ClientTeamStatus() {
 
             <div className="grid grid-cols-7 gap-1">
               {/* Day headers */}
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
                 <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
                   {day}
                 </div>
@@ -709,12 +759,15 @@ export function ClientTeamStatus() {
                           const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
                           const dayName = dayNames[date.getDay()]
                           const isHalfDay = member.workSchedule?.[dayName] === 'half'
+                          const shiftInfo = getShiftTimeForMember(member.developerId || member.id, date)
 
                           return (
                             <div
                               key={member.id}
-                              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border bg-green-50 border-green-200 hover:bg-green-100 transition-colors"
-                              title={`${member.name} - ${isHalfDay ? 'Half Day' : 'Full Day'}`}
+                              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border hover:bg-green-100 transition-colors ${
+                                shiftInfo?.isOverride ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'
+                              }`}
+                              title={`${member.name} - ${shiftInfo?.isDayOff ? 'Day Off' : isHalfDay ? 'Half Day' : 'Full Day'}${shiftInfo && !shiftInfo.isDayOff ? ` (${shiftInfo.startTime}-${shiftInfo.endTime})` : ''}`}
                             >
                               <Avatar className="h-6 w-6 border-2 border-green-300 flex-shrink-0">
                                 <AvatarImage src={member.avatarUrl} alt={member.name || 'Team Member'} />
@@ -726,7 +779,13 @@ export function ClientTeamStatus() {
                                 <div className="text-xs font-semibold text-green-900 truncate">
                                   {member.name}
                                 </div>
-                    
+                                {shiftInfo && !shiftInfo.isDayOff && (
+                                  <div className={`text-[9px] truncate ${
+                                    shiftInfo.isOverride ? 'text-amber-700 font-medium' : 'text-green-700'
+                                  }`}>
+                                    {shiftInfo.startTime}-{shiftInfo.endTime}{shiftInfo.abbreviation ? ` ${shiftInfo.abbreviation}` : ''}
+                                  </div>
+                                )}
                               </div>
                               {isHalfDay && (
                                 <span className="text-[10px] font-bold text-green-700 bg-green-200 px-1.5 py-0.5 rounded flex-shrink-0">

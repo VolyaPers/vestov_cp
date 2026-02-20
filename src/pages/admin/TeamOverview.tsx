@@ -106,7 +106,7 @@ export function TeamOverview() {
   // Fetch all preferred shifts
   const { data: preferredShiftsData } = useQuery({
     queryKey: ['allPreferredShifts'],
-    queryFn: api.getAllPreferredShifts,
+    queryFn: () => api.getAllPreferredShifts(),
   })
 
   const viewerTimezone = currentUser?.timezone || getBrowserTimezone()

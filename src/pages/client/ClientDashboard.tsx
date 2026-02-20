@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/utils'
 export function ClientDashboard() {
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ['client', 'dashboard'],
-    queryFn: api.getClientDashboard,
+    queryFn: () => api.getClientDashboard(),
   })
 
   if (isLoading) {

@@ -24,6 +24,7 @@ import {
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 
 interface TeamMember {
   id: number
@@ -137,10 +138,17 @@ export function EmployeeVacations() {
   const [shiftFormData, setShiftFormData] = useState({ startTime: '09:00', endTime: '18:00', isDayOff: false })
   const [savingShift, setSavingShift] = useState(false)
 
+  // Fetch current user for timezone
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: api.getCurrentUser,
+  })
+  const employeeTzAbbr = getTimezoneAbbreviation(currentUser?.timezone || getBrowserTimezone())
+
   // Fetch preferred shifts
   const { data: preferredShiftsData } = useQuery({
     queryKey: ['myPreferredShifts'],
-    queryFn: api.getMyPreferredShifts,
+    queryFn: () => api.getMyPreferredShifts(),
   })
 
   // Fetch shift overrides for current month
@@ -456,7 +464,7 @@ export function EmployeeVacations() {
     end: endOfMonth(currentMonth)
   })
 
-  const firstDayOfMonth = startOfMonth(currentMonth).getDay()
+  const firstDayOfMonth = (startOfMonth(currentMonth).getDay() + 6) % 7
   const emptyDays = Array(firstDayOfMonth).fill(null)
 
   const getLeaveForDay = (day: Date) => {
@@ -631,7 +639,7 @@ export function EmployeeVacations() {
             <CardContent>
               <div className="grid grid-cols-7 gap-2">
                 {/* Day headers */}
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
                   <div key={day} className="text-center font-semibold text-gray-700 py-2">
                     {day}
                   </div>
@@ -649,6 +657,7 @@ export function EmployeeVacations() {
                   const holiday = isPublicHoliday(day)
                   const shiftInfo = getShiftForDate(day)
                   const isWeekday = day.getDay() >= 1 && day.getDay() <= 5
+                  const hasApprovedLeave = dayLeave.some(l => l.status === 'approved')
 
                   return (
                     <div
@@ -714,8 +723,8 @@ export function EmployeeVacations() {
                         </div>
                       )}
 
-                      {/* Shift Time Badge */}
-                      {isWeekday && !holiday && shiftInfo && (
+                      {/* Shift Time Badge - hidden when employee has approved leave */}
+                      {isWeekday && !holiday && !hasApprovedLeave && shiftInfo && (
                         <button
                           onClick={() => handleShiftClick(day)}
                           className={cn(
@@ -728,13 +737,13 @@ export function EmployeeVacations() {
                           )}
                           title="Click to edit shift for this day"
                         >
-                          {shiftInfo.isDayOff ? 'Day Off' : `${shiftInfo.startTime} - ${shiftInfo.endTime}`}
+                          {shiftInfo.isDayOff ? 'Day Off' : `${shiftInfo.startTime} - ${shiftInfo.endTime} ${employeeTzAbbr}`}
                           {shiftInfo.isOverride && !shiftInfo.isDayOff && (
                             <span className="ml-1 text-[8px] text-amber-500">*</span>
                           )}
                         </button>
                       )}
-                      {isWeekday && !holiday && !shiftInfo && (
+                      {isWeekday && !holiday && !hasApprovedLeave && !shiftInfo && (
                         <button
                           onClick={() => handleShiftClick(day)}
                           className="w-full mt-1 px-1.5 py-1 rounded text-[10px] text-gray-400 border border-dashed border-gray-200 hover:bg-gray-50 transition-colors"

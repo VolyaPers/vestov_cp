@@ -115,7 +115,7 @@ export function VacationPage() {
   // Fetch all preferred shifts for calendar display
   const { data: preferredShiftsData } = useQuery({
     queryKey: ['allPreferredShifts'],
-    queryFn: api.getAllPreferredShifts,
+    queryFn: () => api.getAllPreferredShifts(),
   })
 
   // Fetch all shift overrides for the current month
@@ -535,8 +535,8 @@ export function VacationPage() {
     end: endOfMonth(currentMonth)
   })
 
-  // Get the day of week for the first day of the month (0 = Sunday, 6 = Saturday)
-  const firstDayOfMonth = startOfMonth(currentMonth).getDay()
+  // Get the day of week for the first day of the month (Monday-based: 0=Mon, 6=Sun)
+  const firstDayOfMonth = (startOfMonth(currentMonth).getDay() + 6) % 7
 
   // Create empty slots for days before the month starts
   const emptyDays = Array(firstDayOfMonth).fill(null)
@@ -867,7 +867,7 @@ export function VacationPage() {
                 {/* Calendar Grid */}
                 <div className="grid grid-cols-7 gap-1 border rounded-lg p-4 bg-white">
                   {/* Day headers */}
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
                     <div key={day} className="text-center font-semibold text-gray-600 py-2 text-sm">
                       {day}
                     </div>
@@ -1023,7 +1023,7 @@ export function VacationPage() {
                                           "text-[9px] truncate",
                                           shiftInfo.isOverride ? "text-amber-700 font-medium" : "text-green-700"
                                         )}>
-                                          {shiftInfo.startTime}-{shiftInfo.endTime}
+                                          {shiftInfo.startTime}-{shiftInfo.endTime}{shiftInfo.abbreviation ? ` ${shiftInfo.abbreviation}` : ''}
                                         </div>
                                       )}
                                     </div>
@@ -1661,7 +1661,7 @@ export function VacationPage() {
                                     "text-sm",
                                     shiftInfo.isOverride ? "text-amber-700 font-medium" : "text-green-700"
                                   )}>
-                                    {shiftInfo.startTime} - {shiftInfo.endTime}
+                                    {shiftInfo.startTime} - {shiftInfo.endTime}{shiftInfo.abbreviation ? ` ${shiftInfo.abbreviation}` : ''}
                                     {shiftInfo.isOverride && <span className="ml-1 text-xs">(custom)</span>}
                                   </span>
                                 ) : shiftInfo?.isDayOff ? (

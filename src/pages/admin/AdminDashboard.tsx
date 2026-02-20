@@ -78,13 +78,13 @@ export function AdminDashboard() {
   // Fetch dashboard data
   const { data: dashboardData } = useQuery({
     queryKey: ['adminDashboard'],
-    queryFn: api.getAdminDashboard,
+    queryFn: () => api.getAdminDashboard(),
   })
 
   // Fetch clients to count active projects
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
-    queryFn: api.getClients,
+    queryFn: () => api.getClients(),
   })
 
   // Fetch leave requests for pending count

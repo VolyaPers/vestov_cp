@@ -431,7 +431,7 @@ export const shiftSchedules = pgTable('shift_schedules', {
 export const shiftScheduleOverrides = pgTable('shift_schedule_overrides', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
-  overrideDate: varchar('override_date', { length: 10 }).notNull(), // YYYY-MM-DD
+  overrideDate: date('override_date').notNull(), // YYYY-MM-DD
   startTime: varchar('start_time', { length: 5 }).notNull(),
   endTime: varchar('end_time', { length: 5 }).notNull(),
   isDayOff: boolean('is_day_off').default(false).notNull(),
