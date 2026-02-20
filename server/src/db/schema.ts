@@ -73,6 +73,7 @@ export const teamMembers = pgTable('team_members', {
   avatarUrl: text('avatar_url'),
   position: text('position'),
   isDeveloper: boolean('is_developer').notNull().default(false),
+  showOnCalendar: boolean('show_on_calendar').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

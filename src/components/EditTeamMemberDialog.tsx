@@ -25,6 +25,7 @@ export interface EditTeamMemberData {
   timezone?: string
   position?: string
   isDeveloper: boolean
+  showOnCalendar: boolean
   clientId?: number
 }
 
@@ -209,15 +210,27 @@ export function EditTeamMemberDialog({
           {/* Employment Type */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Employment Details</h3>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="edit-billable"
-                checked={member.isBillable}
-                onCheckedChange={(checked) => onMemberChange({ isBillable: checked })}
-              />
-              <Label htmlFor="edit-billable" className="text-sm font-medium text-gray-700">
-                Billable Resource
-              </Label>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="edit-billable"
+                  checked={member.isBillable}
+                  onCheckedChange={(checked) => onMemberChange({ isBillable: checked })}
+                />
+                <Label htmlFor="edit-billable" className="text-sm font-medium text-gray-700">
+                  Billable Resource
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="edit-showOnCalendar"
+                  checked={member.showOnCalendar}
+                  onCheckedChange={(checked) => onMemberChange({ showOnCalendar: checked })}
+                />
+                <Label htmlFor="edit-showOnCalendar" className="text-sm font-medium text-gray-700">
+                  Show on Calendar
+                </Label>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

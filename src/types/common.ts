@@ -241,6 +241,7 @@ export interface UpdateTeamMemberData extends Partial<CreateTeamMemberData> {
   startDate?: string
   phone?: string
   isBillable?: boolean
+  showOnCalendar?: boolean
 }
 
 export interface CreateLeaveRequestData {

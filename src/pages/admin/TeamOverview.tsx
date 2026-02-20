@@ -58,6 +58,7 @@ interface LocalTeamMember {
   timezone?: string
   position?: string
   isDeveloper: boolean
+  showOnCalendar: boolean
   avatarUrl?: string
   clientId?: number
   clientName?: string
@@ -258,6 +259,7 @@ export function TeamOverview() {
         isBillable: editingMember.isBillable, // Include isBillable
         position: editingMember.position,
         isDeveloper: editingMember.isDeveloper,
+        showOnCalendar: editingMember.showOnCalendar,
       }
       await api.updateTeamMember(editingMember.id.toString(), updateData)
       await loadTeamMembers()

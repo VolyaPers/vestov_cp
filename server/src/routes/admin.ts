@@ -61,7 +61,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
         'name', 'role', 'email', 'phone', 'skills', 'bio',
         'hourlyRate', 'monthlyRate', 'isBillable', 'status',
         'clientId', 'startDate', 'location', 'timezone', 'avatarUrl',
-        'position', 'isDeveloper'
+        'position', 'isDeveloper', 'showOnCalendar'
       ]
 
       for (const field of allowedFields) {
@@ -71,7 +71,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
             updateData[field] = req.body[field] // Date string will be converted by Drizzle
           }
           // Handle boolean fields
-          else if (field === 'isBillable' || field === 'isDeveloper') {
+          else if (field === 'isBillable' || field === 'isDeveloper' || field === 'showOnCalendar') {
             updateData[field] = Boolean(req.body[field])
           }
           // Handle numeric fields
@@ -383,6 +383,7 @@ router.get('/team-members', async (req, res) => {
         avatarUrl: teamMembers.avatarUrl,
         position: teamMembers.position,
         isDeveloper: teamMembers.isDeveloper,
+        showOnCalendar: teamMembers.showOnCalendar,
         clientId: teamMembers.clientId,
         clientName: clients.name,
       })
@@ -418,6 +419,7 @@ router.get('/team-members/:id', async (req, res) => {
         avatarUrl: teamMembers.avatarUrl,
         position: teamMembers.position,
         isDeveloper: teamMembers.isDeveloper,
+        showOnCalendar: teamMembers.showOnCalendar,
         clientId: teamMembers.clientId,
         clientName: clients.name,
       })

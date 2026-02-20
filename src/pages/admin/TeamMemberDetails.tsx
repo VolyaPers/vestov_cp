@@ -45,6 +45,7 @@ interface TeamMember {
   role: string
   position?: string
   isDeveloper: boolean
+  showOnCalendar: boolean
   experienceLevel?: string
   email: string
   phone?: string
@@ -370,6 +371,7 @@ export function TeamMemberDetails() {
       setEditingMember({
         ...member,
         isDeveloper: member.isDeveloper || false,
+        showOnCalendar: member.showOnCalendar !== false,
         hourlyRate: member.hourlyRate ? String(member.hourlyRate) : undefined,
       })
       setIsEditModalOpen(true)
@@ -399,7 +401,8 @@ export function TeamMemberDetails() {
         startDate: editingMember.startDate, // Include startDate
         phone: editingMember.phone || undefined, // Include phone
         isBillable: editingMember.isBillable, // Include isBillable
-        isDeveloper: editingMember.isDeveloper, // Include isDeveloper
+        isDeveloper: editingMember.isDeveloper,
+        showOnCalendar: editingMember.showOnCalendar,
       }
       const updatedMember = await api.updateTeamMember(String(editingMember.id), updateData)
       setMember(updatedMember as unknown as TeamMember)

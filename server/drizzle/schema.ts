@@ -375,6 +375,7 @@ export const teamMembers = pgTable("team_members", {
 	employmentType: varchar("employment_type", { length: 20 }).default('fulltime'),
 	position: text(),
 	isDeveloper: boolean("is_developer").default(false).notNull(),
+	showOnCalendar: boolean("show_on_calendar").default(true).notNull(),
 }, (table) => [
 	foreignKey({
 			columns: [table.clientId],
