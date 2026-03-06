@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   BarChart,
   Bar,
@@ -10,10 +10,8 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
 } from 'recharts'
 import {
-  DollarSign,
   TrendingUp,
   TrendingDown,
   Plus,
@@ -26,18 +24,104 @@ import {
   CreditCard,
   Settings,
   X,
-  ChevronLeft,
-  ChevronRight,
   Receipt,
   Activity,
-  AlertCircle,
   Banknote,
+  Calendar,
+  ArrowRight,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocation } from 'wouter'
 import { api, type FinanceCategory, type FinanceCategoryKind } from '@/lib/api'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+type DatePreset = 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter' | 'ytd' | 'last_year' | 'custom'
+
+const DATE_PRESETS: { key: DatePreset; label: string }[] = [
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_month', label: 'Last Month' },
+  { key: 'this_quarter', label: 'This Quarter' },
+  { key: 'last_quarter', label: 'Last Quarter' },
+  { key: 'ytd', label: 'YTD' },
+  { key: 'last_year', label: 'Last Year' },
+  { key: 'custom', label: 'Custom' },
+]
+
+function fmt(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+function getQuarter(month: number): number {
+  return Math.floor(month / 3)
+}
+
+function getDateRangeForPreset(preset: DatePreset, today: Date = new Date()): { start: string; end: string } {
+  const y = today.getFullYear()
+  const m = today.getMonth()
+
+  switch (preset) {
+    case 'this_month':
+      return { start: fmt(new Date(y, m, 1)), end: fmt(today) }
+    case 'last_month':
+      return { start: fmt(new Date(y, m - 1, 1)), end: fmt(new Date(y, m, 0)) }
+    case 'this_quarter': {
+      const qStart = getQuarter(m) * 3
+      return { start: fmt(new Date(y, qStart, 1)), end: fmt(today) }
+    }
+    case 'last_quarter': {
+      const qStart = getQuarter(m) * 3
+      return { start: fmt(new Date(y, qStart - 3, 1)), end: fmt(new Date(y, qStart, 0)) }
+    }
+    case 'ytd':
+      return { start: `${y}-01-01`, end: fmt(today) }
+    case 'last_year':
+      return { start: `${y - 1}-01-01`, end: `${y - 1}-12-31` }
+    case 'custom':
+      return { start: `${y}-01-01`, end: fmt(today) }
+  }
+}
+
+function getComparisonRange(start: string, end: string): { start: string; end: string } {
+  const s = new Date(start + 'T00:00:00')
+  const e = new Date(end + 'T00:00:00')
+  const durationMs = e.getTime() - s.getTime()
+  const durationDays = Math.round(durationMs / (1000 * 60 * 60 * 24))
+  const prevEnd = new Date(s.getTime() - 1000 * 60 * 60 * 24)
+  const prevStart = new Date(prevEnd.getTime() - durationDays * 1000 * 60 * 60 * 24)
+  return { start: fmt(prevStart), end: fmt(prevEnd) }
+}
+
+function formatDateRangeLabel(start: string, end: string): string {
+  const s = new Date(start + 'T00:00:00')
+  const e = new Date(end + 'T00:00:00')
+  const sameYear = s.getFullYear() === e.getFullYear()
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+  const optsY: Intl.DateTimeFormatOptions = { ...opts, year: 'numeric' }
+  if (sameYear) {
+    return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', optsY)}`
+  }
+  return `${s.toLocaleDateString('en-US', optsY)} – ${e.toLocaleDateString('en-US', optsY)}`
+}
+
+function computeChange(current: number, previous: number): { delta: number; pct: number | null } {
+  const delta = current - previous
+  const pct = previous !== 0 ? (delta / Math.abs(previous)) * 100 : null
+  return { delta, pct }
+}
+
+function getMonthsInRange(start: string, end: string): { month: number; year: number; name: string }[] {
+  const s = new Date(start + 'T00:00:00')
+  const e = new Date(end + 'T00:00:00')
+  const result: { month: number; year: number; name: string }[] = []
+  let d = new Date(s.getFullYear(), s.getMonth(), 1)
+  while (d <= e) {
+    result.push({ month: d.getMonth() + 1, year: d.getFullYear(), name: MONTHS[d.getMonth()] })
+    d = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+  }
+  return result
+}
 
 function formatCurrency(amount: number | string): string {
   const num = typeof amount === 'string' ? parseFloat(amount) : amount
@@ -175,10 +259,17 @@ export function FinancesPage() {
     ? (sectionFromPath as FinanceSection)
     : 'overview'
 
-  // Overview state
-  const [overviewYear, setOverviewYear] = useState(currentYear)
+  // Overview state — date range presets
+  const [datePreset, setDatePreset] = useState<DatePreset>('ytd')
+  const [dateRange, setDateRange] = useState(() => getDateRangeForPreset('ytd'))
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
   const [overviewData, setOverviewData] = useState<OverviewData | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
+  // Comparison state
+  const [compareEnabled, setCompareEnabled] = useState(false)
+  const [comparisonData, setComparisonData] = useState<OverviewData | null>(null)
+  const [comparisonLoading, setComparisonLoading] = useState(false)
 
   // Transactions state
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -271,10 +362,19 @@ export function FinancesPage() {
     loadBalances()
   }, [])
 
-  // Load overview data
+  // Load overview data when date range changes
   useEffect(() => {
     loadOverview()
-  }, [overviewYear])
+  }, [dateRange.start, dateRange.end])
+
+  // Load comparison data when enabled or range changes
+  useEffect(() => {
+    if (compareEnabled) {
+      loadComparison()
+    } else {
+      setComparisonData(null)
+    }
+  }, [compareEnabled, dateRange.start, dateRange.end])
 
   // Load transactions data
   useEffect(() => {
@@ -348,8 +448,8 @@ export function FinancesPage() {
     try {
       setOverviewLoading(true)
       const data = await api.getFinancesOverview({
-        startDate: `${overviewYear}-01-01`,
-        endDate: `${overviewYear}-12-31`,
+        startDate: dateRange.start,
+        endDate: dateRange.end,
       })
       setOverviewData(data)
     } catch (error) {
@@ -358,6 +458,36 @@ export function FinancesPage() {
       setOverviewLoading(false)
     }
   }
+
+  const loadComparison = async () => {
+    try {
+      setComparisonLoading(true)
+      const compRange = getComparisonRange(dateRange.start, dateRange.end)
+      const data = await api.getFinancesOverview({
+        startDate: compRange.start,
+        endDate: compRange.end,
+      })
+      setComparisonData(data)
+    } catch (error) {
+      console.error('Failed to load comparison data:', error)
+    } finally {
+      setComparisonLoading(false)
+    }
+  }
+
+  const handlePresetChange = useCallback((preset: DatePreset) => {
+    setDatePreset(preset)
+    if (preset !== 'custom') {
+      const range = getDateRangeForPreset(preset)
+      setDateRange(range)
+    }
+  }, [])
+
+  const handleCustomDateApply = useCallback(() => {
+    if (customStart && customEnd) {
+      setDateRange({ start: customStart, end: customEnd })
+    }
+  }, [customStart, customEnd])
 
   const loadTransactions = async () => {
     try {
@@ -787,28 +917,25 @@ export function FinancesPage() {
     }
   }
 
-  // Chart data — break expenses into Salaries vs Other Expenses (stacked)
-  const chartData = overviewData?.monthlyBreakdown
-    ? MONTHS.map((name, idx) => {
-        const entry = overviewData.monthlyBreakdown.find((m) => m.month === idx + 1)
-        const income = entry
-          ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0))
-          : 0
-        const salaries = entry
-          ? parseFloat(String(entry.salary || 0))
-          : 0
-        const otherExpenses = entry
-          ? parseFloat(String(entry.expense || 0))
-          : 0
-        return { name, Income: income, Salaries: salaries, 'Other Expenses': otherExpenses }
-      })
-    : MONTHS.map((name) => ({ name, Income: 0, Salaries: 0, 'Other Expenses': 0 }))
+  // Months in selected range
+  const rangeMonths = useMemo(() => getMonthsInRange(dateRange.start, dateRange.end), [dateRange.start, dateRange.end])
 
-  // Year options
-  const yearOptions = []
-  for (let y = currentYear; y >= currentYear - 5; y--) {
-    yearOptions.push(y)
-  }
+  // Chart data — break expenses into Salaries vs Other Expenses (stacked), filtered to date range
+  const chartData = useMemo(() => {
+    return rangeMonths.map(({ month, year, name }) => {
+      const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
+      const income = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
+      const salaries = entry ? parseFloat(String(entry.salary || 0)) : 0
+      const otherExpenses = entry ? parseFloat(String(entry.expense || 0)) : 0
+      return { name: rangeMonths.length > 12 ? `${name} ${year}` : name, Income: income, Salaries: salaries, 'Other Expenses': otherExpenses }
+    })
+  }, [overviewData, rangeMonths])
+
+  // Comparison computed values
+  const compTotalIncome = comparisonData ? (comparisonData.clientPayments || 0) + (comparisonData.manualIncome || 0) : 0
+  const compTotalExpenses = comparisonData ? (comparisonData.manualExpenses || 0) + (comparisonData.totalSalaries || 0) : 0
+  const compNetPL = comparisonData?.netProfitLoss || 0
+  const comparisonRange = useMemo(() => getComparisonRange(dateRange.start, dateRange.end), [dateRange.start, dateRange.end])
 
   const txCategoryKind: FinanceCategoryKind = txForm.type === 'income' ? 'income' : 'expense'
   const txCategoryOptions = categories[txCategoryKind] || []
@@ -823,35 +950,41 @@ export function FinancesPage() {
   const profitMargin = totalIncome > 0 ? (netPL / totalIncome) * 100 : 0
   const salaryToRevenue = totalIncome > 0 ? ((overviewData?.totalSalaries || 0) / totalIncome) * 100 : 0
 
-  // Monthly cumulative P&L for area chart
-  const cumulativePLData = (() => {
+  // Monthly cumulative P&L for area chart (filtered to date range)
+  const cumulativePLData = useMemo(() => {
     let cumulative = 0
-    return MONTHS.map((name, idx) => {
-      const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
-      const monthIncome = entry
-        ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0))
-        : 0
-      const monthExpense = entry
-        ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0))
-        : 0
+    return rangeMonths.map(({ month, year, name }) => {
+      const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
+      const monthIncome = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
+      const monthExpense = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) : 0
       cumulative += monthIncome - monthExpense
-      return { name, cumulative, income: monthIncome, expense: monthExpense }
+      return { name: rangeMonths.length > 12 ? `${name} ${year}` : name, cumulative, income: monthIncome, expense: monthExpense }
     })
-  })()
+  }, [overviewData, rangeMonths])
 
-  // Best/worst months
-  const monthlyNetArr = MONTHS.map((name, idx) => {
-    const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
-    const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
-    const exp = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) : 0
-    return { name, net: inc - exp, income: inc, expense: exp }
-  }).filter(m => m.income > 0 || m.expense > 0)
+  // Best/worst months (filtered to date range)
+  const monthlyNetArr = useMemo(() => {
+    return rangeMonths.map(({ month, year, name }) => {
+      const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
+      const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
+      const exp = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) : 0
+      return { name, month, year, net: inc - exp, income: inc, expense: exp }
+    }).filter(m => m.income > 0 || m.expense > 0)
+  }, [overviewData, rangeMonths])
 
   const bestMonth = monthlyNetArr.length > 0 ? monthlyNetArr.reduce((a, b) => a.net > b.net ? a : b) : null
   const worstMonth = monthlyNetArr.length > 0 ? monthlyNetArr.reduce((a, b) => a.net < b.net ? a : b) : null
 
+  // Year options for salaries tab
+  const yearOptions = useMemo(() => {
+    const opts = []
+    for (let y = currentYear; y >= currentYear - 5; y--) opts.push(y)
+    return opts
+  }, [currentYear])
+
   // Current month (for highlighting)
   const currentMonth = new Date().getMonth() // 0-indexed
+  const currentMonthYear = new Date().getFullYear()
 
   return (
     <div className="space-y-6">
@@ -908,37 +1041,89 @@ export function FinancesPage() {
 
         {/* ========== TAB 1: OVERVIEW ========== */}
         <TabsContent value="overview" className="space-y-6">
-          {/* Year Navigator */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setOverviewYear(y => y - 1)}
-              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <select
-              value={overviewYear}
-              onChange={(e) => setOverviewYear(parseInt(e.target.value))}
-              className="px-3 py-1.5 border rounded-lg border-gray-200 bg-white text-sm font-medium text-gray-900 cursor-pointer"
-            >
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => setOverviewYear(y => Math.min(y + 1, currentYear))}
-              disabled={overviewYear >= currentYear}
-              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            {overviewYear !== currentYear && (
-              <button
-                onClick={() => setOverviewYear(currentYear)}
-                className="text-xs text-[var(--stripe-primary)] font-medium ml-1 hover:underline"
-              >
-                Current year
-              </button>
+          {/* Date Range Presets Bar */}
+          <div className="stripe-card p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+              {/* Preset chips */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {DATE_PRESETS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => handlePresetChange(p.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      datePreset === p.key
+                        ? 'bg-[var(--stripe-primary)] text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom date inputs */}
+              {datePreset === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="px-2.5 py-1.5 border rounded-lg border-gray-200 bg-white text-xs text-gray-900"
+                  />
+                  <span className="text-gray-400 text-xs">to</span>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="px-2.5 py-1.5 border rounded-lg border-gray-200 bg-white text-xs text-gray-900"
+                  />
+                  <button
+                    onClick={handleCustomDateApply}
+                    disabled={!customStart || !customEnd}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--stripe-primary)] text-white disabled:opacity-40 transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
+
+              {/* Separator + Compare toggle */}
+              <div className="lg:ml-auto flex items-center gap-3">
+                {/* Date range label */}
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Calendar className="h-3.5 w-3.5" />
+                  <span>{formatDateRangeLabel(dateRange.start, dateRange.end)}</span>
+                </div>
+
+                {/* Compare toggle */}
+                <button
+                  onClick={() => setCompareEnabled(!compareEnabled)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    compareEnabled
+                      ? 'border-[var(--stripe-primary)] bg-indigo-50 text-[var(--stripe-primary)]'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
+                >
+                  <ArrowRight className="h-3 w-3" />
+                  Compare
+                </button>
+              </div>
+            </div>
+
+            {/* Comparison info bar */}
+            {compareEnabled && (
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-[var(--stripe-primary)] font-medium">
+                  Current
+                </span>
+                <span>{formatDateRangeLabel(dateRange.start, dateRange.end)}</span>
+                <span className="text-gray-300 mx-1">vs</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">
+                  Previous
+                </span>
+                <span>{formatDateRangeLabel(comparisonRange.start, comparisonRange.end)}</span>
+                {comparisonLoading && <div className="animate-spin rounded-full h-3 w-3 border-b border-[var(--stripe-primary)] ml-1" />}
+              </div>
             )}
           </div>
 
@@ -952,7 +1137,7 @@ export function FinancesPage() {
               <div className={`stripe-card p-6 border-l-4 ${netPL >= 0 ? 'border-l-emerald-500' : 'border-l-red-500'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-500 mb-1">Net Profit / Loss — {overviewYear}</p>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Net Profit / Loss</p>
                     <p className={`text-3xl font-bold ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatCurrency(netPL)}
                     </p>
@@ -963,81 +1148,87 @@ export function FinancesPage() {
                       <span className="text-xs text-gray-500">
                         Salary/Revenue: <span className="font-semibold text-blue-600">{salaryToRevenue.toFixed(1)}%</span>
                       </span>
+                      {compareEnabled && comparisonData && (() => {
+                        const ch = computeChange(netPL, compNetPL)
+                        return (
+                          <span className={`text-xs font-semibold ${ch.delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {ch.delta >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(ch.delta))}
+                            {ch.pct !== null && ` (${ch.pct >= 0 ? '+' : ''}${ch.pct.toFixed(1)}%)`}
+                            <span className="text-gray-400 font-normal ml-1">vs prior</span>
+                          </span>
+                        )
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
                       <p className="text-xs text-gray-500 mb-0.5">Revenue</p>
                       <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalIncome)}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-gray-400">Clients: {formatCurrency(overviewData?.clientPayments || 0)}</span>
-                      </div>
+                      {compareEnabled && comparisonData ? (() => {
+                        const ch = computeChange(totalIncome, compTotalIncome)
+                        return (
+                          <p className={`text-[10px] font-medium mt-0.5 ${ch.delta >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {ch.delta >= 0 ? '↑' : '↓'} {ch.pct !== null ? `${ch.pct >= 0 ? '+' : ''}${ch.pct.toFixed(1)}%` : formatCurrency(Math.abs(ch.delta))}
+                          </p>
+                        )
+                      })() : (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-gray-400">Clients: {formatCurrency(overviewData?.clientPayments || 0)}</span>
+                        </div>
+                      )}
                     </div>
                     <div className="w-px h-12 bg-gray-200" />
                     <div className="text-right">
                       <p className="text-xs text-gray-500 mb-0.5">Costs</p>
                       <p className="text-lg font-bold text-red-500">{formatCurrency(totalExpenses)}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-gray-400">Salaries: {formatCurrency(overviewData?.totalSalaries || 0)}</span>
-                      </div>
+                      {compareEnabled && comparisonData ? (() => {
+                        const ch = computeChange(totalExpenses, compTotalExpenses)
+                        return (
+                          <p className={`text-[10px] font-medium mt-0.5 ${ch.delta <= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {ch.delta > 0 ? '↑' : '↓'} {ch.pct !== null ? `${ch.pct >= 0 ? '+' : ''}${ch.pct.toFixed(1)}%` : formatCurrency(Math.abs(ch.delta))}
+                          </p>
+                        )
+                      })() : (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-gray-400">Salaries: {formatCurrency(overviewData?.totalSalaries || 0)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* KPI Row */}
-              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-                <div className="stripe-stat-card p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-md bg-emerald-50 flex items-center justify-center">
-                      <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                {[
+                  { label: 'Client Revenue', value: overviewData?.clientPayments || 0, compValue: comparisonData?.clientPayments || 0, icon: <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />, bg: 'bg-emerald-50', positive: true },
+                  { label: 'Other Income', value: overviewData?.manualIncome || 0, compValue: comparisonData?.manualIncome || 0, icon: <Receipt className="h-3.5 w-3.5 text-teal-600" />, bg: 'bg-teal-50', positive: true },
+                  { label: 'Salaries', value: overviewData?.totalSalaries || 0, compValue: comparisonData?.totalSalaries || 0, icon: <Users className="h-3.5 w-3.5 text-blue-600" />, bg: 'bg-blue-50', positive: false },
+                  { label: 'Other Expenses', value: overviewData?.manualExpenses || 0, compValue: comparisonData?.manualExpenses || 0, icon: <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />, bg: 'bg-red-50', positive: false },
+                  { label: 'Avg Monthly P&L', value: monthlyNetArr.length > 0 ? netPL / monthlyNetArr.length : 0, compValue: (() => { const compMonthly = comparisonData?.monthlyBreakdown?.filter(m => { const inc2 = parseFloat(String(m.client_payments || 0)) + parseFloat(String(m.income || 0)); const exp2 = parseFloat(String(m.expense || 0)) + parseFloat(String(m.salary || 0)); return inc2 > 0 || exp2 > 0 }) || []; return compMonthly.length > 0 ? compNetPL / compMonthly.length : 0 })(), icon: <Activity className="h-3.5 w-3.5 text-amber-600" />, bg: 'bg-amber-50', positive: true },
+                ].map((kpi) => {
+                  const ch = compareEnabled && comparisonData ? computeChange(kpi.value, kpi.compValue) : null
+                  const isGood = ch ? (kpi.positive ? ch.delta >= 0 : ch.delta <= 0) : true
+                  return (
+                    <div key={kpi.label} className="stripe-stat-card p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-7 h-7 rounded-md ${kpi.bg} flex items-center justify-center`}>
+                          {kpi.icon}
+                        </div>
+                        <span className="text-xs text-gray-500">{kpi.label}</span>
+                      </div>
+                      <p className={`text-xl font-bold ${kpi.label === 'Avg Monthly P&L' ? (kpi.value >= 0 ? 'text-emerald-600' : 'text-red-500') : 'text-gray-900'}`}>
+                        {formatCurrency(kpi.value)}
+                      </p>
+                      {ch && (
+                        <p className={`text-[10px] font-medium mt-1 ${isGood ? 'text-emerald-500' : 'text-red-400'}`}>
+                          {ch.delta >= 0 ? '↑' : '↓'} {ch.pct !== null ? `${ch.pct >= 0 ? '+' : ''}${ch.pct.toFixed(1)}%` : formatCurrency(Math.abs(ch.delta))}
+                          <span className="text-gray-400 font-normal ml-1">vs prior</span>
+                        </p>
+                      )}
                     </div>
-                    <span className="text-xs text-gray-500">Client Revenue</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.clientPayments || 0)}</p>
-                </div>
-
-                <div className="stripe-stat-card p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-md bg-teal-50 flex items-center justify-center">
-                      <Receipt className="h-3.5 w-3.5 text-teal-600" />
-                    </div>
-                    <span className="text-xs text-gray-500">Other Income</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.manualIncome || 0)}</p>
-                </div>
-
-                <div className="stripe-stat-card p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center">
-                      <Users className="h-3.5 w-3.5 text-blue-600" />
-                    </div>
-                    <span className="text-xs text-gray-500">Salaries</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.totalSalaries || 0)}</p>
-                </div>
-
-                <div className="stripe-stat-card p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-md bg-red-50 flex items-center justify-center">
-                      <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />
-                    </div>
-                    <span className="text-xs text-gray-500">Other Expenses</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.manualExpenses || 0)}</p>
-                </div>
-
-                <div className="stripe-stat-card p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-md bg-amber-50 flex items-center justify-center">
-                      <Activity className="h-3.5 w-3.5 text-amber-600" />
-                    </div>
-                    <span className="text-xs text-gray-500">Avg Monthly P&L</span>
-                  </div>
-                  <p className={`text-xl font-bold ${netPL >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {formatCurrency(monthlyNetArr.length > 0 ? netPL / monthlyNetArr.length : 0)}
-                  </p>
-                </div>
+                  )
+                })}
               </div>
 
               {/* Charts Row */}
@@ -1248,23 +1439,23 @@ export function FinancesPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {MONTHS.map((name, idx) => {
-                        const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
+                      {rangeMonths.map(({ month, year, name }) => {
+                        const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
                         const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
                         const sal = entry ? parseFloat(String(entry.salary || 0)) : 0
                         const other = entry ? parseFloat(String(entry.expense || 0)) : 0
                         const net = inc - sal - other
                         const isEmpty = inc === 0 && sal === 0 && other === 0
-                        const isCurrentMonth = idx === currentMonth && overviewYear === currentYear
+                        const isCurrent = month - 1 === currentMonth && year === currentMonthYear
 
                         return (
                           <tr
-                            key={name}
-                            className={`${isEmpty ? 'text-gray-300' : ''} ${isCurrentMonth ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'} transition-colors`}
+                            key={`${year}-${month}`}
+                            className={`${isEmpty ? 'text-gray-300' : ''} ${isCurrent ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'} transition-colors`}
                           >
                             <td className="px-6 py-2.5 font-medium text-gray-700">
-                              {name}
-                              {isCurrentMonth && <span className="ml-2 text-[10px] text-blue-500 font-normal">current</span>}
+                              {rangeMonths.length > 12 ? `${name} ${year}` : name}
+                              {isCurrent && <span className="ml-2 text-[10px] text-blue-500 font-normal">current</span>}
                             </td>
                             <td className="px-4 py-2.5 text-right font-medium text-emerald-600">
                               {isEmpty ? '-' : formatCurrency(inc)}
