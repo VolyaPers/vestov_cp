@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react'
 import {
   BarChart,
   Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
+  Cell,
 } from 'recharts'
 import {
   DollarSign,
@@ -23,6 +26,13 @@ import {
   CreditCard,
   Settings,
   X,
+  ChevronLeft,
+  ChevronRight,
+  Receipt,
+  PiggyBank,
+  Activity,
+  AlertCircle,
+  Banknote,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocation } from 'wouter'
@@ -907,157 +917,85 @@ export function FinancesPage() {
     (category) => category.name.toLowerCase() === txForm.category.toLowerCase()
   )
 
+  // Computed overview values
+  const totalIncome = (overviewData?.clientPayments || 0) + (overviewData?.manualIncome || 0)
+  const totalExpenses = (overviewData?.manualExpenses || 0) + (overviewData?.totalSalaries || 0) + (overviewData?.totalExtraPayments || 0)
+  const netPL = overviewData?.netProfitLoss || 0
+  const profitMargin = totalIncome > 0 ? (netPL / totalIncome) * 100 : 0
+  const salaryToRevenue = totalIncome > 0 ? ((overviewData?.totalSalaries || 0) / totalIncome) * 100 : 0
+
+  // Monthly cumulative P&L for area chart
+  const cumulativePLData = (() => {
+    let cumulative = 0
+    return MONTHS.map((name, idx) => {
+      const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
+      const monthIncome = entry
+        ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0))
+        : 0
+      const monthExpense = entry
+        ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) + parseFloat(String(entry.extra_payment || 0))
+        : 0
+      cumulative += monthIncome - monthExpense
+      return { name, cumulative, income: monthIncome, expense: monthExpense }
+    })
+  })()
+
+  // Best/worst months
+  const monthlyNetArr = MONTHS.map((name, idx) => {
+    const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
+    const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
+    const exp = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) + parseFloat(String(entry.extra_payment || 0)) : 0
+    return { name, net: inc - exp, income: inc, expense: exp }
+  }).filter(m => m.income > 0 || m.expense > 0)
+
+  const bestMonth = monthlyNetArr.length > 0 ? monthlyNetArr.reduce((a, b) => a.net > b.net ? a : b) : null
+  const worstMonth = monthlyNetArr.length > 0 ? monthlyNetArr.reduce((a, b) => a.net < b.net ? a : b) : null
+
+  // Current month (for highlighting)
+  const currentMonth = new Date().getMonth() // 0-indexed
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">Finances</h1>
-            <p className="stripe-text-secondary text-lg">
-              Track income, expenses, salaries, and extra payments
-            </p>
-          </div>
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold stripe-text-primary">Finances</h1>
+          <p className="stripe-text-secondary text-sm mt-1">
+            Financial overview, transactions, and payroll management
+          </p>
         </div>
-      </div>
-
-      {/* Balance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Stripe Balance */}
-        <div className="stripe-card p-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-indigo-600" fill="currentColor">
-                  <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium stripe-text-secondary">Stripe</p>
-                <p className="text-xs stripe-text-muted">Account Balance</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {balances?.stripe ? (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                  Connected
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                  Not connected
-                </span>
-              )}
-              <button
-                onClick={() => openConfigModal('stripe')}
-                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors stripe-text-muted hover:stripe-text-primary"
-                title="Configure Stripe"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-1">
-            {balancesLoading ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
-            ) : balances?.stripe ? (
-              <>
-                <span className="text-2xl font-bold stripe-text-primary">
-                  {formatCurrency(balances.stripe.available)}
-                </span>
-                <span className="text-sm stripe-text-muted">{balances.stripe.currency}</span>
-              </>
-            ) : (
-              <>
-                <span className="text-2xl font-bold stripe-text-primary">--</span>
-                <span className="text-sm stripe-text-muted">USD</span>
-              </>
-            )}
-          </div>
-          {balances?.stripe ? (
-            <div className="mt-2 space-y-0.5">
-              <p className="text-xs stripe-text-muted">
-                Pending: {formatCurrency(balances.stripe.pending)}
-              </p>
-              {balances.fetchedAt && (
-                <p className="text-xs stripe-text-muted">
-                  Updated {formatDate(balances.fetchedAt)}
-                </p>
-              )}
-            </div>
-          ) : (
+        <div className="flex items-center gap-2">
+          {/* Compact balance indicators */}
+          <div className="flex items-center gap-3 mr-2">
             <button
               onClick={() => openConfigModal('stripe')}
-              className="text-xs mt-2 font-medium transition-colors"
-              style={{ color: 'var(--stripe-primary)' }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors text-sm"
+              title="Stripe balance"
             >
-              Connect Stripe account
-            </button>
-          )}
-        </div>
-
-        {/* Payoneer Balance */}
-        <div className="stripe-card p-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium stripe-text-secondary">Payoneer</p>
-                <p className="text-xs stripe-text-muted">Account Balance</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {balances?.payoneer ? (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                  Connected
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                  Not connected
-                </span>
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-indigo-600" fill="currentColor">
+                <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z" />
+              </svg>
+              <span className="font-semibold text-gray-900">
+                {balancesLoading ? '...' : balances?.stripe ? formatCurrency(balances.stripe.available) : '--'}
+              </span>
+              {!balances?.stripe && !balancesLoading && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               )}
-              <button
-                onClick={() => openConfigModal('payoneer')}
-                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors stripe-text-muted hover:stripe-text-primary"
-                title="Configure Payoneer"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-1">
-            {balancesLoading ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-600"></div>
-            ) : balances?.payoneer ? (
-              <>
-                <span className="text-2xl font-bold stripe-text-primary">
-                  {formatCurrency(balances.payoneer.available)}
-                </span>
-                <span className="text-sm stripe-text-muted">{balances.payoneer.currency}</span>
-              </>
-            ) : (
-              <>
-                <span className="text-2xl font-bold stripe-text-primary">--</span>
-                <span className="text-sm stripe-text-muted">USD</span>
-              </>
-            )}
-          </div>
-          {balances?.payoneer ? (
-            balances.fetchedAt && (
-              <p className="text-xs stripe-text-muted mt-2">
-                Updated {formatDate(balances.fetchedAt)}
-              </p>
-            )
-          ) : (
+            </button>
             <button
               onClick={() => openConfigModal('payoneer')}
-              className="text-xs mt-2 font-medium transition-colors"
-              style={{ color: 'var(--stripe-primary)' }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50/50 transition-colors text-sm"
+              title="Payoneer balance"
             >
-              Connect Payoneer account
+              <Banknote className="w-3.5 h-3.5 text-orange-600" />
+              <span className="font-semibold text-gray-900">
+                {balancesLoading ? '...' : balances?.payoneer ? formatCurrency(balances.payoneer.available) : '--'}
+              </span>
+              {!balances?.payoneer && !balancesLoading && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
             </button>
-          )}
+          </div>
         </div>
       </div>
 
@@ -1072,138 +1010,401 @@ export function FinancesPage() {
 
         {/* ========== TAB 1: OVERVIEW ========== */}
         <TabsContent value="overview" className="space-y-6">
-          {/* Year Selector */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium stripe-text-secondary">Year:</label>
+          {/* Year Navigator */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setOverviewYear(y => y - 1)}
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
             <select
               value={overviewYear}
               onChange={(e) => setOverviewYear(parseInt(e.target.value))}
-              className="px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+              className="px-3 py-1.5 border rounded-lg border-gray-200 bg-white text-sm font-medium text-gray-900 cursor-pointer"
             >
               {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
+                <option key={y} value={y}>{y}</option>
               ))}
             </select>
+            <button
+              onClick={() => setOverviewYear(y => Math.min(y + 1, currentYear))}
+              disabled={overviewYear >= currentYear}
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            {overviewYear !== currentYear && (
+              <button
+                onClick={() => setOverviewYear(currentYear)}
+                className="text-xs text-[var(--stripe-primary)] font-medium ml-1 hover:underline"
+              >
+                Current year
+              </button>
+            )}
           </div>
 
           {overviewLoading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--stripe-primary)]"></div>
             </div>
           ) : (
             <>
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Total Income */}
-                <div className="stripe-card p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium stripe-text-secondary">Total Income</span>
-                    <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                      <ArrowUpRight className="w-5 h-5 text-green-600" />
+              {/* Hero P&L Card */}
+              <div className={`stripe-card p-6 border-l-4 ${netPL >= 0 ? 'border-l-emerald-500' : 'border-l-red-500'}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Net Profit / Loss — {overviewYear}</p>
+                    <p className={`text-3xl font-bold ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {formatCurrency(netPL)}
+                    </p>
+                    <div className="flex items-center gap-4 mt-2">
+                      <span className="text-xs text-gray-500">
+                        Margin: <span className={`font-semibold ${profitMargin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{profitMargin.toFixed(1)}%</span>
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        Salary/Revenue: <span className="font-semibold text-blue-600">{salaryToRevenue.toFixed(1)}%</span>
+                      </span>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-green-600">
-                    {formatCurrency(
-                      (overviewData?.clientPayments || 0) + (overviewData?.manualIncome || 0)
-                    )}
-                  </p>
-                  <p className="text-xs stripe-text-muted mt-1">
-                    Client payments + manual income
-                  </p>
-                </div>
-
-                {/* Total Expenses */}
-                <div className="stripe-card p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium stripe-text-secondary">Total Expenses</span>
-                    <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-                      <ArrowDownRight className="w-5 h-5 text-red-600" />
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500 mb-0.5">Revenue</p>
+                      <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalIncome)}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-gray-400">Clients: {formatCurrency(overviewData?.clientPayments || 0)}</span>
+                      </div>
+                    </div>
+                    <div className="w-px h-12 bg-gray-200" />
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500 mb-0.5">Costs</p>
+                      <p className="text-lg font-bold text-red-500">{formatCurrency(totalExpenses)}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-gray-400">Salaries: {formatCurrency(overviewData?.totalSalaries || 0)}</span>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-red-600">
-                    {formatCurrency(
-                      (overviewData?.manualExpenses || 0) +
-                      (overviewData?.totalSalaries || 0) +
-                      (overviewData?.totalExtraPayments || 0)
-                    )}
-                  </p>
-                  <p className="text-xs stripe-text-muted mt-1">
-                    Salaries + extras + other expenses
-                  </p>
-                </div>
-
-                {/* Total Salaries */}
-                <div className="stripe-card p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium stripe-text-secondary">Total Salaries</span>
-                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                      <Users className="w-5 h-5 text-blue-600" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {formatCurrency(overviewData?.totalSalaries || 0)}
-                  </p>
-                  <p className="text-xs stripe-text-muted mt-1">Salary payments this year</p>
-                </div>
-
-                {/* Net P&L */}
-                <div className="stripe-card p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium stripe-text-secondary">Net P&L</span>
-                    <div
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        (overviewData?.netProfitLoss || 0) >= 0 ? 'bg-green-50' : 'bg-red-50'
-                      }`}
-                    >
-                      {(overviewData?.netProfitLoss || 0) >= 0 ? (
-                        <TrendingUp className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <TrendingDown className="w-5 h-5 text-red-600" />
-                      )}
-                    </div>
-                  </div>
-                  <p
-                    className={`text-2xl font-bold ${
-                      (overviewData?.netProfitLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {formatCurrency(overviewData?.netProfitLoss || 0)}
-                  </p>
-                  <p className="text-xs stripe-text-muted mt-1">Income minus all costs</p>
                 </div>
               </div>
 
-              {/* Monthly Bar Chart */}
-              <div className="stripe-card p-6">
-                <h3 className="text-lg font-semibold stripe-text-primary mb-4">
-                  Monthly Income vs Expenses
-                </h3>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                      <YAxis
-                        tick={{ fontSize: 12 }}
-                        stroke="#6b7280"
-                        tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip
-                        formatter={(value: number) => formatCurrency(value)}
-                        contentStyle={{
-                          borderRadius: '8px',
-                          border: '1px solid #e5e7eb',
-                          boxShadow: '0 4px 6px -1px rgba(0,0,0,.1)',
-                        }}
-                      />
-                      <Legend />
-                      <Bar dataKey="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="Salaries" stackId="expenses" fill="#3b82f6" />
-                      <Bar dataKey="Other Expenses" stackId="expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+              {/* KPI Row */}
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="stripe-stat-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-md bg-emerald-50 flex items-center justify-center">
+                      <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />
+                    </div>
+                    <span className="text-xs text-gray-500">Client Revenue</span>
+                  </div>
+                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.clientPayments || 0)}</p>
+                </div>
+
+                <div className="stripe-stat-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-md bg-teal-50 flex items-center justify-center">
+                      <Receipt className="h-3.5 w-3.5 text-teal-600" />
+                    </div>
+                    <span className="text-xs text-gray-500">Other Income</span>
+                  </div>
+                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.manualIncome || 0)}</p>
+                </div>
+
+                <div className="stripe-stat-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center">
+                      <Users className="h-3.5 w-3.5 text-blue-600" />
+                    </div>
+                    <span className="text-xs text-gray-500">Salaries</span>
+                  </div>
+                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.totalSalaries || 0)}</p>
+                </div>
+
+                <div className="stripe-stat-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-md bg-violet-50 flex items-center justify-center">
+                      <PiggyBank className="h-3.5 w-3.5 text-violet-600" />
+                    </div>
+                    <span className="text-xs text-gray-500">Extra Payments</span>
+                  </div>
+                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.totalExtraPayments || 0)}</p>
+                </div>
+
+                <div className="stripe-stat-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-md bg-red-50 flex items-center justify-center">
+                      <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />
+                    </div>
+                    <span className="text-xs text-gray-500">Other Expenses</span>
+                  </div>
+                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.manualExpenses || 0)}</p>
+                </div>
+
+                <div className="stripe-stat-card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-md bg-amber-50 flex items-center justify-center">
+                      <Activity className="h-3.5 w-3.5 text-amber-600" />
+                    </div>
+                    <span className="text-xs text-gray-500">Avg Monthly P&L</span>
+                  </div>
+                  <p className={`text-xl font-bold ${netPL >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {formatCurrency(monthlyNetArr.length > 0 ? netPL / monthlyNetArr.length : 0)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Charts Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Monthly Income vs Expenses Bar Chart - 2/3 */}
+                <div className="lg:col-span-2 stripe-card p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Monthly Revenue vs Costs</h3>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#9ca3af" axisLine={false} tickLine={false} />
+                        <YAxis
+                          tick={{ fontSize: 11 }}
+                          stroke="#9ca3af"
+                          tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,.07)', fontSize: '12px' }}
+                          cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                        />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+                        <Bar dataKey="Income" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={32} />
+                        <Bar dataKey="Salaries" stackId="costs" fill="#6366f1" maxBarSize={32} />
+                        <Bar dataKey="Other Expenses" stackId="costs" fill="#f87171" radius={[3, 3, 0, 0]} maxBarSize={32} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Cumulative P&L Area Chart - 1/3 */}
+                <div className="stripe-card p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Cumulative P&L</h3>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={cumulativePLData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <defs>
+                          <linearGradient id="plGradientPos" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="plGradientNeg" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#9ca3af" axisLine={false} tickLine={false} />
+                        <YAxis
+                          tick={{ fontSize: 10 }}
+                          stroke="#9ca3af"
+                          tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : v <= -1000 ? `-$${(Math.abs(v) / 1000).toFixed(0)}k` : `$${v}`}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          formatter={(value: number) => [formatCurrency(value), 'Cumulative P&L']}
+                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="cumulative"
+                          stroke={netPL >= 0 ? '#10b981' : '#ef4444'}
+                          strokeWidth={2}
+                          fill={netPL >= 0 ? 'url(#plGradientPos)' : 'url(#plGradientNeg)'}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Insights Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Cost Breakdown */}
+                <div className="stripe-card p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Cost Breakdown</h3>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Salaries', value: overviewData?.totalSalaries || 0, color: 'bg-indigo-500', pct: totalExpenses > 0 ? ((overviewData?.totalSalaries || 0) / totalExpenses) * 100 : 0 },
+                      { label: 'Extra Payments', value: overviewData?.totalExtraPayments || 0, color: 'bg-violet-500', pct: totalExpenses > 0 ? ((overviewData?.totalExtraPayments || 0) / totalExpenses) * 100 : 0 },
+                      { label: 'Other Expenses', value: overviewData?.manualExpenses || 0, color: 'bg-red-400', pct: totalExpenses > 0 ? ((overviewData?.manualExpenses || 0) / totalExpenses) * 100 : 0 },
+                    ].map(item => (
+                      <div key={item.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-gray-600">{item.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-900">{formatCurrency(item.value)}</span>
+                            <span className="text-[10px] text-gray-400 w-10 text-right">{item.pct.toFixed(0)}%</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full ${item.color} rounded-full transition-all`} style={{ width: `${Math.min(item.pct, 100)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="pt-2 mt-2 border-t border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-600">Total Costs</span>
+                        <span className="text-sm font-bold text-gray-900">{formatCurrency(totalExpenses)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Revenue Breakdown */}
+                <div className="stripe-card p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Revenue Sources</h3>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Client Payments', value: overviewData?.clientPayments || 0, color: 'bg-emerald-500', pct: totalIncome > 0 ? ((overviewData?.clientPayments || 0) / totalIncome) * 100 : 0 },
+                      { label: 'Other Income', value: overviewData?.manualIncome || 0, color: 'bg-teal-400', pct: totalIncome > 0 ? ((overviewData?.manualIncome || 0) / totalIncome) * 100 : 0 },
+                    ].map(item => (
+                      <div key={item.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-gray-600">{item.label}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-900">{formatCurrency(item.value)}</span>
+                            <span className="text-[10px] text-gray-400 w-10 text-right">{item.pct.toFixed(0)}%</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full ${item.color} rounded-full transition-all`} style={{ width: `${Math.min(item.pct, 100)}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="pt-2 mt-2 border-t border-gray-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-600">Total Revenue</span>
+                        <span className="text-sm font-bold text-gray-900">{formatCurrency(totalIncome)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Monthly Highlights */}
+                <div className="stripe-card p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Highlights</h3>
+                  <div className="space-y-4">
+                    {bestMonth && (
+                      <div className="flex items-start gap-3">
+                        <div className="w-7 h-7 rounded-md bg-emerald-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Best Month</p>
+                          <p className="text-sm font-semibold text-gray-900">{bestMonth.name}</p>
+                          <p className="text-xs text-emerald-600 font-medium">{formatCurrency(bestMonth.net)} net</p>
+                        </div>
+                      </div>
+                    )}
+                    {worstMonth && worstMonth.name !== bestMonth?.name && (
+                      <div className="flex items-start gap-3">
+                        <div className="w-7 h-7 rounded-md bg-red-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Worst Month</p>
+                          <p className="text-sm font-semibold text-gray-900">{worstMonth.name}</p>
+                          <p className="text-xs text-red-500 font-medium">{formatCurrency(worstMonth.net)} net</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Users className="h-3.5 w-3.5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Salary to Revenue</p>
+                        <p className="text-sm font-semibold text-gray-900">{salaryToRevenue.toFixed(1)}%</p>
+                        <p className="text-xs text-gray-400">
+                          {salaryToRevenue < 50 ? 'Healthy ratio' : salaryToRevenue < 70 ? 'Watch closely' : 'High ratio'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 ${profitMargin >= 20 ? 'bg-emerald-50' : profitMargin >= 0 ? 'bg-amber-50' : 'bg-red-50'}`}>
+                        <Activity className={`h-3.5 w-3.5 ${profitMargin >= 20 ? 'text-emerald-600' : profitMargin >= 0 ? 'text-amber-600' : 'text-red-500'}`} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Profit Margin</p>
+                        <p className="text-sm font-semibold text-gray-900">{profitMargin.toFixed(1)}%</p>
+                        <p className="text-xs text-gray-400">
+                          {profitMargin >= 20 ? 'Strong' : profitMargin >= 10 ? 'Moderate' : profitMargin >= 0 ? 'Thin' : 'Negative'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Monthly P&L Table */}
+              <div className="stripe-card">
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-900">Monthly P&L Summary</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left px-6 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Salaries</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Other Costs</th>
+                        <th className="text-right px-6 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {MONTHS.map((name, idx) => {
+                        const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
+                        const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
+                        const sal = entry ? parseFloat(String(entry.salary || 0)) : 0
+                        const other = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0)) : 0
+                        const net = inc - sal - other
+                        const isEmpty = inc === 0 && sal === 0 && other === 0
+                        const isCurrentMonth = idx === currentMonth && overviewYear === currentYear
+
+                        return (
+                          <tr
+                            key={name}
+                            className={`${isEmpty ? 'text-gray-300' : ''} ${isCurrentMonth ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'} transition-colors`}
+                          >
+                            <td className="px-6 py-2.5 font-medium text-gray-700">
+                              {name}
+                              {isCurrentMonth && <span className="ml-2 text-[10px] text-blue-500 font-normal">current</span>}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-medium text-emerald-600">
+                              {isEmpty ? '-' : formatCurrency(inc)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-gray-600">
+                              {isEmpty ? '-' : formatCurrency(sal)}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-gray-600">
+                              {isEmpty ? '-' : formatCurrency(other)}
+                            </td>
+                            <td className={`px-6 py-2.5 text-right font-semibold ${isEmpty ? '' : net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {isEmpty ? '-' : formatCurrency(net)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50/50 font-semibold">
+                        <td className="px-6 py-3 text-gray-900">Total</td>
+                        <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
+                        <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(overviewData?.totalSalaries || 0)}</td>
+                        <td className="px-4 py-3 text-right text-gray-700">{formatCurrency((overviewData?.manualExpenses || 0) + (overviewData?.totalExtraPayments || 0))}</td>
+                        <td className={`px-6 py-3 text-right ${netPL >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(netPL)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               </div>
             </>
