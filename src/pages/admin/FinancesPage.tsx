@@ -50,7 +50,10 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
 ]
 
 function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function getQuarter(month: number): number {
@@ -86,10 +89,9 @@ function getDateRangeForPreset(preset: DatePreset, today: Date = new Date()): { 
 function getComparisonRange(start: string, end: string): { start: string; end: string } {
   const s = new Date(start + 'T00:00:00')
   const e = new Date(end + 'T00:00:00')
-  const durationMs = e.getTime() - s.getTime()
-  const durationDays = Math.round(durationMs / (1000 * 60 * 60 * 24))
-  const prevEnd = new Date(s.getTime() - 1000 * 60 * 60 * 24)
-  const prevStart = new Date(prevEnd.getTime() - durationDays * 1000 * 60 * 60 * 24)
+  // Calendar-aligned: shift both dates back by 1 year
+  const prevStart = new Date(s.getFullYear() - 1, s.getMonth(), s.getDate())
+  const prevEnd = new Date(e.getFullYear() - 1, e.getMonth(), e.getDate())
   return { start: fmt(prevStart), end: fmt(prevEnd) }
 }
 
@@ -131,7 +133,7 @@ function formatCurrency(amount: number | string): string {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return ''
-  const d = new Date(dateStr)
+  const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'))
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
