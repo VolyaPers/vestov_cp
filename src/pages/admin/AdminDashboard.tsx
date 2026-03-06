@@ -431,7 +431,7 @@ export function AdminDashboard() {
       const year = d.getFullYear()
       const entry = monthlyBreakdown.find((row) => row.month === month && row.year === year)
       const revenue = entry ? toNumber(entry.client_payments) + toNumber(entry.income) : 0
-      const burn = entry ? toNumber(entry.salary) + toNumber(entry.extra_payment) + toNumber(entry.expense) : 0
+      const burn = entry ? toNumber(entry.salary) + toNumber(entry.expense) : 0
       rows.push({
         label: d.toLocaleDateString('en-US', { month: 'short' }),
         revenue,
@@ -755,7 +755,7 @@ export function AdminDashboard() {
         <KpiCard
           title="Burn (MTD)"
           value={formatCurrency(currentMonthFinance?.burn || 0)}
-          hint="Salaries + extra payments + expenses"
+          hint="Salaries + expenses"
           trend={previousMonthFinance
             ? `${(currentMonthFinance?.burn || 0) >= (previousMonthFinance.burn || 0) ? '+' : ''}${(((currentMonthFinance?.burn || 0) - (previousMonthFinance.burn || 0)) / Math.max(1, previousMonthFinance.burn || 1) * 100).toFixed(1)}% vs last month`
             : undefined

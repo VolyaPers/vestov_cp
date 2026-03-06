@@ -29,7 +29,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Receipt,
-  PiggyBank,
   Activity,
   AlertCircle,
   Banknote,
@@ -39,8 +38,6 @@ import { useLocation } from 'wouter'
 import { api, type FinanceCategory, type FinanceCategoryKind } from '@/lib/api'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-const EXTRA_PAYMENT_CATEGORIES = ['Subscription', 'Equipment', 'Bonus', 'Training', 'Other']
 
 function formatCurrency(amount: number | string): string {
   const num = typeof amount === 'string' ? parseFloat(amount) : amount
@@ -66,7 +63,7 @@ interface OverviewData {
   totalIncome: number
   totalExpenses: number
   totalSalaries: number
-  totalExtraPayments: number
+  totalExtraPayments: number  // kept for API compatibility
   clientPayments: number
   manualIncome: number
   manualExpenses: number
@@ -77,7 +74,7 @@ interface OverviewData {
     income: number
     expense: number
     salary: number
-    extra_payment: number
+    extra_payment: number  // kept for API compatibility
     client_payments: number
   }>
 }
@@ -165,9 +162,9 @@ type MergedRow = {
   editable: boolean
 }
 
-type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'extra' | 'categories'
+type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories'
 
-const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'extra', 'categories']
+const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'categories']
 
 export function FinancesPage() {
   const currentYear = new Date().getFullYear()
@@ -239,19 +236,6 @@ export function FinancesPage() {
   const [rateHistory, setRateHistory] = useState<RateHistoryEntry[]>([])
   const [rateHistoryLoading, setRateHistoryLoading] = useState(false)
 
-  // Extra Payments state
-  const [extraPayments, setExtraPayments] = useState<Transaction[]>([])
-  const [extraLoading, setExtraLoading] = useState(true)
-  const [showExtraModal, setShowExtraModal] = useState(false)
-  const [editingExtra, setEditingExtra] = useState<Transaction | null>(null)
-  const [extraForm, setExtraForm] = useState({
-    teamMemberId: '',
-    amount: '',
-    category: 'Other',
-    description: '',
-    transactionDate: toInputDate(),
-  })
-  const [extraSaving, setExtraSaving] = useState(false)
 
   // Balances state
   const [balances, setBalances] = useState<BalancesData | null>(null)
@@ -305,13 +289,6 @@ export function FinancesPage() {
       loadSalaries()
     }
   }, [activeTab, salariesYear])
-
-  // Load extra payments data
-  useEffect(() => {
-    if (activeTab === 'extra') {
-      loadExtraPayments()
-    }
-  }, [activeTab])
 
   // Load categories on relevant pages
   useEffect(() => {
@@ -419,18 +396,6 @@ export function FinancesPage() {
     }
   }
 
-  const loadExtraPayments = async () => {
-    try {
-      setExtraLoading(true)
-      const data = await api.getFinancialTransactions({ type: 'extra_payment' })
-      setExtraPayments(data)
-    } catch (error) {
-      console.error('Failed to load extra payments:', error)
-    } finally {
-      setExtraLoading(false)
-    }
-  }
-
   const loadCategories = async () => {
     try {
       setCategoriesLoading(true)
@@ -525,9 +490,9 @@ export function FinancesPage() {
   const getMergedRows = (): MergedRow[] => {
     const rows: MergedRow[] = []
 
-    // Add manual transactions (filter out salary and extra_payment types for this tab)
+    // Add manual transactions (filter out salary type for this tab)
     for (const tx of transactions) {
-      if (tx.type === 'salary' || tx.type === 'extra_payment') continue
+      if (tx.type === 'salary') continue
       rows.push({
         id: tx.id,
         type: tx.type,
@@ -822,70 +787,6 @@ export function FinancesPage() {
     }
   }
 
-  // Extra payment CRUD
-  const openAddExtra = () => {
-    setEditingExtra(null)
-    setExtraForm({
-      teamMemberId: '',
-      amount: '',
-      category: 'Other',
-      description: '',
-      transactionDate: toInputDate(),
-    })
-    setShowExtraModal(true)
-  }
-
-  const openEditExtra = (tx: Transaction) => {
-    setEditingExtra(tx)
-    setExtraForm({
-      teamMemberId: tx.teamMemberId ? String(tx.teamMemberId) : '',
-      amount: String(typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount),
-      category: tx.category || 'Other',
-      description: tx.description || '',
-      transactionDate: toInputDate(tx.transactionDate),
-    })
-    setShowExtraModal(true)
-  }
-
-  const handleSaveExtra = async () => {
-    if (!extraForm.amount || parseFloat(extraForm.amount) <= 0) return
-    try {
-      setExtraSaving(true)
-      const payload = {
-        type: 'extra_payment',
-        amount: parseFloat(extraForm.amount),
-        transactionDate: extraForm.transactionDate,
-        category: extraForm.category || undefined,
-        description: extraForm.description || undefined,
-        teamMemberId: extraForm.teamMemberId ? parseInt(extraForm.teamMemberId) : undefined,
-      }
-      if (editingExtra) {
-        await api.updateFinancialTransaction(editingExtra.id, payload)
-      } else {
-        await api.createFinancialTransaction(payload)
-      }
-      setShowExtraModal(false)
-      setEditingExtra(null)
-      await loadExtraPayments()
-      loadOverview()
-    } catch (error) {
-      console.error('Failed to save extra payment:', error)
-    } finally {
-      setExtraSaving(false)
-    }
-  }
-
-  const handleDeleteExtra = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this payment?')) return
-    try {
-      await api.deleteFinancialTransaction(id)
-      await loadExtraPayments()
-      loadOverview()
-    } catch (error) {
-      console.error('Failed to delete extra payment:', error)
-    }
-  }
-
   // Chart data — break expenses into Salaries vs Other Expenses (stacked)
   const chartData = overviewData?.monthlyBreakdown
     ? MONTHS.map((name, idx) => {
@@ -897,7 +798,7 @@ export function FinancesPage() {
           ? parseFloat(String(entry.salary || 0))
           : 0
         const otherExpenses = entry
-          ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0))
+          ? parseFloat(String(entry.expense || 0))
           : 0
         return { name, Income: income, Salaries: salaries, 'Other Expenses': otherExpenses }
       })
@@ -909,8 +810,6 @@ export function FinancesPage() {
     yearOptions.push(y)
   }
 
-  // Team members from salaries data for extra payments dropdown
-  const teamMembersForExtra = salariesData?.members || []
   const txCategoryKind: FinanceCategoryKind = txForm.type === 'income' ? 'income' : 'expense'
   const txCategoryOptions = categories[txCategoryKind] || []
   const txCategoryExists = !!txForm.category && txCategoryOptions.some(
@@ -919,7 +818,7 @@ export function FinancesPage() {
 
   // Computed overview values
   const totalIncome = (overviewData?.clientPayments || 0) + (overviewData?.manualIncome || 0)
-  const totalExpenses = (overviewData?.manualExpenses || 0) + (overviewData?.totalSalaries || 0) + (overviewData?.totalExtraPayments || 0)
+  const totalExpenses = (overviewData?.manualExpenses || 0) + (overviewData?.totalSalaries || 0)
   const netPL = overviewData?.netProfitLoss || 0
   const profitMargin = totalIncome > 0 ? (netPL / totalIncome) * 100 : 0
   const salaryToRevenue = totalIncome > 0 ? ((overviewData?.totalSalaries || 0) / totalIncome) * 100 : 0
@@ -933,7 +832,7 @@ export function FinancesPage() {
         ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0))
         : 0
       const monthExpense = entry
-        ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) + parseFloat(String(entry.extra_payment || 0))
+        ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0))
         : 0
       cumulative += monthIncome - monthExpense
       return { name, cumulative, income: monthIncome, expense: monthExpense }
@@ -944,7 +843,7 @@ export function FinancesPage() {
   const monthlyNetArr = MONTHS.map((name, idx) => {
     const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
     const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
-    const exp = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) + parseFloat(String(entry.extra_payment || 0)) : 0
+    const exp = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) : 0
     return { name, net: inc - exp, income: inc, expense: exp }
   }).filter(m => m.income > 0 || m.expense > 0)
 
@@ -1000,11 +899,10 @@ export function FinancesPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setLocation(`/admin/finances/${value}`)} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="salaries">Salaries</TabsTrigger>
-          <TabsTrigger value="extra">Extra Payments</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
         </TabsList>
 
@@ -1121,16 +1019,6 @@ export function FinancesPage() {
 
                 <div className="stripe-stat-card p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-md bg-violet-50 flex items-center justify-center">
-                      <PiggyBank className="h-3.5 w-3.5 text-violet-600" />
-                    </div>
-                    <span className="text-xs text-gray-500">Extra Payments</span>
-                  </div>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(overviewData?.totalExtraPayments || 0)}</p>
-                </div>
-
-                <div className="stripe-stat-card p-4">
-                  <div className="flex items-center gap-2 mb-2">
                     <div className="w-7 h-7 rounded-md bg-red-50 flex items-center justify-center">
                       <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />
                     </div>
@@ -1233,7 +1121,6 @@ export function FinancesPage() {
                   <div className="space-y-3">
                     {[
                       { label: 'Salaries', value: overviewData?.totalSalaries || 0, color: 'bg-indigo-500', pct: totalExpenses > 0 ? ((overviewData?.totalSalaries || 0) / totalExpenses) * 100 : 0 },
-                      { label: 'Extra Payments', value: overviewData?.totalExtraPayments || 0, color: 'bg-violet-500', pct: totalExpenses > 0 ? ((overviewData?.totalExtraPayments || 0) / totalExpenses) * 100 : 0 },
                       { label: 'Other Expenses', value: overviewData?.manualExpenses || 0, color: 'bg-red-400', pct: totalExpenses > 0 ? ((overviewData?.manualExpenses || 0) / totalExpenses) * 100 : 0 },
                     ].map(item => (
                       <div key={item.label}>
@@ -1365,7 +1252,7 @@ export function FinancesPage() {
                         const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === idx + 1)
                         const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
                         const sal = entry ? parseFloat(String(entry.salary || 0)) : 0
-                        const other = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0)) : 0
+                        const other = entry ? parseFloat(String(entry.expense || 0)) : 0
                         const net = inc - sal - other
                         const isEmpty = inc === 0 && sal === 0 && other === 0
                         const isCurrentMonth = idx === currentMonth && overviewYear === currentYear
@@ -1400,7 +1287,7 @@ export function FinancesPage() {
                         <td className="px-6 py-3 text-gray-900">Total</td>
                         <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
                         <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(overviewData?.totalSalaries || 0)}</td>
-                        <td className="px-4 py-3 text-right text-gray-700">{formatCurrency((overviewData?.manualExpenses || 0) + (overviewData?.totalExtraPayments || 0))}</td>
+                        <td className="px-4 py-3 text-right text-gray-700">{formatCurrency(overviewData?.manualExpenses || 0)}</td>
                         <td className={`px-6 py-3 text-right ${netPL >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(netPL)}</td>
                       </tr>
                     </tfoot>
@@ -1767,109 +1654,6 @@ export function FinancesPage() {
           )}
         </TabsContent>
 
-        {/* ========== TAB 4: EXTRA PAYMENTS ========== */}
-        <TabsContent value="extra" className="space-y-6">
-          {/* Add Button */}
-          <div className="flex justify-end">
-            <button
-              onClick={openAddExtra}
-              className="stripe-btn-primary flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add Payment
-            </button>
-          </div>
-
-          {/* Extra Payments Table */}
-          <div className="stripe-card overflow-hidden">
-            {extraLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b stripe-border">
-                      <th className="text-left px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="text-left px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
-                        Team Member
-                      </th>
-                      <th className="text-left px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
-                        Category
-                      </th>
-                      <th className="text-left px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
-                        Description
-                      </th>
-                      <th className="text-right px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
-                        Amount
-                      </th>
-                      <th className="text-right px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y stripe-border">
-                    {extraPayments.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center">
-                          <CreditCard className="w-12 h-12 mx-auto stripe-text-muted opacity-50 mb-3" />
-                          <p className="stripe-text-muted">No extra payments found</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      extraPayments.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-4 text-sm stripe-text-primary whitespace-nowrap">
-                            {formatDate(tx.transactionDate)}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-medium stripe-text-primary">
-                            {tx.teamMemberName || '-'}
-                          </td>
-                          <td className="px-6 py-4">
-                            {tx.category ? (
-                              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                {tx.category}
-                              </span>
-                            ) : (
-                              <span className="text-sm stripe-text-muted">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-sm stripe-text-secondary max-w-[300px] truncate">
-                            {tx.description || '-'}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-semibold text-right whitespace-nowrap stripe-text-primary">
-                            {formatCurrency(tx.amount)}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => openEditExtra(tx)}
-                                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors stripe-text-muted hover:stripe-text-primary"
-                                title="Edit payment"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteExtra(tx.id)}
-                                className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-red-400 hover:text-red-600"
-                                title="Delete payment"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </TabsContent>
 
         {/* ========== TAB 5: CATEGORIES ========== */}
         <TabsContent value="categories" className="space-y-6">
@@ -2480,131 +2264,6 @@ export function FinancesPage() {
         </div>
       )}
 
-      {/* ========== EXTRA PAYMENT ADD/EDIT MODAL ========== */}
-      {showExtraModal && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowExtraModal(false)}
-        >
-          <div
-            className="stripe-card p-6 w-full max-w-md rounded-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold stripe-text-primary mb-1">
-              {editingExtra ? 'Edit Extra Payment' : 'Add Extra Payment'}
-            </h3>
-            <p className="text-sm stripe-text-muted mb-5">
-              {editingExtra ? 'Update extra payment details' : 'Create a new extra payment'}
-            </p>
-
-            <div className="space-y-4">
-              {/* Team Member */}
-              <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Team Member
-                </label>
-                <select
-                  value={extraForm.teamMemberId}
-                  onChange={(e) => setExtraForm({ ...extraForm, teamMemberId: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                >
-                  <option value="">Select team member (optional)</option>
-                  {teamMembersForExtra.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Amount */}
-              <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Amount
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm stripe-text-muted">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={extraForm.amount}
-                    onChange={(e) => setExtraForm({ ...extraForm, amount: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full pl-7 pr-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Category
-                </label>
-                <select
-                  value={extraForm.category}
-                  onChange={(e) => setExtraForm({ ...extraForm, category: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                >
-                  {EXTRA_PAYMENT_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Description
-                </label>
-                <textarea
-                  value={extraForm.description}
-                  onChange={(e) => setExtraForm({ ...extraForm, description: e.target.value })}
-                  placeholder="Additional details..."
-                  rows={3}
-                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm resize-none"
-                />
-              </div>
-
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={extraForm.transactionDate}
-                  onChange={(e) =>
-                    setExtraForm({ ...extraForm, transactionDate: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                />
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowExtraModal(false)}
-                  className="flex-1 px-4 py-2 border rounded-lg stripe-border stripe-text-primary text-sm font-medium hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveExtra}
-                  disabled={extraSaving || !extraForm.amount}
-                  className="flex-1 stripe-btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                >
-                  {extraSaving ? 'Saving...' : editingExtra ? 'Update' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {/* ========== INTEGRATION CONFIG MODAL ========== */}
       {showConfigModal && (
         <div
