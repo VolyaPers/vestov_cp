@@ -20,6 +20,21 @@ const API_BASE = envApiUrl
   ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
   : '/api'
 
+export type FinanceCategoryKind = 'income' | 'expense'
+
+export interface FinanceCategory {
+  id: number
+  kind: FinanceCategoryKind
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FinanceCategoriesResponse {
+  income: FinanceCategory[]
+  expense: FinanceCategory[]
+}
+
 class ApiClient {
   request = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${API_BASE}${endpoint}`
@@ -557,8 +572,31 @@ class ApiClient {
     return this.request(`/finances/salaries/${teamMemberId}/rate-history`)
   }
 
-  async getFinanceCategories() {
-    return this.request('/finances/categories')
+  async getFinanceCategories(kind?: FinanceCategoryKind): Promise<FinanceCategoriesResponse | FinanceCategory[]> {
+    const sp = new URLSearchParams()
+    if (kind) sp.append('kind', kind)
+    const q = sp.toString()
+    return this.request(`/finances/categories${q ? `?${q}` : ''}`)
+  }
+
+  async createFinanceCategory(data: { kind: FinanceCategoryKind; name: string }): Promise<FinanceCategory> {
+    return this.request('/finances/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFinanceCategory(id: number, data: { kind?: FinanceCategoryKind; name?: string }): Promise<FinanceCategory> {
+    return this.request(`/finances/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFinanceCategory(id: number): Promise<{ message: string }> {
+    return this.request(`/finances/categories/${id}`, {
+      method: 'DELETE',
+    })
   }
 
   async getFinancesBalances(): Promise<{

@@ -1,8 +1,9 @@
 import { Router } from 'express'
-import { eq, desc, and, sql, gte, lte } from 'drizzle-orm'
+import { eq, desc, and, sql, gte, lte, asc } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
   financialTransactions,
+  financeCategories,
   integrationSettings,
   invoices,
   clients,
@@ -23,6 +24,53 @@ function isAdmin(req: any, res: any): boolean {
     return false
   }
   return true
+}
+
+type FinanceCategoryKind = 'income' | 'expense'
+
+function normalizeCategoryKind(value?: string | null): FinanceCategoryKind | null {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'income') return 'income'
+  if (normalized === 'expense' || normalized === 'cost') return 'expense'
+  return null
+}
+
+async function ensureCategoryExists(kind: FinanceCategoryKind, rawName: string, userId?: number) {
+  const name = rawName.trim()
+  if (!name) return null
+
+  const [existing] = await db
+    .select({
+      id: financeCategories.id,
+      kind: financeCategories.kind,
+      name: financeCategories.name,
+    })
+    .from(financeCategories)
+    .where(
+      and(
+        eq(financeCategories.kind, kind),
+        sql`lower(${financeCategories.name}) = lower(${name})`
+      )
+    )
+    .limit(1)
+
+  if (existing) return existing
+
+  const [created] = await db
+    .insert(financeCategories)
+    .values({
+      kind,
+      name,
+      createdBy: userId || null,
+    })
+    .returning({
+      id: financeCategories.id,
+      kind: financeCategories.kind,
+      name: financeCategories.name,
+    })
+
+  return created
 }
 
 // GET /overview - Dashboard summary
@@ -210,11 +258,19 @@ router.post('/transactions', async (req, res) => {
       return res.status(400).json({ error: 'type, amount, and transactionDate are required' })
     }
 
+    const categoryKind = normalizeCategoryKind(type)
+    let categoryValue = typeof category === 'string' ? category.trim() : ''
+
+    if (categoryKind && categoryValue) {
+      const ensuredCategory = await ensureCategoryExists(categoryKind, categoryValue, req.user?.id)
+      categoryValue = ensuredCategory?.name || categoryValue
+    }
+
     const [created] = await db
       .insert(financialTransactions)
       .values({
         type,
-        category: category || null,
+        category: categoryValue || null,
         amount: amount.toString(),
         description: description || null,
         transactionDate,
@@ -242,13 +298,41 @@ router.put('/transactions/:id', async (req, res) => {
 
     const updateData: any = { updatedAt: new Date() }
     if (type !== undefined) updateData.type = type
-    if (category !== undefined) updateData.category = category
     if (amount !== undefined) updateData.amount = amount.toString()
     if (description !== undefined) updateData.description = description
     if (transactionDate !== undefined) updateData.transactionDate = transactionDate
     if (teamMemberId !== undefined) updateData.teamMemberId = teamMemberId || null
     if (clientId !== undefined) updateData.clientId = clientId || null
     if (isRecurring !== undefined) updateData.isRecurring = isRecurring
+
+    if (category !== undefined) {
+      let txType = type as string | undefined
+
+      if (!txType) {
+        const [existingTx] = await db
+          .select({ type: financialTransactions.type })
+          .from(financialTransactions)
+          .where(eq(financialTransactions.id, id))
+          .limit(1)
+
+        if (!existingTx) {
+          return res.status(404).json({ error: 'Transaction not found' })
+        }
+        txType = existingTx.type
+      }
+
+      const categoryKind = normalizeCategoryKind(txType)
+      const categoryValue = typeof category === 'string' ? category.trim() : category
+
+      if (categoryKind && typeof categoryValue === 'string' && categoryValue) {
+        const ensuredCategory = await ensureCategoryExists(categoryKind, categoryValue, req.user?.id)
+        updateData.category = ensuredCategory?.name || categoryValue
+      } else if (categoryValue === '' || categoryValue === null) {
+        updateData.category = null
+      } else {
+        updateData.category = categoryValue
+      }
+    }
 
     const [updated] = await db
       .update(financialTransactions)
@@ -437,23 +521,198 @@ router.post('/salaries/record', async (req, res) => {
   }
 })
 
-// GET /categories - Distinct categories
+// GET /categories
 router.get('/categories', async (req, res) => {
   if (!isAdmin(req, res)) return
   try {
+    const rawKind = typeof req.query.kind === 'string' ? req.query.kind : undefined
+    const categoryKind = normalizeCategoryKind(rawKind)
+
+    if (rawKind && !categoryKind) {
+      return res.status(400).json({ error: 'kind must be income or expense' })
+    }
+
     const results = await db
       .select({
-        category: financialTransactions.category,
+        id: financeCategories.id,
+        kind: financeCategories.kind,
+        name: financeCategories.name,
+        createdAt: financeCategories.createdAt,
+        updatedAt: financeCategories.updatedAt,
       })
-      .from(financialTransactions)
-      .where(sql`${financialTransactions.category} IS NOT NULL`)
-      .groupBy(financialTransactions.category)
-      .orderBy(financialTransactions.category)
+      .from(financeCategories)
+      .where(categoryKind ? eq(financeCategories.kind, categoryKind) : undefined)
+      .orderBy(asc(financeCategories.kind), asc(financeCategories.name))
 
-    res.json(results.map((r) => r.category))
+    if (categoryKind) {
+      return res.json(results)
+    }
+
+    res.json({
+      income: results.filter((category) => category.kind === 'income'),
+      expense: results.filter((category) => category.kind === 'expense'),
+    })
   } catch (error) {
     console.error('Categories error:', error)
     res.status(500).json({ error: 'Failed to fetch categories' })
+  }
+})
+
+// POST /categories
+router.post('/categories', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const categoryKind = normalizeCategoryKind(req.body?.kind)
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+
+    if (!categoryKind) {
+      return res.status(400).json({ error: 'kind must be income or expense' })
+    }
+
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' })
+    }
+
+    const [existing] = await db
+      .select({ id: financeCategories.id })
+      .from(financeCategories)
+      .where(
+        and(
+          eq(financeCategories.kind, categoryKind),
+          sql`lower(${financeCategories.name}) = lower(${name})`
+        )
+      )
+      .limit(1)
+
+    if (existing) {
+      return res.status(409).json({ error: 'Category already exists for this list' })
+    }
+
+    const [created] = await db
+      .insert(financeCategories)
+      .values({
+        kind: categoryKind,
+        name,
+        createdBy: req.user?.id || null,
+      })
+      .returning({
+        id: financeCategories.id,
+        kind: financeCategories.kind,
+        name: financeCategories.name,
+        createdAt: financeCategories.createdAt,
+        updatedAt: financeCategories.updatedAt,
+      })
+
+    res.status(201).json(created)
+  } catch (error) {
+    console.error('Create category error:', error)
+    res.status(500).json({ error: 'Failed to create category' })
+  }
+})
+
+// PUT /categories/:id
+router.put('/categories/:id', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const id = parseInt(req.params.id)
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid category id' })
+    }
+
+    const [current] = await db
+      .select({
+        id: financeCategories.id,
+        kind: financeCategories.kind,
+        name: financeCategories.name,
+      })
+      .from(financeCategories)
+      .where(eq(financeCategories.id, id))
+      .limit(1)
+
+    if (!current) {
+      return res.status(404).json({ error: 'Category not found' })
+    }
+
+    const normalizedKind = req.body?.kind !== undefined
+      ? normalizeCategoryKind(req.body.kind)
+      : null
+
+    if (req.body?.kind !== undefined && !normalizedKind) {
+      return res.status(400).json({ error: 'kind must be income or expense' })
+    }
+
+    const normalizedName = req.body?.name !== undefined
+      ? (typeof req.body.name === 'string' ? req.body.name.trim() : '')
+      : undefined
+
+    if (normalizedName !== undefined && !normalizedName) {
+      return res.status(400).json({ error: 'name cannot be empty' })
+    }
+
+    const nextKind = normalizedKind || current.kind
+    const nextName = normalizedName || current.name
+
+    const [duplicate] = await db
+      .select({ id: financeCategories.id })
+      .from(financeCategories)
+      .where(
+        and(
+          eq(financeCategories.kind, nextKind),
+          sql`lower(${financeCategories.name}) = lower(${nextName})`,
+          sql`${financeCategories.id} <> ${id}`
+        )
+      )
+      .limit(1)
+
+    if (duplicate) {
+      return res.status(409).json({ error: 'Category already exists for this list' })
+    }
+
+    const updateData: any = { updatedAt: new Date() }
+    if (normalizedKind) updateData.kind = normalizedKind
+    if (normalizedName !== undefined) updateData.name = normalizedName
+
+    const [updated] = await db
+      .update(financeCategories)
+      .set(updateData)
+      .where(eq(financeCategories.id, id))
+      .returning({
+        id: financeCategories.id,
+        kind: financeCategories.kind,
+        name: financeCategories.name,
+        createdAt: financeCategories.createdAt,
+        updatedAt: financeCategories.updatedAt,
+      })
+
+    res.json(updated)
+  } catch (error) {
+    console.error('Update category error:', error)
+    res.status(500).json({ error: 'Failed to update category' })
+  }
+})
+
+// DELETE /categories/:id
+router.delete('/categories/:id', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const id = parseInt(req.params.id)
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid category id' })
+    }
+
+    const [deleted] = await db
+      .delete(financeCategories)
+      .where(eq(financeCategories.id, id))
+      .returning({ id: financeCategories.id })
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Category not found' })
+    }
+
+    res.json({ message: 'Category deleted successfully' })
+  } catch (error) {
+    console.error('Delete category error:', error)
+    res.status(500).json({ error: 'Failed to delete category' })
   }
 })
 

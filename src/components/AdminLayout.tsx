@@ -117,6 +117,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 <Route path="/admin/shifts" component={AdminShifts} />
                 <Route path="/admin/documents" component={AdminDocumentsPage} />
                 <Route path="/admin/feedback" component={AdminFeedbackPage} />
+                <Route path="/admin/finances/:section" component={FinancesPage} />
                 <Route path="/admin/finances" component={FinancesPage} />
                 <Route path="/admin" component={AdminDashboard} />
                 <Route path="*">

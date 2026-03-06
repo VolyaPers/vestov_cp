@@ -25,7 +25,8 @@ import {
   X,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { api } from '@/lib/api'
+import { useLocation } from 'wouter'
+import { api, type FinanceCategory, type FinanceCategoryKind } from '@/lib/api'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -154,8 +155,18 @@ type MergedRow = {
   editable: boolean
 }
 
+type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'extra' | 'categories'
+
+const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'extra', 'categories']
+
 export function FinancesPage() {
   const currentYear = new Date().getFullYear()
+  const [location, setLocation] = useLocation()
+
+  const sectionFromPath = location.split('/')[3]
+  const activeTab: FinanceSection = FINANCE_SECTIONS.includes(sectionFromPath as FinanceSection)
+    ? (sectionFromPath as FinanceSection)
+    : 'overview'
 
   // Overview state
   const [overviewYear, setOverviewYear] = useState(currentYear)
@@ -181,6 +192,19 @@ export function FinancesPage() {
     isRecurring: false,
   })
   const [txSaving, setTxSaving] = useState(false)
+  const [categories, setCategories] = useState<{
+    income: FinanceCategory[]
+    expense: FinanceCategory[]
+  }>({
+    income: [],
+    expense: [],
+  })
+  const [categoriesLoading, setCategoriesLoading] = useState(false)
+  const [categoriesSaving, setCategoriesSaving] = useState(false)
+  const [showNewTxCategoryInput, setShowNewTxCategoryInput] = useState(false)
+  const [newTxCategoryName, setNewTxCategoryName] = useState('')
+  const [newIncomeCategoryName, setNewIncomeCategoryName] = useState('')
+  const [newExpenseCategoryName, setNewExpenseCategoryName] = useState('')
 
   // Salaries state
   const [salariesYear, setSalariesYear] = useState(currentYear)
@@ -219,9 +243,6 @@ export function FinancesPage() {
   })
   const [extraSaving, setExtraSaving] = useState(false)
 
-  // Active tab
-  const [activeTab, setActiveTab] = useState('overview')
-
   // Balances state
   const [balances, setBalances] = useState<BalancesData | null>(null)
   const [balancesLoading, setBalancesLoading] = useState(true)
@@ -236,6 +257,20 @@ export function FinancesPage() {
     programId: '',
     environment: 'sandbox',
   })
+
+  useEffect(() => {
+    if (location === '/admin/finances' || location === '/admin/finances/') {
+      setLocation('/admin/finances/overview', { replace: true })
+      return
+    }
+
+    if (
+      location.startsWith('/admin/finances/') &&
+      !FINANCE_SECTIONS.includes((location.split('/')[3] || '') as FinanceSection)
+    ) {
+      setLocation('/admin/finances/overview', { replace: true })
+    }
+  }, [location, setLocation])
 
   // Load balances on mount
   useEffect(() => {
@@ -265,6 +300,13 @@ export function FinancesPage() {
   useEffect(() => {
     if (activeTab === 'extra') {
       loadExtraPayments()
+    }
+  }, [activeTab])
+
+  // Load categories on relevant pages
+  useEffect(() => {
+    if (activeTab === 'transactions' || activeTab === 'categories') {
+      loadCategories()
     }
   }, [activeTab])
 
@@ -379,6 +421,96 @@ export function FinancesPage() {
     }
   }
 
+  const loadCategories = async () => {
+    try {
+      setCategoriesLoading(true)
+      const data = await api.getFinanceCategories()
+      if (data && typeof data === 'object' && 'income' in data && 'expense' in data) {
+        setCategories({
+          income: data.income || [],
+          expense: data.expense || [],
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load finance categories:', error)
+    } finally {
+      setCategoriesLoading(false)
+    }
+  }
+
+  const createCategory = async (kind: FinanceCategoryKind, rawName: string) => {
+    const name = rawName.trim()
+    if (!name) return null
+    try {
+      setCategoriesSaving(true)
+      const created = await api.createFinanceCategory({ kind, name })
+      await loadCategories()
+      return created
+    } catch (error) {
+      console.error('Failed to create category:', error)
+      alert(error instanceof Error ? error.message : 'Failed to create category')
+      return null
+    } finally {
+      setCategoriesSaving(false)
+    }
+  }
+
+  const handleQuickCreateTxCategory = async () => {
+    const kind: FinanceCategoryKind = txForm.type === 'income' ? 'income' : 'expense'
+    const created = await createCategory(kind, newTxCategoryName)
+    if (!created) return
+    setTxForm((prev) => ({ ...prev, category: created.name }))
+    setShowNewTxCategoryInput(false)
+    setNewTxCategoryName('')
+  }
+
+  const handleAddCategoryFromSettings = async (kind: FinanceCategoryKind) => {
+    const value = kind === 'income' ? newIncomeCategoryName : newExpenseCategoryName
+    const created = await createCategory(kind, value)
+    if (!created) return
+    if (kind === 'income') {
+      setNewIncomeCategoryName('')
+    } else {
+      setNewExpenseCategoryName('')
+    }
+  }
+
+  const handleRenameCategory = async (category: FinanceCategory) => {
+    const nextName = prompt('Rename category', category.name)?.trim()
+    if (!nextName || nextName === category.name) return
+
+    try {
+      setCategoriesSaving(true)
+      await api.updateFinanceCategory(category.id, { name: nextName })
+      await loadCategories()
+      if (txForm.category.toLowerCase() === category.name.toLowerCase()) {
+        setTxForm((prev) => ({ ...prev, category: nextName }))
+      }
+    } catch (error) {
+      console.error('Failed to rename category:', error)
+      alert(error instanceof Error ? error.message : 'Failed to rename category')
+    } finally {
+      setCategoriesSaving(false)
+    }
+  }
+
+  const handleDeleteCategory = async (category: FinanceCategory) => {
+    if (!confirm(`Delete "${category.name}" from ${category.kind === 'income' ? 'Income' : 'Cost'} categories?`)) return
+    try {
+      setCategoriesSaving(true)
+      await api.deleteFinanceCategory(category.id)
+      await loadCategories()
+      if (txForm.category.toLowerCase() === category.name.toLowerCase()) {
+        setTxForm((prev) => ({ ...prev, category: '' }))
+      }
+    } catch (error) {
+      console.error('Failed to delete category:', error)
+      alert(error instanceof Error ? error.message : 'Failed to delete category')
+    } finally {
+      setCategoriesSaving(false)
+    }
+  }
+
   // Merge transactions and client payments for table
   const getMergedRows = (): MergedRow[] => {
     const rows: MergedRow[] = []
@@ -441,6 +573,9 @@ export function FinancesPage() {
       transactionDate: toInputDate(),
       isRecurring: false,
     })
+    setShowNewTxCategoryInput(false)
+    setNewTxCategoryName('')
+    loadCategories()
     setShowTxModal(true)
   }
 
@@ -454,6 +589,9 @@ export function FinancesPage() {
       transactionDate: toInputDate(tx.transactionDate),
       isRecurring: tx.isRecurring,
     })
+    setShowNewTxCategoryInput(false)
+    setNewTxCategoryName('')
+    loadCategories()
     setShowTxModal(true)
   }
 
@@ -763,6 +901,11 @@ export function FinancesPage() {
 
   // Team members from salaries data for extra payments dropdown
   const teamMembersForExtra = salariesData?.members || []
+  const txCategoryKind: FinanceCategoryKind = txForm.type === 'income' ? 'income' : 'expense'
+  const txCategoryOptions = categories[txCategoryKind] || []
+  const txCategoryExists = !!txForm.category && txCategoryOptions.some(
+    (category) => category.name.toLowerCase() === txForm.category.toLowerCase()
+  )
 
   return (
     <div className="space-y-6">
@@ -918,12 +1061,13 @@ export function FinancesPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs value={activeTab} onValueChange={(value) => setLocation(`/admin/finances/${value}`)} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="salaries">Salaries</TabsTrigger>
           <TabsTrigger value="extra">Extra Payments</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
         </TabsList>
 
         {/* ========== TAB 1: OVERVIEW ========== */}
@@ -1112,6 +1256,13 @@ export function FinancesPage() {
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => setLocation('/admin/finances/categories')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border stripe-border stripe-text-primary hover:bg-gray-50 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  Categories
+                </button>
                 <button
                   onClick={() => openAddTransaction('income')}
                   className="stripe-btn-primary flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
@@ -1518,6 +1669,134 @@ export function FinancesPage() {
             )}
           </div>
         </TabsContent>
+
+        {/* ========== TAB 5: CATEGORIES ========== */}
+        <TabsContent value="categories" className="space-y-6">
+          <div className="stripe-card p-6">
+            <h3 className="text-lg font-semibold stripe-text-primary">Category Settings</h3>
+            <p className="text-sm stripe-text-muted mt-1">
+              Manage separate category lists for Income and Cost transactions.
+            </p>
+          </div>
+
+          {categoriesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="stripe-card p-6 space-y-4">
+                <div>
+                  <h4 className="text-base font-semibold text-green-700">Income Categories</h4>
+                  <p className="text-xs stripe-text-muted mt-0.5">Used in Add Income popup</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newIncomeCategoryName}
+                    onChange={(e) => setNewIncomeCategoryName(e.target.value)}
+                    placeholder="Add income category"
+                    className="flex-1 px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                  />
+                  <button
+                    onClick={() => handleAddCategoryFromSettings('income')}
+                    disabled={categoriesSaving || !newIncomeCategoryName.trim()}
+                    className="px-3 py-2 rounded-lg text-sm font-medium stripe-btn-primary disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {categories.income.length === 0 ? (
+                    <p className="text-sm stripe-text-muted italic">No categories yet.</p>
+                  ) : (
+                    categories.income.map((category) => (
+                      <div
+                        key={category.id}
+                        className="flex items-center justify-between rounded-lg border stripe-border px-3 py-2"
+                      >
+                        <span className="text-sm stripe-text-primary">{category.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleRenameCategory(category)}
+                            disabled={categoriesSaving}
+                            className="p-1.5 rounded-md hover:bg-gray-100 stripe-text-muted hover:stripe-text-primary disabled:opacity-50"
+                            title="Rename category"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category)}
+                            disabled={categoriesSaving}
+                            className="p-1.5 rounded-md hover:bg-red-50 text-red-400 hover:text-red-600 disabled:opacity-50"
+                            title="Delete category"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="stripe-card p-6 space-y-4">
+                <div>
+                  <h4 className="text-base font-semibold text-red-700">Cost Categories</h4>
+                  <p className="text-xs stripe-text-muted mt-0.5">Used in Add Cost popup</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newExpenseCategoryName}
+                    onChange={(e) => setNewExpenseCategoryName(e.target.value)}
+                    placeholder="Add cost category"
+                    className="flex-1 px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                  />
+                  <button
+                    onClick={() => handleAddCategoryFromSettings('expense')}
+                    disabled={categoriesSaving || !newExpenseCategoryName.trim()}
+                    className="px-3 py-2 rounded-lg text-sm font-medium stripe-btn-primary disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {categories.expense.length === 0 ? (
+                    <p className="text-sm stripe-text-muted italic">No categories yet.</p>
+                  ) : (
+                    categories.expense.map((category) => (
+                      <div
+                        key={category.id}
+                        className="flex items-center justify-between rounded-lg border stripe-border px-3 py-2"
+                      >
+                        <span className="text-sm stripe-text-primary">{category.name}</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleRenameCategory(category)}
+                            disabled={categoriesSaving}
+                            className="p-1.5 rounded-md hover:bg-gray-100 stripe-text-muted hover:stripe-text-primary disabled:opacity-50"
+                            title="Rename category"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category)}
+                            disabled={categoriesSaving}
+                            className="p-1.5 rounded-md hover:bg-red-50 text-red-400 hover:text-red-600 disabled:opacity-50"
+                            title="Delete category"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* ========== TRANSACTION ADD/EDIT MODAL ========== */}
@@ -1545,7 +1824,21 @@ export function FinancesPage() {
                 </label>
                 <select
                   value={txForm.type}
-                  onChange={(e) => setTxForm({ ...txForm, type: e.target.value })}
+                  onChange={(e) => {
+                    const nextType = e.target.value
+                    const nextKind: FinanceCategoryKind = nextType === 'income' ? 'income' : 'expense'
+                    const hasCategoryInNextList = categories[nextKind].some(
+                      (category) => category.name.toLowerCase() === txForm.category.toLowerCase()
+                    )
+
+                    setTxForm({
+                      ...txForm,
+                      type: nextType,
+                      category: hasCategoryInNextList ? txForm.category : '',
+                    })
+                    setShowNewTxCategoryInput(false)
+                    setNewTxCategoryName('')
+                  }}
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 >
                   <option value="income">Income</option>
@@ -1579,13 +1872,64 @@ export function FinancesPage() {
                 <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
                   Category
                 </label>
-                <input
-                  type="text"
-                  value={txForm.category}
-                  onChange={(e) => setTxForm({ ...txForm, category: e.target.value })}
-                  placeholder="e.g. Office Supplies, Software, etc."
+                <select
+                  value={showNewTxCategoryInput ? '__new__' : txForm.category}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '__new__') {
+                      setShowNewTxCategoryInput(true)
+                      setNewTxCategoryName('')
+                      return
+                    }
+
+                    setShowNewTxCategoryInput(false)
+                    setTxForm({ ...txForm, category: value })
+                  }}
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                />
+                >
+                  <option value="">Select category</option>
+                  {txCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.name}>
+                      {category.name}
+                    </option>
+                  ))}
+                  {txForm.category && !txCategoryExists && (
+                    <option value={txForm.category}>{txForm.category}</option>
+                  )}
+                  <option value="__new__">+ Create new category</option>
+                </select>
+                {categoriesLoading && (
+                  <p className="text-xs stripe-text-muted mt-1.5">Loading categories...</p>
+                )}
+                {showNewTxCategoryInput && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="text"
+                      value={newTxCategoryName}
+                      onChange={(e) => setNewTxCategoryName(e.target.value)}
+                      placeholder={`New ${txCategoryKind === 'income' ? 'income' : 'cost'} category`}
+                      className="flex-1 px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleQuickCreateTxCategory}
+                      disabled={categoriesSaving || !newTxCategoryName.trim()}
+                      className="px-3 py-2 rounded-lg text-sm font-medium stripe-btn-primary disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewTxCategoryInput(false)
+                        setNewTxCategoryName('')
+                      }}
+                      className="px-3 py-2 rounded-lg text-sm font-medium border stripe-border stripe-text-primary hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Description */}

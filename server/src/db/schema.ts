@@ -212,6 +212,16 @@ export const financialTransactions = pgTable('financial_transactions', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
+// Finance Categories table
+export const financeCategories = pgTable('finance_categories', {
+  id: serial('id').primaryKey(),
+  kind: varchar('kind', { length: 20 }).notNull(), // 'income' | 'expense'
+  name: text('name').notNull(),
+  createdBy: integer('created_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // Integration Settings table
 export const integrationSettings = pgTable('integration_settings', {
   id: serial('id').primaryKey(),
