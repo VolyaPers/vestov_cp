@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
@@ -23,7 +22,6 @@ interface User {
   timezone?: string
   avatarUrl?: string
   teamMemberId?: number
-  isDeveloper?: boolean
   isActive: boolean
   lastLoginAt?: string
   createdAt: string
@@ -59,7 +57,6 @@ export function UsersPage() {
     role: 'client' as 'admin' | 'team_member' | 'client',
     position: '',
     timezone: '',
-    isDeveloper: false,
   })
   const [availableClients, setAvailableClients] = useState<Array<{id: number, name: string}>>([])
 
@@ -154,7 +151,6 @@ export function UsersPage() {
       role: user.role,
       position: user.position || '',
       timezone: user.timezone || '',
-      isDeveloper: user.isDeveloper || false,
     })
     setIsUserDialogOpen(true)
   }
@@ -171,9 +167,8 @@ export function UsersPage() {
         fullName: userFormData.fullName,
         email: userFormData.email,
         role: userFormData.role,
-        position: userFormData.isDeveloper ? 'Developer' : (userFormData.position || undefined),
+        position: userFormData.position || undefined,
         timezone: userFormData.timezone || undefined,
-        isDeveloper: userFormData.isDeveloper,
       }
 
       await api.updateUser(isEditingUser.id, updateData)
@@ -236,7 +231,6 @@ export function UsersPage() {
       role: 'client',
       position: '',
       timezone: '',
-      isDeveloper: false,
     })
     setIsEditingUser(null)
   }
@@ -697,19 +691,6 @@ export function UsersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="userIsDeveloper" className="block mb-2">Developer</Label>
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="userIsDeveloper"
-                    checked={userFormData.isDeveloper}
-                    onCheckedChange={(checked) => setUserFormData({ ...userFormData, isDeveloper: checked })}
-                  />
-                  <Label htmlFor="userIsDeveloper" className="text-sm font-normal text-gray-600">
-                    Mark if user is a developer
-                  </Label>
-                </div>
-              </div>
             </div>
 
             <div>
@@ -719,12 +700,9 @@ export function UsersPage() {
                 value={userFormData.position}
                 onChange={(e) => setUserFormData({ ...userFormData, position: e.target.value })}
                 placeholder="e.g. HR Manager, PM, Designer"
-                disabled={userFormData.isDeveloper}
               />
               <p className="text-xs text-gray-500 mt-1">
-                {userFormData.isDeveloper
-                  ? 'Position is set to Developer when toggle is enabled'
-                  : 'Enter the position for non-developer users'}
+                Enter the user's position or job title
               </p>
             </div>
 

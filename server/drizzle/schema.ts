@@ -356,13 +356,13 @@ export const clientContacts = pgTable("client_contacts", {
 export const teamMembers = pgTable("team_members", {
 	id: serial().primaryKey().notNull(),
 	name: text().notNull(),
-	role: text().notNull(),
 	email: varchar({ length: 255 }).notNull(),
 	phone: varchar({ length: 20 }),
 	skills: jsonb(),
 	bio: text(),
 	hourlyRate: numeric("hourly_rate", { precision: 10, scale:  2 }),
 	monthlyRate: numeric("monthly_rate", { precision: 10, scale:  2 }),
+	employmentType: varchar("employment_type", { length: 20 }).default('fulltime').notNull(),
 	status: varchar({ length: 20 }).default('active').notNull(),
 	clientId: integer("client_id"),
 	startDate: date("start_date").notNull(),
@@ -372,9 +372,7 @@ export const teamMembers = pgTable("team_members", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
 	isBillable: boolean("is_billable").default(true).notNull(),
-	employmentType: varchar("employment_type", { length: 20 }).default('fulltime'),
-	position: text(),
-	isDeveloper: boolean("is_developer").default(false).notNull(),
+	position: text().notNull(),
 	showOnCalendar: boolean("show_on_calendar").default(true).notNull(),
 }, (table) => [
 	foreignKey({

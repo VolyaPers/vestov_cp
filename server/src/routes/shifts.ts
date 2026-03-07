@@ -1064,7 +1064,7 @@ router.get('/client/team', async (req, res) => {
           name: employee.name,
           email: employee.email,
           avatarUrl: employee.avatarUrl,
-          position: employee.role // Map role to position for compatibility
+          position: employee.position
         },
         activeBreak: activeBreak ? {
           id: activeBreak.id,

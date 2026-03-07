@@ -57,22 +57,21 @@ export const clients = pgTable('clients', {
 export const teamMembers = pgTable('team_members', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
-  role: text('role').notNull(),
   email: varchar('email', { length: 255 }).unique().notNull(),
   phone: varchar('phone', { length: 20 }),
   skills: jsonb('skills'), // array of strings
   bio: text('bio'),
   hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }), // base rate
   monthlyRate: decimal('monthly_rate', { precision: 10, scale: 2 }),
-  isBillable: boolean('is_billable').notNull().default(true), // true for developers/devops, false for HR/PM/internal
+  employmentType: varchar('employment_type', { length: 20 }).notNull().default('fulltime'), // 'fulltime' | 'part_time' | 'freelancer'
+  isBillable: boolean('is_billable').notNull().default(true), // true for billable resources, false for HR/PM/internal
   status: varchar('status', { length: 20 }).notNull().default('active'), // 'bench' | 'active'
   clientId: integer('client_id').references(() => clients.id),
   startDate: date('start_date').notNull(),
   location: text('location'),
   timezone: text('timezone'), // IANA timezone e.g. "Europe/Kyiv"
   avatarUrl: text('avatar_url'),
-  position: text('position'),
-  isDeveloper: boolean('is_developer').notNull().default(false),
+  position: text('position').notNull(),
   showOnCalendar: boolean('show_on_calendar').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

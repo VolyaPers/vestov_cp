@@ -3339,7 +3339,7 @@ router.get('/employees', auth, async (req, res) => {
         id: teamMembers.id,
         name: teamMembers.name,
         email: teamMembers.email,
-        role: teamMembers.role,
+        position: teamMembers.position,
         status: teamMembers.status,
         showOnCalendar: teamMembers.showOnCalendar,
         avatarUrl: teamMembers.avatarUrl,
@@ -3698,7 +3698,7 @@ router.get('/client/team', async (req, res) => {
         name: employee.name,
         email: employee.email,
         avatarUrl: employee.avatarUrl,
-        position: employee.role // Map role to position for compatibility
+        position: employee.position
       }
     }))
 
@@ -3766,7 +3766,7 @@ router.get('/client/team/schedules', async (req, res) => {
         name: teamMembers.name,
         email: teamMembers.email,
         avatarUrl: teamMembers.avatarUrl,
-        position: teamMembers.role,
+        position: teamMembers.position,
       })
       .from(clientServiceTeamMembers)
       .leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))

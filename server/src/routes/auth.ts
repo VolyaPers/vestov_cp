@@ -212,7 +212,7 @@ router.post('/register', async (req, res) => {
             .insert(teamMembers)
             .values({
               name: fullName,
-              role: 'team_member',
+              position: 'Team Member',
               email: normalizedEmail,
               startDate: today,
               status: 'active',

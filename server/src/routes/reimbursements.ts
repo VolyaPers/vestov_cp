@@ -472,7 +472,7 @@ router.get('/evidence/:filename', async (req, res) => {
           id: teamMembers.id,
           name: teamMembers.name,
           email: teamMembers.email,
-          role: teamMembers.role,
+          position: teamMembers.position,
           status: teamMembers.status
         }
       })

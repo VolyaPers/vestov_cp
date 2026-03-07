@@ -250,7 +250,7 @@ export function setupPassport(pool: Pool) {
           .select({
             avatarUrl: teamMembers.avatarUrl,
             name: teamMembers.name,
-            role: teamMembers.role,
+            position: teamMembers.position,
           })
           .from(teamMembers)
           .where(eq(teamMembers.id, user.teamMemberId))

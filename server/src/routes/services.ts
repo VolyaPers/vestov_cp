@@ -737,7 +737,7 @@ router.get('/developers', requireAuth, async (req, res) => {
     const devs = await db
       .select()
       .from(teamMembers)
-      .where(eq(teamMembers.isDeveloper, true))
+      .where(eq(teamMembers.isBillable, true))
       .orderBy(desc(teamMembers.createdAt))
 
     console.log('Found', devs.length, 'developers')
@@ -795,8 +795,8 @@ router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, as
       return res.status(400).json({ error: 'Developer, employment type, and start date are required' })
     }
 
-    if (!['fulltime', 'part_time'].includes(employmentType)) {
-      return res.status(400).json({ error: 'Employment type must be fulltime or part_time' })
+    if (!['fulltime', 'part_time', 'freelancer'].includes(employmentType)) {
+      return res.status(400).json({ error: 'Employment type must be fulltime, part_time, or freelancer' })
     }
 
     // First verify that the client service exists

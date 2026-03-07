@@ -42,9 +42,8 @@ import type { UpdateTeamMemberData } from '@/types/common'
 interface TeamMember {
   id: number
   name: string
-  role: string
-  position?: string
-  isDeveloper: boolean
+  position: string
+  employmentType?: 'fulltime' | 'part_time' | 'freelancer'
   showOnCalendar: boolean
   experienceLevel?: string
   email: string
@@ -370,7 +369,6 @@ export function TeamMemberDetails() {
     if (member) {
       setEditingMember({
         ...member,
-        isDeveloper: member.isDeveloper || false,
         showOnCalendar: member.showOnCalendar !== false,
         hourlyRate: member.hourlyRate ? String(member.hourlyRate) : undefined,
       })
@@ -379,17 +377,17 @@ export function TeamMemberDetails() {
   }
 
   const handleUpdateTeamMember = async () => {
-    if (!editingMember || !editingMember.name.trim() || !editingMember.email.trim() || !editingMember.role.trim()) {
+    if (!editingMember || !editingMember.name.trim() || !editingMember.email.trim() || !editingMember.position?.trim()) {
       return
     }
 
     try {
       setIsSubmitting(true)
-      const updateData: UpdateTeamMemberData & { role?: string; startDate?: string; phone?: string; isBillable?: boolean; isDeveloper?: boolean } = {
+      const updateData: UpdateTeamMemberData & { startDate?: string; phone?: string; isBillable?: boolean } = {
         name: editingMember.name,
         email: editingMember.email,
-        role: editingMember.role,
         position: editingMember.position,
+        employmentType: editingMember.employmentType,
         skills: editingMember.skills || [],
         hourlyRate: typeof editingMember.hourlyRate === 'number' ? editingMember.hourlyRate : parseFloat(String(editingMember.hourlyRate || '0')),
         experienceLevel: 'middle', // Default, TeamMember interface doesn't include this
@@ -401,7 +399,6 @@ export function TeamMemberDetails() {
         startDate: editingMember.startDate, // Include startDate
         phone: editingMember.phone || undefined, // Include phone
         isBillable: editingMember.isBillable, // Include isBillable
-        isDeveloper: editingMember.isDeveloper,
         showOnCalendar: editingMember.showOnCalendar,
       }
       const updatedMember = await api.updateTeamMember(String(editingMember.id), updateData)
@@ -559,7 +556,7 @@ export function TeamMemberDetails() {
                 <div className="flex items-start justify-between">
                   <div>
                     <CardTitle className="text-2xl text-gray-900 mb-2">{member.name}</CardTitle>
-                    <CardDescription className="text-lg text-gray-600 mb-3">{member.role}</CardDescription>
+                    <CardDescription className="text-lg text-gray-600 mb-3">{member.position}</CardDescription>
                     <div className="flex items-center gap-3">
                       <Badge className={getStatusColor(member.status)}>
                         {member.status.charAt(0).toUpperCase() + member.status.slice(1)}

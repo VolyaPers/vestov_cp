@@ -44,7 +44,6 @@ import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus, User
 interface LocalTeamMember {
   id: number
   name: string
-  role: string
   email: string
   phone?: string
   skills?: string[]
@@ -56,8 +55,8 @@ interface LocalTeamMember {
   startDate: string
   location?: string
   timezone?: string
-  position?: string
-  isDeveloper: boolean
+  position: string
+  employmentType?: 'fulltime' | 'part_time' | 'freelancer'
   showOnCalendar: boolean
   avatarUrl?: string
   clientId?: number
@@ -83,7 +82,7 @@ export function TeamOverview() {
   const [isSelectOpen, setIsSelectOpen] = useState(false)
   const [newMember, setNewMember] = useState({
     name: '',
-    role: '',
+    position: '',
     email: '',
     phone: '',
     location: '',
@@ -214,7 +213,7 @@ export function TeamOverview() {
   const resetForm = () => {
     setNewMember({
       name: '',
-      role: '',
+      position: '',
       email: '',
       phone: '',
       location: '',
@@ -235,7 +234,7 @@ export function TeamOverview() {
   }
 
   const handleUpdateTeamMember = async () => {
-    if (!editingMember || !editingMember.name.trim() || !editingMember.email.trim() || !editingMember.role.trim()) {
+    if (!editingMember || !editingMember.name.trim() || !editingMember.email.trim() || !editingMember.position?.trim()) {
       return
     }
 
@@ -243,10 +242,9 @@ export function TeamOverview() {
       setIsSubmitting(true)
       // Convert local TeamMember format to UpdateTeamMemberData
       // Include ALL fields that can be edited, especially startDate, phone, and isBillable
-      const updateData: UpdateTeamMemberData & { role?: string; startDate?: string; phone?: string; isBillable?: boolean } = {
+      const updateData: UpdateTeamMemberData & { startDate?: string; phone?: string; isBillable?: boolean } = {
         name: editingMember.name,
         email: editingMember.email,
-        role: editingMember.role,
         skills: editingMember.skills || [],
         hourlyRate: typeof editingMember.hourlyRate === 'string' ? parseFloat(editingMember.hourlyRate || '0') : editingMember.hourlyRate || 0,
         status: editingMember.status as TeamMemberStatus,
@@ -258,7 +256,7 @@ export function TeamOverview() {
         phone: editingMember.phone || undefined, // Include phone
         isBillable: editingMember.isBillable, // Include isBillable
         position: editingMember.position,
-        isDeveloper: editingMember.isDeveloper,
+        employmentType: editingMember.employmentType,
         showOnCalendar: editingMember.showOnCalendar,
       }
       await api.updateTeamMember(editingMember.id.toString(), updateData)
@@ -302,7 +300,7 @@ export function TeamOverview() {
 
     return members.filter(member =>
       member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (member.position || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.location?.toLowerCase().includes(searchTerm.toLowerCase())
     )
@@ -343,7 +341,7 @@ export function TeamOverview() {
             <Link href={`/admin/team-detail/${member.id}`}>
               <h3 className="font-semibold text-gray-900 text-lg leading-tight hover:text-blue-600 cursor-pointer transition-colors">{member.name}</h3>
             </Link>
-            <p className="text-gray-600 text-sm mt-0.5">{member.position || member.role}</p>
+            <p className="text-gray-600 text-sm mt-0.5">{member.position}</p>
             {member.location && (
               <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
                 <MapPin className="h-3 w-3" />
@@ -467,6 +465,11 @@ export function TeamOverview() {
                   <span className="text-xs font-medium text-blue-700">{member.clientName}</span>
                 </div>
               )}
+              {member.employmentType && member.employmentType !== 'fulltime' && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                  {member.employmentType === 'part_time' ? 'Part-time' : 'Freelancer'}
+                </span>
+              )}
               <div className={`px-2 py-1 rounded-md text-xs font-medium ${member.status === 'active' && member.clientId ? 'bg-green-50 text-green-700' :
                 member.status === 'bench' || !member.clientId ? 'bg-yellow-50 text-yellow-700' :
                   'bg-gray-50 text-gray-700'
@@ -490,6 +493,11 @@ export function TeamOverview() {
               </div>
               <span className="text-sm font-medium text-gray-700">Internal Team</span>
             </div>
+            {member.employmentType && member.employmentType !== 'fulltime' && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                {member.employmentType === 'part_time' ? 'Part-time' : 'Freelancer'}
+              </span>
+            )}
             <div className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-medium">
               {member.status}
             </div>
@@ -594,7 +602,7 @@ export function TeamOverview() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="Search by name, role, email, or location..."
+            placeholder="Search by name, position, email, or location..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 bg-white border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 rounded-xl"

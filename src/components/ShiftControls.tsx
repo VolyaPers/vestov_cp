@@ -18,7 +18,7 @@ interface UserService {
   serviceId: number
   serviceName: string
   clientName: string
-  employmentType: 'fulltime' | 'part_time'
+  employmentType: 'fulltime' | 'part_time' | 'freelancer'
   workSchedule: Record<string, string>
   slackChannelId: string | null
 }

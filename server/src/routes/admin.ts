@@ -58,10 +58,10 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
     if (isAdmin) {
       // Admins can update all fields - explicitly process each field to ensure proper handling
       const allowedFields = [
-        'name', 'role', 'email', 'phone', 'skills', 'bio',
+        'name', 'email', 'phone', 'skills', 'bio',
         'hourlyRate', 'monthlyRate', 'isBillable', 'status',
         'clientId', 'startDate', 'location', 'timezone', 'avatarUrl',
-        'position', 'isDeveloper', 'showOnCalendar'
+        'position', 'employmentType', 'showOnCalendar'
       ]
 
       for (const field of allowedFields) {
@@ -71,7 +71,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
             updateData[field] = req.body[field] // Date string will be converted by Drizzle
           }
           // Handle boolean fields
-          else if (field === 'isBillable' || field === 'isDeveloper' || field === 'showOnCalendar') {
+          else if (field === 'isBillable' || field === 'showOnCalendar') {
             updateData[field] = Boolean(req.body[field])
           }
           // Handle numeric fields
@@ -368,7 +368,7 @@ router.get('/team-members', async (req, res) => {
       .select({
         id: teamMembers.id,
         name: teamMembers.name,
-        role: teamMembers.role,
+        position: teamMembers.position,
         email: teamMembers.email,
         phone: teamMembers.phone,
         skills: teamMembers.skills,
@@ -381,8 +381,7 @@ router.get('/team-members', async (req, res) => {
         location: teamMembers.location,
         timezone: teamMembers.timezone,
         avatarUrl: teamMembers.avatarUrl,
-        position: teamMembers.position,
-        isDeveloper: teamMembers.isDeveloper,
+        employmentType: teamMembers.employmentType,
         showOnCalendar: teamMembers.showOnCalendar,
         clientId: teamMembers.clientId,
         clientName: clients.name,
@@ -404,7 +403,7 @@ router.get('/team-members/:id', async (req, res) => {
       .select({
         id: teamMembers.id,
         name: teamMembers.name,
-        role: teamMembers.role,
+        position: teamMembers.position,
         email: teamMembers.email,
         phone: teamMembers.phone,
         skills: teamMembers.skills,
@@ -417,8 +416,7 @@ router.get('/team-members/:id', async (req, res) => {
         location: teamMembers.location,
         timezone: teamMembers.timezone,
         avatarUrl: teamMembers.avatarUrl,
-        position: teamMembers.position,
-        isDeveloper: teamMembers.isDeveloper,
+        employmentType: teamMembers.employmentType,
         showOnCalendar: teamMembers.showOnCalendar,
         clientId: teamMembers.clientId,
         clientName: clients.name,
@@ -471,13 +469,11 @@ router.post('/team-members', async (req, res) => {
       .insert(teamMembers)
       .values({
         name: user.fullName,
-        role: user.position || 'Team Member',
         email: user.email,
         startDate: today,
         status: 'active',
         isBillable: true,
-        position: user.position,
-        isDeveloper: true, // Default to true for team members created this way
+        position: user.position || 'Team Member',
       })
       .returning()
 
@@ -565,7 +561,7 @@ router.get('/leave-requests', async (req, res) => {
         id: leaveRequests.id,
         employeeId: leaveRequests.employeeId,
         employeeName: teamMembers.name,
-        employeeRole: teamMembers.role,
+        employeeRole: teamMembers.position,
         employeeAvatar: teamMembers.avatarUrl,
         leaveTypeId: leaveRequests.leaveTypeId,
         leaveTypeName: leaveTypes.name,

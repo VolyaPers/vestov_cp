@@ -175,10 +175,8 @@ router.get('/', async (req, res) => {
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
         teamMemberId: users.teamMemberId,
-        isDeveloper: teamMembers.isDeveloper,
       })
       .from(users)
-      .leftJoin(teamMembers, eq(users.teamMemberId, teamMembers.id))
       .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
       .limit(Number(limit))
       .offset(offset)
@@ -342,7 +340,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    const { username, fullName, email, role, position, avatarUrl, timezone, isActive, password, isDeveloper } = req.body
+    const { username, fullName, email, role, position, avatarUrl, timezone, isActive, password } = req.body
 
     const updateData: {
       username?: string
@@ -380,42 +378,8 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
 
-    // Handle isDeveloper flag for team_member role users
-    let finalIsDeveloper = isDeveloper
-    if (isDeveloper !== undefined && updatedUser[0].role === 'team_member') {
-      if (updatedUser[0].teamMemberId) {
-        // User has linked team member - update it
-        await db
-          .update(teamMembers)
-          .set({ isDeveloper: isDeveloper })
-          .where(eq(teamMembers.id, updatedUser[0].teamMemberId))
-      } else {
-        // User doesn't have a team member yet - create one
-        const today = new Date().toISOString().slice(0, 10)
-        const [newMember] = await db
-          .insert(teamMembers)
-          .values({
-            name: updatedUser[0].fullName,
-            role: updatedUser[0].position || 'Team Member',
-            email: updatedUser[0].email,
-            startDate: today,
-            status: 'active',
-            isBillable: true,
-            position: updatedUser[0].position,
-            isDeveloper: isDeveloper,
-          })
-          .returning()
-
-        // Link the new team member to the user
-        await db
-          .update(users)
-          .set({ teamMemberId: newMember.id, updatedAt: new Date() })
-          .where(eq(users.id, Number(id)))
-      }
-    }
-
     const { password: _, ...userWithoutPassword } = updatedUser[0]
-    res.json({ ...userWithoutPassword, isDeveloper: finalIsDeveloper })
+    res.json(userWithoutPassword)
   } catch (error) {
     console.error('Error updating user:', error)
     res.status(500).json({ error: 'Failed to update user' })

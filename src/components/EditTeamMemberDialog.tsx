@@ -12,7 +12,6 @@ import { TimezoneSelect } from '@/components/TimezoneSelect'
 export interface EditTeamMemberData {
   id: number
   name: string
-  role: string
   email: string
   phone?: string
   skills?: string[]
@@ -23,8 +22,8 @@ export interface EditTeamMemberData {
   startDate: string
   location?: string
   timezone?: string
-  position?: string
-  isDeveloper: boolean
+  position: string
+  employmentType?: 'fulltime' | 'part_time' | 'freelancer'
   showOnCalendar: boolean
   clientId?: number
 }
@@ -68,17 +67,6 @@ export function EditTeamMemberDialog({
                   value={member.name}
                   onChange={(e) => onMemberChange({ name: e.target.value })}
                   placeholder="Enter full name"
-                  className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-role" className="text-sm font-medium text-gray-700">Role *</Label>
-                <Input
-                  id="edit-role"
-                  value={member.role}
-                  onChange={(e) => onMemberChange({ role: e.target.value })}
-                  placeholder="e.g. Senior Developer, Designer"
                   className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
                   required
                 />
@@ -134,37 +122,16 @@ export function EditTeamMemberDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-isDeveloper" className="text-sm font-medium text-gray-700 block">Developer</Label>
-                <div className="flex items-center space-x-2 pt-2">
-                  <Switch
-                    id="edit-isDeveloper"
-                    checked={member.isDeveloper}
-                    onCheckedChange={(checked) => onMemberChange({
-                      isDeveloper: checked,
-                      position: checked ? 'Developer' : ''
-                    })}
-                  />
-                  <Label htmlFor="edit-isDeveloper" className="text-sm font-normal text-gray-600">
-                    Mark if user is a developer
-                  </Label>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-position-text" className="text-sm font-medium text-gray-700">Position</Label>
+                <Label htmlFor="edit-position-text" className="text-sm font-medium text-gray-700">Position *</Label>
                 <Input
                   id="edit-position-text"
                   value={member.position || ''}
                   onChange={(e) => onMemberChange({ position: e.target.value })}
-                  placeholder="e.g. HR Manager, PM, Designer"
+                  placeholder="e.g. Senior Developer, HR Manager, Designer"
                   className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
-                  disabled={member.isDeveloper}
+                  required
                 />
-                <p className="text-xs text-gray-500">
-                  {member.isDeveloper
-                    ? 'Position is set to Developer when toggle is enabled'
-                    : 'Enter the position for non-developer team members'}
-                </p>
+                <p className="text-xs text-gray-500">Job title or position in the company</p>
               </div>
             </div>
           </div>
@@ -210,6 +177,24 @@ export function EditTeamMemberDialog({
           {/* Employment Type */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Employment Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-employmentType" className="text-sm font-medium text-gray-700">Employment Type</Label>
+                <Select
+                  value={member.employmentType || 'fulltime'}
+                  onValueChange={(value) => onMemberChange({ employmentType: value as 'fulltime' | 'part_time' | 'freelancer' })}
+                >
+                  <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
+                    <SelectValue placeholder="Select employment type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fulltime">Full-time</SelectItem>
+                    <SelectItem value="part_time">Part-time</SelectItem>
+                    <SelectItem value="freelancer">Freelancer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="flex items-center gap-6">
               <div className="flex items-center space-x-2">
                 <Switch

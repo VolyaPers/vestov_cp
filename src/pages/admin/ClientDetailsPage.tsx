@@ -40,12 +40,10 @@ interface Developer {
   email: string
   skills: string[]
   hourlyRate?: number
-  role?: string
   position?: string
   status?: string
   bio?: string
   location?: string
-  isDeveloper?: boolean
 }
 
 interface ServiceDeveloper {
@@ -57,7 +55,7 @@ interface ServiceDeveloper {
   hourlyRate?: number
   fixedPrice?: number
   workSchedule?: Record<string, string>
-  employmentType: 'fulltime' | 'part_time'
+  employmentType: 'fulltime' | 'part_time' | 'freelancer'
   isActive: boolean
   startDate: string
   endDate?: string
@@ -158,7 +156,7 @@ export function ClientDetailsPage() {
   const [developers, setDevelopers] = useState<Developer[]>([])
   const [serviceDevelopers, setServiceDevelopers] = useState<Record<number, ServiceDeveloper[]>>({})
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false)
-  const [isDeveloperDialogOpen, setIsDeveloperDialogOpen] = useState(false)
+  const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false)
   const [isEditServiceDialogOpen, setIsEditServiceDialogOpen] = useState(false)
   const [selectedServiceForDeveloper, setSelectedServiceForDeveloper] = useState<number | null>(null)
   const [editingServiceData, setEditingServiceData] = useState<{
@@ -182,7 +180,7 @@ export function ClientDetailsPage() {
   })
   const [newDeveloperData, setNewDeveloperData] = useState({
     developerId: '',
-    employmentType: 'fulltime' as 'fulltime' | 'part_time',
+    employmentType: 'fulltime' as 'fulltime' | 'part_time' | 'freelancer',
     hourlyRate: '',
     fixedPrice: '',
     startDate: new Date().toISOString().split('T')[0],
@@ -463,7 +461,7 @@ export function ClientDetailsPage() {
 
   const handleAddDeveloperToService = (serviceId: number) => {
     setSelectedServiceForDeveloper(serviceId)
-    setIsDeveloperDialogOpen(true)
+    setIsAddMemberDialogOpen(true)
   }
 
   const handleAddDeveloper = async () => {
@@ -483,7 +481,7 @@ export function ClientDetailsPage() {
 
       // Refresh service developers
       loadServiceDevelopers(selectedServiceForDeveloper)
-      setIsDeveloperDialogOpen(false)
+      setIsAddMemberDialogOpen(false)
       resetDeveloperForm()
 
       showAlert({ message: 'Developer added to service successfully!', type: 'success' })
@@ -1600,7 +1598,7 @@ export function ClientDetailsPage() {
                               <div className="flex items-center gap-3 mb-1">
                                 <p className="text-sm font-medium text-gray-900">{developer.name}</p>
                                 <Badge variant={developer.employmentType === 'fulltime' ? 'default' : 'secondary'} className="text-xs">
-                                  {developer.employmentType === 'fulltime' ? 'Full-time' : 'Part-time'}
+                                  {developer.employmentType === 'fulltime' ? 'Full-time' : developer.employmentType === 'freelancer' ? 'Freelancer' : 'Part-time'}
                                 </Badge>
                                 {!developer.isActive && (
                                   <Badge variant="outline" className="text-red-600 text-xs">
@@ -1814,10 +1812,10 @@ export function ClientDetailsPage() {
       </Dialog>
 
       {/* Add Developer Dialog */}
-      <Dialog open={isDeveloperDialogOpen} onOpenChange={setIsDeveloperDialogOpen}>
+      <Dialog open={isAddMemberDialogOpen} onOpenChange={setIsAddMemberDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Developer to Service</DialogTitle>
+            <DialogTitle>Add Team Member to Service</DialogTitle>
             <DialogDescription>
               Assign a developer to this service with employment type and compensation details.
             </DialogDescription>
@@ -1825,18 +1823,18 @@ export function ClientDetailsPage() {
 
           <div className="space-y-4">
             <div>
-              <Label htmlFor="developer">Developer</Label>
+              <Label htmlFor="developer">Team Member</Label>
               <Select
                 value={newDeveloperData.developerId}
                 onValueChange={(value) => setNewDeveloperData({ ...newDeveloperData, developerId: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a developer" />
+                  <SelectValue placeholder="Select a team member" />
                 </SelectTrigger>
                 <SelectContent>
                   {developers.map((developer) => (
                     <SelectItem key={developer.id} value={developer.id.toString()} label={developer.name}>
-                      {developer.name} ({developer.position || developer.role}) - {developer.skills?.slice(0, 2).join(', ')}
+                      {developer.name} ({developer.position}) - {developer.skills?.slice(0, 2).join(', ')}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1847,7 +1845,7 @@ export function ClientDetailsPage() {
               <Label htmlFor="employmentType">Employment Type</Label>
               <Select
                 value={newDeveloperData.employmentType}
-                onValueChange={(value) => setNewDeveloperData({ ...newDeveloperData, employmentType: value as 'fulltime' | 'part_time' })}
+                onValueChange={(value) => setNewDeveloperData({ ...newDeveloperData, employmentType: value as 'fulltime' | 'part_time' | 'freelancer' })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -1855,6 +1853,7 @@ export function ClientDetailsPage() {
                 <SelectContent>
                   <SelectItem value="fulltime">Full-time</SelectItem>
                   <SelectItem value="part_time">Part-time</SelectItem>
+                  <SelectItem value="freelancer">Freelancer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1904,7 +1903,7 @@ export function ClientDetailsPage() {
             <Button
               variant="outline"
               onClick={() => {
-                setIsDeveloperDialogOpen(false)
+                setIsAddMemberDialogOpen(false)
                 resetDeveloperForm()
               }}
             >

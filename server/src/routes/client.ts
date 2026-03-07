@@ -70,7 +70,7 @@ router.get('/team', async (req, res) => {
       .select({
         id: teamMembers.id,
         name: teamMembers.name,
-        role: teamMembers.role,
+        position: teamMembers.position,
         email: teamMembers.email,
         phone: teamMembers.phone,
         skills: teamMembers.skills,

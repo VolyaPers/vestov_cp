@@ -5,7 +5,7 @@ export type AccessLevel = 'read' | 'write' | 'admin'
 export type ClientStatus = 'active' | 'inactive' | 'prospect'
 export type ContractType = 'outstaffing' | 'outsourcing' | 'hybrid'
 export type BillingCycle = 'monthly' | 'weekly' | 'hourly'
-export type EmploymentType = 'fulltime' | 'part_time'
+export type EmploymentType = 'fulltime' | 'part_time' | 'freelancer'
 export type TeamMemberStatus = 'active' | 'bench' | 'unavailable'
 export type LeaveRequestStatus = 'pending' | 'approved' | 'denied' | 'cancelled'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
@@ -95,12 +95,13 @@ export interface TeamMember {
   id: number
   name: string
   email: string
-  position?: string
-  isDeveloper: boolean
+  position: string
   skills: string[]
   hourlyRate: number
   experienceLevel: 'junior' | 'middle' | 'senior' | 'lead'
   status: TeamMemberStatus
+  employmentType?: EmploymentType
+  isBillable?: boolean
   bio?: string
   location?: string
   timezone?: string
@@ -220,7 +221,6 @@ export interface CreateTeamMemberData {
   userId?: number // Optional: if provided, links to existing user with role='team_member'
   name: string
   email: string
-  role?: string
   phone?: string
   skills?: string[]
   bio?: string
@@ -231,8 +231,8 @@ export interface CreateTeamMemberData {
   startDate: string
   location?: string
   timezone?: string
-  position?: string
-  isDeveloper?: boolean
+  position: string
+  employmentType?: EmploymentType
   experienceLevel?: 'junior' | 'middle' | 'senior' | 'lead'
   clientId?: number | null
 }

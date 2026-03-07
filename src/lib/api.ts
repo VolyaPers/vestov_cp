@@ -373,7 +373,7 @@ class ApiClient {
 
   async addDeveloperToService(clientId: number, serviceId: number, data: {
     teamMemberId: number
-    employmentType: 'fulltime' | 'part_time'
+    employmentType: 'fulltime' | 'part_time' | 'freelancer'
     hourlyRate?: number
     fixedPrice?: number
     startDate: string
@@ -764,7 +764,7 @@ class ApiClient {
         serviceId: number
         serviceName: string
         clientName: string
-        employmentType: 'fulltime' | 'part_time'
+        employmentType: 'fulltime' | 'part_time' | 'freelancer'
         workSchedule: Record<string, string>
         serviceTitle: string | null
         slackChannelId: string | null
