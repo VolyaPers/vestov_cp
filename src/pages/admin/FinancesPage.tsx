@@ -195,7 +195,7 @@ interface ClientPayment {
 interface SalaryMember {
   id: number
   name: string
-  role: string | null
+  position: string | null
   monthlyRate: number
   hourlyRate: number | null
   isBillable: boolean
@@ -246,6 +246,7 @@ type MergedRow = {
   isClientPayment: boolean
   invoiceNumber?: string
   editable: boolean
+  teamMemberName?: string
 }
 
 type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories'
@@ -622,9 +623,9 @@ export function FinancesPage() {
   const getMergedRows = (): MergedRow[] => {
     const rows: MergedRow[] = []
 
-    // Add manual transactions (filter out salary type for this tab)
+    // Add manual transactions
     for (const tx of transactions) {
-      if (tx.type === 'salary') continue
+      const isSalary = tx.type === 'salary'
       rows.push({
         id: tx.id,
         type: tx.type,
@@ -633,7 +634,8 @@ export function FinancesPage() {
         category: tx.category || '',
         description: tx.description || '',
         isClientPayment: false,
-        editable: true,
+        editable: !isSalary,
+        teamMemberName: isSalary ? tx.teamMemberName || undefined : undefined,
       })
     }
 
@@ -1505,6 +1507,7 @@ export function FinancesPage() {
                 <option value="all">All Types</option>
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
+                <option value="salary">Salary</option>
               </select>
 
               {/* Date range */}
@@ -1615,6 +1618,11 @@ export function FinancesPage() {
                                 <CreditCard className="w-3 h-3" />
                                 Invoice #{row.invoiceNumber}
                               </span>
+                            ) : row.type === 'salary' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                <Banknote className="w-3 h-3" />
+                                Salary
+                              </span>
                             ) : row.type === 'income' ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                 <ArrowUpRight className="w-3 h-3" />
@@ -1631,7 +1639,14 @@ export function FinancesPage() {
                             {row.category || '-'}
                           </td>
                           <td className="px-6 py-4 text-sm stripe-text-primary max-w-[300px] truncate">
-                            {row.description || '-'}
+                            {row.teamMemberName ? (
+                              <span>
+                                <span className="font-medium">{row.teamMemberName}</span>
+                                {row.description ? ` — ${row.description}` : ''}
+                              </span>
+                            ) : (
+                              row.description || '-'
+                            )}
                           </td>
                           <td
                             className={`px-6 py-4 text-sm font-semibold text-right whitespace-nowrap ${
@@ -1663,7 +1678,7 @@ export function FinancesPage() {
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-xs stripe-text-muted">Auto</span>
+                              <span className="text-xs stripe-text-muted">{row.type === 'salary' ? 'Salary' : 'Auto'}</span>
                             )}
                           </td>
                         </tr>
@@ -1729,7 +1744,7 @@ export function FinancesPage() {
                           <h4 className="font-semibold stripe-text-primary text-base truncate">
                             {member.name}
                           </h4>
-                          <p className="text-sm stripe-text-muted truncate">{member.role || 'Team Member'}</p>
+                          <p className="text-sm stripe-text-muted truncate">{member.position || 'Team Member'}</p>
                         </div>
                       </div>
 
@@ -2189,7 +2204,7 @@ export function FinancesPage() {
               {editingSalaryPayment ? 'Edit Salary Payment' : 'Record Salary Payment'}
             </h3>
             <p className="text-sm stripe-text-muted mb-5">
-              {selectedMember.name} — {selectedMember.role || 'Team Member'}
+              {selectedMember.name} — {selectedMember.position || 'Team Member'}
             </p>
 
             <div className="space-y-4">
