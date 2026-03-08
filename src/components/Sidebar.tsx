@@ -1,94 +1,20 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'wouter'
 import {
-  Users,
-  UserCog,
-  BarChart3,
-  FileText,
-  Clock,
-  Star,
-  Calendar,
   LogOut,
-  Building2,
-  DollarSign,
   ChevronDown,
   ChevronRight,
-  User,
-  TrendingUp,
   ExternalLink,
-  BookOpen,
-  Building,
-  Briefcase,
-  Handshake,
-  Receipt,
-  Wallet
+  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { UserImpersonation } from '@/components/UserImpersonation'
 import { ShiftWidget } from '@/components/ShiftWidget'
 import vestovLogo from '@/assets/vestov-logo.png'
+import { openGlobalSearch } from '@/lib/globalSearch'
+import { getNavigation } from '@/lib/navigation'
 import type { User as UserType, Client } from '@/types/common'
-
-// Navigation item types
-interface NavItemChild {
-  name: string
-  href: string
-  icon: React.ElementType
-}
-
-interface NavItem {
-  name: string
-  href: string
-  icon: React.ElementType
-  external?: boolean
-  children?: NavItemChild[]
-}
-
-// Navigation configurations per role
-const adminNavigation: NavItem[] = [
-  { name: 'Dashboard', href: '/admin/dashboard', icon: BarChart3 },
-  { name: 'Reports', href: '/admin/reports', icon: TrendingUp },
-  { name: 'Services', href: '/admin/services', icon: Briefcase },
-  {
-    name: 'CRM',
-    href: '/admin/clients',
-    icon: Handshake,
-    children: [
-      { name: 'Clients', href: '/admin/clients', icon: Building2 },
-      { name: 'Invoices', href: '/admin/invoices', icon: DollarSign },
-    ]
-  },
-  { name: 'Finances', href: '/admin/finances', icon: Wallet },
-  { name: 'Users', href: '/admin/users', icon: UserCog },
-  { name: 'Team', href: '/admin/team', icon: Users },
-  { name: 'Shifts', href: '/admin/shifts', icon: Clock },
-  { name: 'Calendar', href: '/admin/vacation', icon: Calendar },
-  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt },
-  { name: 'Documents', href: '/admin/documents', icon: FileText },
-  { name: 'Feedback', href: '/admin/feedback', icon: Star },
-]
-
-const teamMemberNavigation: NavItem[] = [
-  { name: 'Dashboard', href: '/employee/dashboard', icon: BarChart3 },
-  { name: 'Roadmap', href: '/employee/roadmap', icon: TrendingUp },
-  { name: 'Calendar', href: '/employee/vacations', icon: Calendar },
-  { name: 'Reimbursements', href: '/employee/reimbursements', icon: Receipt },
-  { name: 'Profile', href: '/employee/profile', icon: User },
-  { name: 'Knowledge Base', href: 'https://www.notion.so/Vestov-Knowledge-Base-2611a26473ed80c08f2dd2178bccc864', icon: BookOpen, external: true },
-]
-
-const getClientNavigation = (clientId: number | undefined): NavItem[] => {
-  if (!clientId) return []
-  return [
-    { name: 'Overview', href: `/client/portal/${clientId}`, icon: Building },
-    { name: 'Team Status', href: '/client/team-status', icon: Users },
-    { name: 'Documents', href: `/client/documents/${clientId}`, icon: FileText },
-    { name: 'Invoices', href: `/client/invoices/${clientId}`, icon: DollarSign },
-    { name: 'Feedback', href: '/client/feedback', icon: Star },
-    { name: 'Profile', href: '/client/profile', icon: User },
-  ]
-}
 
 // Role subtitles
 const roleSubtitles: Record<string, string> = {
@@ -109,11 +35,7 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
   const [location] = useLocation()
 
   // Get navigation based on role
-  const navigation = role === 'admin'
-    ? adminNavigation
-    : role === 'team_member'
-      ? teamMemberNavigation
-      : getClientNavigation(currentClient?.id)
+  const navigation = getNavigation(role, currentClient)
 
   // CRM dropdown state (admin only)
   const isCrmActive = location.startsWith('/admin/clients') || location.startsWith('/admin/invoices')
@@ -143,6 +65,26 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
               <p className="text-xs stripe-text-muted font-medium">{roleSubtitles[role]}</p>
             </div>
           </div>
+        </div>
+
+        <div className="px-4 mb-6">
+          <button
+            type="button"
+            onClick={openGlobalSearch}
+            className="global-search-trigger w-full"
+            aria-label="Open universal search"
+          >
+            <span className="flex items-center gap-3">
+              <span className="global-search-trigger-icon">
+                <Search className="h-4 w-4" />
+              </span>
+              <span className="text-left">
+                <span className="block text-sm font-semibold stripe-text-primary">Quick Search</span>
+                <span className="block text-xs stripe-text-muted">Pages, people, clients, transactions</span>
+              </span>
+            </span>
+            <span className="global-search-trigger-shortcut">Cmd K</span>
+          </button>
         </div>
 
         {/* Navigation */}

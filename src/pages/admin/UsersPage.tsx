@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'wouter'
+import { Link, useLocation } from 'wouter'
 import { Plus, Edit, Trash2, User, Mail, UserCheck, UserX, Users, Shield, Briefcase, Search, Building, X, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -42,10 +42,11 @@ interface UserWithClientAssignments extends User {
 }
 
 export function UsersPage() {
+  const [location] = useLocation()
   const { showAlert, showConfirm } = useCustomAlert()
   const [users, setUsers] = useState<UserWithClientAssignments[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [roleFilter, setRoleFilter] = useState('')
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
   const [isEditingUser, setIsEditingUser] = useState<User | null>(null)
@@ -72,10 +73,16 @@ export function UsersPage() {
     loadAvailableClients()
   }, [])
 
-  const loadUsers = async () => {
+  useEffect(() => {
+    const nextQuery = new URLSearchParams(window.location.search).get('q') ?? ''
+    setSearchTerm(nextQuery)
+    loadUsers(nextQuery, roleFilter)
+  }, [location])
+
+  const loadUsers = async (nextSearchTerm = searchTerm, nextRoleFilter = roleFilter) => {
     try {
       setIsLoading(true)
-      const response = await api.getUsers({ search: searchTerm, role: roleFilter })
+      const response = await api.getUsers({ search: nextSearchTerm, role: nextRoleFilter })
       const usersData = response.users || []
 
       // For each client user, load their client assignments
@@ -115,7 +122,7 @@ export function UsersPage() {
   }
 
   const handleSearch = () => {
-    loadUsers()
+    loadUsers(searchTerm, roleFilter)
   }
 
   const handleCreateUser = async () => {

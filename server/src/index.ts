@@ -23,6 +23,7 @@ import shiftsRouter from './routes/shifts.js'
 import { feedbackRouter } from './routes/feedback.js'
 import { financesRouter } from './routes/finances.js'
 import { settingsRouter } from './routes/settings.js'
+import { searchRouter } from './routes/search.js'
 import { setupPassport } from './auth/passport.js'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -321,6 +322,7 @@ app.use('/api/shifts', shiftsRouter)
 app.use('/api/feedback', feedbackRouter)
 app.use('/api/finances', financesRouter)
 app.use('/api/settings', settingsRouter)
+app.use('/api/search', searchRouter)
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 

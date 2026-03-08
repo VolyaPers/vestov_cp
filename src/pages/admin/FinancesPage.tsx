@@ -281,7 +281,7 @@ export function FinancesPage() {
   const [txTypeFilter, setTxTypeFilter] = useState('all')
   const [txStartDate, setTxStartDate] = useState('')
   const [txEndDate, setTxEndDate] = useState('')
-  const [txSearch, setTxSearch] = useState('')
+  const [txSearch, setTxSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [showTxModal, setShowTxModal] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   const [txForm, setTxForm] = useState({
@@ -359,6 +359,11 @@ export function FinancesPage() {
       setLocation('/admin/finances/overview', { replace: true })
     }
   }, [location, setLocation])
+
+  useEffect(() => {
+    const nextQuery = new URLSearchParams(window.location.search).get('q') ?? ''
+    setTxSearch(nextQuery)
+  }, [location])
 
   // Load balances on mount
   useEffect(() => {
@@ -660,8 +665,12 @@ export function FinancesPage() {
     const filtered = txSearch
       ? rows.filter(
           (r) =>
+            String(r.id).toLowerCase().includes(txSearch.toLowerCase()) ||
+            r.type.toLowerCase().includes(txSearch.toLowerCase()) ||
             r.description.toLowerCase().includes(txSearch.toLowerCase()) ||
-            r.category.toLowerCase().includes(txSearch.toLowerCase())
+            r.category.toLowerCase().includes(txSearch.toLowerCase()) ||
+            (r.teamMemberName || '').toLowerCase().includes(txSearch.toLowerCase()) ||
+            (r.invoiceNumber || '').toLowerCase().includes(txSearch.toLowerCase())
         )
       : rows
 

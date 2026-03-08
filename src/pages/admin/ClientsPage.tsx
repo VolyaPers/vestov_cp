@@ -106,8 +106,8 @@ type SortDirection = 'asc' | 'desc'
 
 export function ClientsPage() {
   const { showAlert, showConfirm } = useCustomAlert()
-  const [, setLocation] = useLocation()
-  const [searchTerm, setSearchTerm] = useState('')
+  const [location, setLocation] = useLocation()
+  const [searchTerm, setSearchTerm] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'prospect'>('all')
   const [clients, setClients] = useState<Client[]>([])
   const [analytics, setAnalytics] = useState<ClientAnalytics | null>(null)
@@ -157,6 +157,11 @@ export function ClientsPage() {
     loadAnalytics()
     loadServiceTypes()
   }, [])
+
+  useEffect(() => {
+    const nextQuery = new URLSearchParams(window.location.search).get('q') ?? ''
+    setSearchTerm(nextQuery)
+  }, [location])
 
   const loadClients = async () => {
     try {

@@ -5,6 +5,7 @@ import { AdminLayout } from './components/AdminLayout'
 import { ClientLayout } from './components/ClientLayout'
 import { TeamMemberLayout } from './components/TeamMemberLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { GlobalSearch } from './components/GlobalSearch'
 import { api } from './lib/api'
 import type { User } from './types/common'
 
@@ -87,13 +88,20 @@ function App() {
     return <LoginPage onLogin={(u: User) => setUser(u)} />
   }
 
+  const withSearch = (content: JSX.Element) => (
+    <>
+      {content}
+      <GlobalSearch user={user} />
+    </>
+  )
+
   // Direct rendering based on path - bypassing wouter Router issues
   if (user.role === 'admin' && window.location.pathname.startsWith('/admin')) {
-    return <AdminLayout user={user} />
+    return withSearch(<AdminLayout user={user} />)
   }
 
   if (user.role === 'client' && window.location.pathname.startsWith('/client')) {
-    return (
+    return withSearch(
       <ErrorBoundary>
         <ClientLayout user={user} />
       </ErrorBoundary>
@@ -101,11 +109,11 @@ function App() {
   }
 
   if (user.role === 'team_member' && window.location.pathname.startsWith('/employee')) {
-    return <TeamMemberLayout user={user} />
+    return withSearch(<TeamMemberLayout user={user} />)
   }
 
   // Default redirect based on role
-  return <DefaultRedirect user={user} />
+  return withSearch(<DefaultRedirect user={user} />)
 }
 
 export default App

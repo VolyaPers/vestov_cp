@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'wouter'
+import { Link, useLocation } from 'wouter'
 import { useQuery } from '@tanstack/react-query'
 import {
   Users,
@@ -67,12 +67,13 @@ type AvailableUser = User
 
 // TeamOverview Component - Updated 2026-01-06
 export function TeamOverview() {
+  const [location] = useLocation()
   const { showAlert, showConfirm } = useCustomAlert()
   const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
   const [billableMembers, setBillableMembers] = useState<LocalTeamMember[]>([])
   const [internalStaff, setInternalStaff] = useState<LocalTeamMember[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [activeTab, setActiveTab] = useState('all')
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -137,6 +138,11 @@ export function TeamOverview() {
     loadTeamMembers()
     loadAvailableUsers()
   }, [])
+
+  useEffect(() => {
+    const nextQuery = new URLSearchParams(window.location.search).get('q') ?? ''
+    setSearchTerm(nextQuery)
+  }, [location])
 
   // Close dropdown when clicking outside
   useEffect(() => {

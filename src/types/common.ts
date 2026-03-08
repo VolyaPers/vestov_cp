@@ -10,6 +10,25 @@ export type TeamMemberStatus = 'active' | 'bench' | 'unavailable'
 export type LeaveRequestStatus = 'pending' | 'approved' | 'denied' | 'cancelled'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
 export type ShiftStatus = 'active' | 'on_break'
+export type GlobalSearchResultType = 'page' | 'user' | 'team_member' | 'client' | 'transaction'
+
+export interface GlobalSearchResult {
+  id: string
+  type: GlobalSearchResultType
+  title: string
+  subtitle: string
+  href: string
+  badge: string
+  meta?: string
+  external?: boolean
+}
+
+export interface AdminGlobalSearchResponse {
+  users: GlobalSearchResult[]
+  teamMembers: GlobalSearchResult[]
+  clients: GlobalSearchResult[]
+  transactions: GlobalSearchResult[]
+}
 
 export interface LeaveType {
   id: number

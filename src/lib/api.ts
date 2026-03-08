@@ -2,6 +2,7 @@ import type {
   User,
   Client,
   TeamMember,
+  AdminGlobalSearchResponse,
   LeaveRequest,
   CreateClientData,
   UpdateClientData,
@@ -644,6 +645,14 @@ class ApiClient {
 
   async getUser(id: number) {
     return this.request(`/users/${id}`)
+  }
+
+  async searchAdminGlobal(query: string, limit = 5): Promise<AdminGlobalSearchResponse> {
+    const searchParams = new URLSearchParams()
+    searchParams.append('q', query)
+    searchParams.append('limit', limit.toString())
+
+    return this.request(`/search/admin?${searchParams.toString()}`) as Promise<AdminGlobalSearchResponse>
   }
 
   async createUser(data: CreateUserData): Promise<User> {
