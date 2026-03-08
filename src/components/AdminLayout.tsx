@@ -21,6 +21,7 @@ import { AdminShifts } from '@/pages/admin/AdminShifts'
 import { AdminDocumentsPage } from '@/pages/admin/AdminDocumentsPage'
 import { AdminFeedbackPage } from '@/pages/admin/AdminFeedbackPage'
 import { FinancesPage } from '@/pages/admin/FinancesPage'
+import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -97,6 +98,9 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
         <main className="flex-1">
           <div className="p-4 lg:p-6">
             <div className="max-w-[95%] mx-auto">
+              <div className="mb-4 flex justify-end">
+                <GlobalSearchLauncher className="w-full sm:w-[220px]" />
+              </div>
               <Switch>
                 <Route path="/admin/dashboard" component={AdminDashboard} />
                 <Route path="/admin/reports" component={ReportsPage} />

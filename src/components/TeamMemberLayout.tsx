@@ -12,6 +12,7 @@ import { EmployeeProfile } from '@/pages/employee/EmployeeProfile'
 import { EmployeeVacations } from '@/pages/employee/EmployeeVacations'
 import { EmployeeReimbursements } from '@/pages/employee/EmployeeReimbursements'
 import { EmployeeRoadmap } from '@/pages/employee/EmployeeRoadmap'
+import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { Sidebar } from '@/components/Sidebar'
 import { ShiftReminderModal } from '@/components/ShiftReminderModal'
 
@@ -87,6 +88,9 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
         <main className="flex-1">
           <div className="p-4 lg:p-6">
             <div className="max-w-[95%] mx-auto">
+              <div className="mb-4 flex justify-end">
+                <GlobalSearchLauncher className="w-full sm:w-[220px]" />
+              </div>
               <Switch>
                 <Route path="/employee/dashboard" component={EmployeeDashboard} />
                 <Route path="/employee/profile" component={EmployeeProfile} />

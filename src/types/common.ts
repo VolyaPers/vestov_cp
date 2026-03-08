@@ -20,6 +20,7 @@ export interface GlobalSearchResult {
   href: string
   badge: string
   meta?: string
+  imageUrl?: string
   external?: boolean
 }
 

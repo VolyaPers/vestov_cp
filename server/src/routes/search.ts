@@ -16,6 +16,7 @@ type SearchResult = {
   href: string
   badge: string
   meta?: string
+  imageUrl?: string
 }
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -124,6 +125,7 @@ router.get('/admin', async (req, res) => {
           username: users.username,
           role: users.role,
           position: users.position,
+          avatarUrl: users.avatarUrl,
         })
         .from(users)
         .where(
@@ -148,6 +150,7 @@ router.get('/admin', async (req, res) => {
           status: teamMembers.status,
           clientId: teamMembers.clientId,
           clientName: clients.name,
+          avatarUrl: teamMembers.avatarUrl,
         })
         .from(teamMembers)
         .leftJoin(clients, eq(teamMembers.clientId, clients.id))
@@ -171,6 +174,7 @@ router.get('/admin', async (req, res) => {
           contactPerson: clients.contactPerson,
           email: clients.email,
           status: clients.status,
+          logoUrl: clients.logoUrl,
         })
         .from(clients)
         .where(
@@ -220,6 +224,7 @@ router.get('/admin', async (req, res) => {
         href: `/admin/users?q=${encodeURIComponent(row.email)}`,
         badge: 'User',
         meta: row.username,
+        imageUrl: row.avatarUrl || undefined,
       })),
       teamMembers: teamMemberRows.map<SearchResult>((row) => ({
         id: `team:${row.id}`,
@@ -229,6 +234,7 @@ router.get('/admin', async (req, res) => {
         href: `/admin/team-detail/${row.id}`,
         badge: 'Team',
         meta: row.status,
+        imageUrl: row.avatarUrl || undefined,
       })),
       clients: clientRows.map<SearchResult>((row) => ({
         id: `client:${row.id}`,
@@ -238,6 +244,7 @@ router.get('/admin', async (req, res) => {
         href: `/admin/clients/${row.id}`,
         badge: 'Client',
         meta: row.status,
+        imageUrl: row.logoUrl || undefined,
       })),
       transactions: transactionRows.map<SearchResult>((row) => ({
         id: `transaction:${row.id}`,

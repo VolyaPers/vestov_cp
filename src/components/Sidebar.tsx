@@ -5,14 +5,12 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { UserImpersonation } from '@/components/UserImpersonation'
 import { ShiftWidget } from '@/components/ShiftWidget'
 import vestovLogo from '@/assets/vestov-logo.png'
-import { openGlobalSearch } from '@/lib/globalSearch'
 import { getNavigation } from '@/lib/navigation'
 import type { User as UserType, Client } from '@/types/common'
 
@@ -65,26 +63,6 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
               <p className="text-xs stripe-text-muted font-medium">{roleSubtitles[role]}</p>
             </div>
           </div>
-        </div>
-
-        <div className="px-4 mb-6">
-          <button
-            type="button"
-            onClick={openGlobalSearch}
-            className="global-search-trigger w-full"
-            aria-label="Open universal search"
-          >
-            <span className="flex items-center gap-3">
-              <span className="global-search-trigger-icon">
-                <Search className="h-4 w-4" />
-              </span>
-              <span className="text-left">
-                <span className="block text-sm font-semibold stripe-text-primary">Quick Search</span>
-                <span className="block text-xs stripe-text-muted">Pages, people, clients, transactions</span>
-              </span>
-            </span>
-            <span className="global-search-trigger-shortcut">Cmd K</span>
-          </button>
         </div>
 
         {/* Navigation */}

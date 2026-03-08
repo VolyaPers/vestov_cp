@@ -13,6 +13,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { GLOBAL_SEARCH_OPEN_EVENT } from '@/lib/globalSearch'
 import { getSearchShortcuts } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
@@ -59,6 +60,44 @@ function getResultIcon(result: GlobalSearchResult) {
     default:
       return Search
   }
+}
+
+function getInitials(title: string) {
+  return title
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+function ResultMedia({ result }: { result: GlobalSearchResult }) {
+  const Icon = getResultIcon(result)
+
+  if (result.type === 'client' && result.imageUrl) {
+    return (
+      <span className="global-search-result-logo">
+        <img src={result.imageUrl} alt={result.title} className="h-6 w-6 object-contain" />
+      </span>
+    )
+  }
+
+  if ((result.type === 'user' || result.type === 'team_member') && result.imageUrl) {
+    return (
+      <Avatar className="global-search-result-avatar">
+        <AvatarImage src={result.imageUrl} alt={result.title} />
+        <AvatarFallback className="bg-[rgba(99,91,255,0.12)] text-[var(--stripe-primary)] text-xs font-semibold">
+          {getInitials(result.title)}
+        </AvatarFallback>
+      </Avatar>
+    )
+  }
+
+  return (
+    <span className="global-search-result-icon">
+      <Icon className="h-4 w-4" />
+    </span>
+  )
 }
 
 function getGroupLabel(groupId: keyof AdminGlobalSearchResponse) {
@@ -322,8 +361,6 @@ export function GlobalSearch({ user }: GlobalSearchProps) {
                 {group.items.map((result) => {
                   const flatIndex = flatResults.findIndex((item) => item.id === result.id)
                   const selected = flatIndex === selectedIndex
-                  const Icon = getResultIcon(result)
-
                   return (
                     <button
                       key={result.id}
@@ -335,9 +372,7 @@ export function GlobalSearch({ user }: GlobalSearchProps) {
                       onMouseEnter={() => setSelectedIndex(flatIndex)}
                       onClick={() => selectResult(result)}
                     >
-                      <span className="global-search-result-icon">
-                        <Icon className="h-4 w-4" />
-                      </span>
+                      <ResultMedia result={result} />
 
                       <span className="min-w-0 flex-1 text-left">
                         <span className="global-search-result-title-row">

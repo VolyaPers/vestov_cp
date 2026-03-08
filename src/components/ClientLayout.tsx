@@ -9,6 +9,7 @@ import { ClientDocuments } from '@/pages/client/ClientDocuments'
 import { ClientInvoices } from '@/pages/client/ClientInvoices'
 import { ClientProfile } from '@/pages/client/ClientProfile'
 import { ClientFeedbackPage } from '@/pages/client/ClientFeedbackPage'
+import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -147,6 +148,9 @@ export function ClientLayout({ user }: ClientLayoutProps) {
       {/* Main content */}
       <main className="lg:pl-72">
         <div className="px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mb-4 flex justify-end">
+            <GlobalSearchLauncher className="w-full sm:w-[220px]" />
+          </div>
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
