@@ -7,7 +7,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   Legend,
   ResponsiveContainer,
 } from 'recharts'
@@ -30,7 +30,9 @@ import {
   Calendar,
   ArrowRight,
   ChevronDown,
+  Info,
 } from 'lucide-react'
+import { Tooltip as InfoTooltip } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocation } from 'wouter'
 import { api, type FinanceCategory, type FinanceCategoryKind } from '@/lib/api'
@@ -62,6 +64,151 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
   { key: 'last_year', label: 'Last Year' },
   { key: 'custom', label: 'Custom' },
 ]
+
+const FINANCE_TERM_INFO = {
+  netProfitLoss: {
+    title: 'Net Profit / Loss',
+    description: 'Overall result for the selected date range after all revenue and costs are included.',
+    formula: 'Client Revenue + Other Income - Salaries - Other Expenses',
+  },
+  margin: {
+    title: 'Profit Margin',
+    description: 'Shows how much of total revenue remains as profit or loss.',
+    formula: '(Net Profit / Loss / Total Revenue) x 100',
+  },
+  salaryRatio: {
+    title: 'Salary to Revenue',
+    description: 'Shows what share of revenue is being spent on salaries.',
+    formula: '(Salaries / Total Revenue) x 100',
+  },
+  totalRevenue: {
+    title: 'Revenue',
+    description: 'All income recorded in the selected date range.',
+    formula: 'Client Revenue + Other Income',
+  },
+  totalCosts: {
+    title: 'Costs',
+    description: 'All expenses recorded in the selected date range.',
+    formula: 'Salaries + Other Expenses',
+  },
+  clientRevenue: {
+    title: 'Client Revenue',
+    description: 'Payments received from clients during the selected date range.',
+    formula: 'Sum of client payment entries in range',
+  },
+  otherIncome: {
+    title: 'Other Income',
+    description: 'Non-client income manually recorded in the selected date range.',
+    formula: 'Sum of manual income entries in range',
+  },
+  salaries: {
+    title: 'Salaries',
+    description: 'Salary payments recorded in the selected date range.',
+    formula: 'Sum of salary entries in range',
+  },
+  otherExpenses: {
+    title: 'Other Expenses',
+    description: 'Non-salary expenses recorded in the selected date range.',
+    formula: 'Sum of manual expense entries in range',
+  },
+  avgMonthlyPL: {
+    title: 'Avg Monthly P&L',
+    description: 'Average monthly profit or loss across months that had revenue or expenses.',
+    formula: 'Total Net Profit / Loss / Number of active months in range',
+  },
+  monthlyRevenueVsCosts: {
+    title: 'Monthly Revenue vs Costs',
+    description: 'Monthly comparison of income against costs for every month in the selected range.',
+    formula: 'Revenue = Client Payments + Other Income; Costs = Salaries + Other Expenses',
+  },
+  cumulativePL: {
+    title: 'Cumulative P&L',
+    description: 'Running total of monthly profit or loss across the selected date range.',
+    formula: 'Previous cumulative total + (Monthly Revenue - Monthly Costs)',
+  },
+  costBreakdown: {
+    title: 'Cost Breakdown',
+    description: 'Shows how total costs are split between salaries and other expenses.',
+    formula: 'Each segment = Category amount / Total Costs',
+  },
+  revenueSources: {
+    title: 'Revenue Sources',
+    description: 'Shows how total revenue is split between client payments and other income.',
+    formula: 'Each segment = Category amount / Total Revenue',
+  },
+  bestMonth: {
+    title: 'Best Month',
+    description: 'Month with the highest net result in the selected date range.',
+    formula: 'Highest value of Monthly Revenue - Monthly Costs',
+  },
+  worstMonth: {
+    title: 'Worst Month',
+    description: 'Month with the lowest net result in the selected date range.',
+    formula: 'Lowest value of Monthly Revenue - Monthly Costs',
+  },
+  monthlyPLSummary: {
+    title: 'Monthly P&L Summary',
+    description: 'Month-by-month breakdown for the current filtered date range.',
+    formula: 'Revenue, Salaries, Other Costs, and Net shown for each month',
+  },
+  tableRevenue: {
+    title: 'Revenue',
+    description: 'Total income for that month.',
+    formula: 'Client Payments + Other Income',
+  },
+  tableOtherCosts: {
+    title: 'Other Costs',
+    description: 'Non-salary expenses for that month.',
+    formula: 'Manual expense entries for the month',
+  },
+  tableNet: {
+    title: 'Net',
+    description: 'Monthly profit or loss after all costs.',
+    formula: 'Revenue - Salaries - Other Costs',
+  },
+} as const
+
+type FinanceInfoKey = keyof typeof FINANCE_TERM_INFO
+
+function FinanceInfoIcon({ infoKey, side = 'top' }: { infoKey: FinanceInfoKey; side?: 'top' | 'right' | 'bottom' | 'left' }) {
+  const info = FINANCE_TERM_INFO[infoKey]
+
+  return (
+    <InfoTooltip
+      side={side}
+      content={
+        <div className="space-y-1.5">
+          <p className="font-semibold text-white">{info.title}</p>
+          <p className="text-gray-100">{info.description}</p>
+          <p className="text-[11px] text-gray-300">
+            <span className="font-semibold text-white">Calculated as:</span> {info.formula}
+          </p>
+        </div>
+      }
+    >
+      <Info className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600 transition-colors" />
+    </InfoTooltip>
+  )
+}
+
+function LabelWithInfo({
+  label,
+  infoKey,
+  side = 'top',
+  className = '',
+}: {
+  label: string
+  infoKey: FinanceInfoKey
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  className?: string
+}) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+      <span>{label}</span>
+      <FinanceInfoIcon infoKey={infoKey} side={side} />
+    </span>
+  )
+}
 
 function fmt(d: Date): string {
   const y = d.getFullYear()
@@ -1450,16 +1597,20 @@ export function FinancesPage() {
               <div className={`stripe-card p-6 border-l-4 ${netPL >= 0 ? 'border-l-emerald-500' : 'border-l-red-500'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-500 mb-1">Net Profit / Loss</p>
+                    <p className="text-sm font-medium text-gray-500 mb-1">
+                      <LabelWithInfo label="Net Profit / Loss" infoKey="netProfitLoss" />
+                    </p>
                     <p className={`text-3xl font-bold ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatCurrency(netPL)}
                     </p>
                     <div className="flex items-center gap-4 mt-2">
                       <span className="text-xs text-gray-500">
-                        Margin: <span className={`font-semibold ${profitMargin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{profitMargin.toFixed(1)}%</span>
+                        <LabelWithInfo label="Margin" infoKey="margin" className="font-normal" />:{' '}
+                        <span className={`font-semibold ${profitMargin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{profitMargin.toFixed(1)}%</span>
                       </span>
                       <span className="text-xs text-gray-500">
-                        Salary/Revenue: <span className="font-semibold text-blue-600">{salaryToRevenue.toFixed(1)}%</span>
+                        <LabelWithInfo label="Salary/Revenue" infoKey="salaryRatio" className="font-normal" />:{' '}
+                        <span className="font-semibold text-blue-600">{salaryToRevenue.toFixed(1)}%</span>
                       </span>
                       {compareEnabled && comparisonData && (() => {
                         const ch = computeChange(netPL, compNetPL)
@@ -1475,7 +1626,9 @@ export function FinancesPage() {
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <p className="text-xs text-gray-500 mb-0.5">Revenue</p>
+                      <p className="text-xs text-gray-500 mb-0.5">
+                        <LabelWithInfo label="Revenue" infoKey="totalRevenue" />
+                      </p>
                       <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalIncome)}</p>
                       {compareEnabled && comparisonData ? (() => {
                         const ch = computeChange(totalIncome, compTotalIncome)
@@ -1492,7 +1645,9 @@ export function FinancesPage() {
                     </div>
                     <div className="w-px h-12 bg-gray-200" />
                     <div className="text-right">
-                      <p className="text-xs text-gray-500 mb-0.5">Costs</p>
+                      <p className="text-xs text-gray-500 mb-0.5">
+                        <LabelWithInfo label="Costs" infoKey="totalCosts" />
+                      </p>
                       <p className="text-lg font-bold text-red-500">{formatCurrency(totalExpenses)}</p>
                       {compareEnabled && comparisonData ? (() => {
                         const ch = computeChange(totalExpenses, compTotalExpenses)
@@ -1514,11 +1669,11 @@ export function FinancesPage() {
               {/* KPI Row */}
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 {[
-                  { label: 'Client Revenue', value: overviewData?.clientPayments || 0, compValue: comparisonData?.clientPayments || 0, icon: <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />, bg: 'bg-emerald-50', positive: true },
-                  { label: 'Other Income', value: overviewData?.manualIncome || 0, compValue: comparisonData?.manualIncome || 0, icon: <Receipt className="h-3.5 w-3.5 text-teal-600" />, bg: 'bg-teal-50', positive: true },
-                  { label: 'Salaries', value: overviewData?.totalSalaries || 0, compValue: comparisonData?.totalSalaries || 0, icon: <Users className="h-3.5 w-3.5 text-blue-600" />, bg: 'bg-blue-50', positive: false },
-                  { label: 'Other Expenses', value: overviewData?.manualExpenses || 0, compValue: comparisonData?.manualExpenses || 0, icon: <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />, bg: 'bg-red-50', positive: false },
-                  { label: 'Avg Monthly P&L', value: monthlyNetArr.length > 0 ? netPL / monthlyNetArr.length : 0, compValue: (() => { const compMonthly = comparisonData?.monthlyBreakdown?.filter(m => { const inc2 = parseFloat(String(m.client_payments || 0)) + parseFloat(String(m.income || 0)); const exp2 = parseFloat(String(m.expense || 0)) + parseFloat(String(m.salary || 0)); return inc2 > 0 || exp2 > 0 }) || []; return compMonthly.length > 0 ? compNetPL / compMonthly.length : 0 })(), icon: <Activity className="h-3.5 w-3.5 text-amber-600" />, bg: 'bg-amber-50', positive: true },
+                  { label: 'Client Revenue', infoKey: 'clientRevenue' as FinanceInfoKey, value: overviewData?.clientPayments || 0, compValue: comparisonData?.clientPayments || 0, icon: <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />, bg: 'bg-emerald-50', positive: true },
+                  { label: 'Other Income', infoKey: 'otherIncome' as FinanceInfoKey, value: overviewData?.manualIncome || 0, compValue: comparisonData?.manualIncome || 0, icon: <Receipt className="h-3.5 w-3.5 text-teal-600" />, bg: 'bg-teal-50', positive: true },
+                  { label: 'Salaries', infoKey: 'salaries' as FinanceInfoKey, value: overviewData?.totalSalaries || 0, compValue: comparisonData?.totalSalaries || 0, icon: <Users className="h-3.5 w-3.5 text-blue-600" />, bg: 'bg-blue-50', positive: false },
+                  { label: 'Other Expenses', infoKey: 'otherExpenses' as FinanceInfoKey, value: overviewData?.manualExpenses || 0, compValue: comparisonData?.manualExpenses || 0, icon: <ArrowDownRight className="h-3.5 w-3.5 text-red-500" />, bg: 'bg-red-50', positive: false },
+                  { label: 'Avg Monthly P&L', infoKey: 'avgMonthlyPL' as FinanceInfoKey, value: monthlyNetArr.length > 0 ? netPL / monthlyNetArr.length : 0, compValue: (() => { const compMonthly = comparisonData?.monthlyBreakdown?.filter(m => { const inc2 = parseFloat(String(m.client_payments || 0)) + parseFloat(String(m.income || 0)); const exp2 = parseFloat(String(m.expense || 0)) + parseFloat(String(m.salary || 0)); return inc2 > 0 || exp2 > 0 }) || []; return compMonthly.length > 0 ? compNetPL / compMonthly.length : 0 })(), icon: <Activity className="h-3.5 w-3.5 text-amber-600" />, bg: 'bg-amber-50', positive: true },
                 ].map((kpi) => {
                   const ch = compareEnabled && comparisonData ? computeChange(kpi.value, kpi.compValue) : null
                   const isGood = ch ? (kpi.positive ? ch.delta >= 0 : ch.delta <= 0) : true
@@ -1528,7 +1683,9 @@ export function FinancesPage() {
                         <div className={`w-7 h-7 rounded-md ${kpi.bg} flex items-center justify-center`}>
                           {kpi.icon}
                         </div>
-                        <span className="text-xs text-gray-500">{kpi.label}</span>
+                        <span className="text-xs text-gray-500">
+                          <LabelWithInfo label={kpi.label} infoKey={kpi.infoKey} />
+                        </span>
                       </div>
                       <p className={`text-xl font-bold ${kpi.label === 'Avg Monthly P&L' ? (kpi.value >= 0 ? 'text-emerald-600' : 'text-red-500') : 'text-gray-900'}`}>
                         {formatCurrency(kpi.value)}
@@ -1548,7 +1705,9 @@ export function FinancesPage() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Monthly Income vs Expenses Bar Chart - 2/3 */}
                 <div className="lg:col-span-2 stripe-card p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Monthly Revenue vs Costs</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                    <LabelWithInfo label="Monthly Revenue vs Costs" infoKey="monthlyRevenueVsCosts" />
+                  </h3>
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
@@ -1561,7 +1720,7 @@ export function FinancesPage() {
                           axisLine={false}
                           tickLine={false}
                         />
-                        <Tooltip
+                        <RechartsTooltip
                           formatter={(value: number, name: string) => [formatCurrency(value), name]}
                           contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,.07)', fontSize: '12px' }}
                           cursor={{ fill: 'rgba(0,0,0,0.03)' }}
@@ -1577,7 +1736,9 @@ export function FinancesPage() {
 
                 {/* Cumulative P&L Area Chart - 1/3 */}
                 <div className="stripe-card p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Cumulative P&L</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                    <LabelWithInfo label="Cumulative P&L" infoKey="cumulativePL" />
+                  </h3>
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={cumulativePLData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
@@ -1600,7 +1761,7 @@ export function FinancesPage() {
                           axisLine={false}
                           tickLine={false}
                         />
-                        <Tooltip
+                        <RechartsTooltip
                           formatter={(value: number) => [formatCurrency(value), 'Cumulative P&L']}
                           contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}
                         />
@@ -1621,7 +1782,9 @@ export function FinancesPage() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Cost Breakdown */}
                 <div className="stripe-card p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Cost Breakdown</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                    <LabelWithInfo label="Cost Breakdown" infoKey="costBreakdown" />
+                  </h3>
                   <div className="space-y-3">
                     {[
                       { label: 'Salaries', value: overviewData?.totalSalaries || 0, color: 'bg-indigo-500', pct: totalExpenses > 0 ? ((overviewData?.totalSalaries || 0) / totalExpenses) * 100 : 0 },
@@ -1651,7 +1814,9 @@ export function FinancesPage() {
 
                 {/* Revenue Breakdown */}
                 <div className="stripe-card p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Revenue Sources</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                    <LabelWithInfo label="Revenue Sources" infoKey="revenueSources" />
+                  </h3>
                   <div className="space-y-3">
                     {[
                       { label: 'Client Payments', value: overviewData?.clientPayments || 0, color: 'bg-emerald-500', pct: totalIncome > 0 ? ((overviewData?.clientPayments || 0) / totalIncome) * 100 : 0 },
@@ -1689,7 +1854,9 @@ export function FinancesPage() {
                           <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500">Best Month</p>
+                          <p className="text-xs text-gray-500">
+                            <LabelWithInfo label="Best Month" infoKey="bestMonth" />
+                          </p>
                           <p className="text-sm font-semibold text-gray-900">{bestMonth.name}</p>
                           <p className="text-xs text-emerald-600 font-medium">{formatCurrency(bestMonth.net)} net</p>
                         </div>
@@ -1701,7 +1868,9 @@ export function FinancesPage() {
                           <TrendingDown className="h-3.5 w-3.5 text-red-500" />
                         </div>
                         <div>
-                          <p className="text-xs text-gray-500">Worst Month</p>
+                          <p className="text-xs text-gray-500">
+                            <LabelWithInfo label="Worst Month" infoKey="worstMonth" />
+                          </p>
                           <p className="text-sm font-semibold text-gray-900">{worstMonth.name}</p>
                           <p className="text-xs text-red-500 font-medium">{formatCurrency(worstMonth.net)} net</p>
                         </div>
@@ -1712,7 +1881,9 @@ export function FinancesPage() {
                         <Users className="h-3.5 w-3.5 text-blue-600" />
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500">Salary to Revenue</p>
+                        <p className="text-xs text-gray-500">
+                          <LabelWithInfo label="Salary to Revenue" infoKey="salaryRatio" />
+                        </p>
                         <p className="text-sm font-semibold text-gray-900">{salaryToRevenue.toFixed(1)}%</p>
                         <p className="text-xs text-gray-400">
                           {salaryToRevenue < 50 ? 'Healthy ratio' : salaryToRevenue < 70 ? 'Watch closely' : 'High ratio'}
@@ -1724,7 +1895,9 @@ export function FinancesPage() {
                         <Activity className={`h-3.5 w-3.5 ${profitMargin >= 20 ? 'text-emerald-600' : profitMargin >= 0 ? 'text-amber-600' : 'text-red-500'}`} />
                       </div>
                       <div>
-                        <p className="text-xs text-gray-500">Profit Margin</p>
+                        <p className="text-xs text-gray-500">
+                          <LabelWithInfo label="Profit Margin" infoKey="margin" />
+                        </p>
                         <p className="text-sm font-semibold text-gray-900">{profitMargin.toFixed(1)}%</p>
                         <p className="text-xs text-gray-400">
                           {profitMargin >= 20 ? 'Strong' : profitMargin >= 10 ? 'Moderate' : profitMargin >= 0 ? 'Thin' : 'Negative'}
@@ -1738,17 +1911,27 @@ export function FinancesPage() {
               {/* Monthly P&L Table */}
               <div className="stripe-card">
                 <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-900">Monthly P&L Summary</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    <LabelWithInfo label="Monthly P&L Summary" infoKey="monthlyPLSummary" />
+                  </h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100">
                         <th className="text-left px-6 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Salaries</th>
-                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Other Costs</th>
-                        <th className="text-right px-6 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">Net</th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <LabelWithInfo label="Revenue" infoKey="tableRevenue" className="justify-end" />
+                        </th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <LabelWithInfo label="Salaries" infoKey="salaries" className="justify-end" />
+                        </th>
+                        <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <LabelWithInfo label="Other Costs" infoKey="tableOtherCosts" className="justify-end" />
+                        </th>
+                        <th className="text-right px-6 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <LabelWithInfo label="Net" infoKey="tableNet" className="justify-end" />
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">

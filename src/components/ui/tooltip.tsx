@@ -18,18 +18,21 @@ export function Tooltip({ children, content, side = 'top' }: TooltipProps) {
   }
 
   return (
-    <div className="relative inline-block">
-      <div
+    <span className="relative inline-block align-middle">
+      <span
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
-        className="cursor-help"
+        onFocus={() => setIsVisible(true)}
+        onBlur={() => setIsVisible(false)}
+        className="inline-flex cursor-help"
+        tabIndex={0}
       >
         {children}
-      </div>
+      </span>
       {isVisible && (
         <div
           className={cn(
-            "absolute z-50 px-3 py-1.5 text-xs text-white bg-gray-900 rounded-md shadow-lg w-[400px]",
+            "absolute z-50 px-3 py-2 text-xs text-white bg-gray-900 rounded-md shadow-lg w-80 max-w-[calc(100vw-2rem)] sm:w-[400px]",
             positions[side]
           )}
           style={{ lineHeight: '1.4' }}
@@ -46,6 +49,6 @@ export function Tooltip({ children, content, side = 'top' }: TooltipProps) {
           />
         </div>
       )}
-    </div>
+    </span>
   )
 }
