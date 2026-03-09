@@ -110,6 +110,7 @@ async function main() {
     { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_developer BOOLEAN DEFAULT FALSE` },
     { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20) DEFAULT 'fulltime'` },
     { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_billable BOOLEAN DEFAULT TRUE` },
+    { table: 'team_members', sql: `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS monthly_salary_extras JSONB` },
 
     // users columns
     { table: 'users', sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS team_member_id INTEGER` },

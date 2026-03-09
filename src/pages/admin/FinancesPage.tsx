@@ -29,13 +29,27 @@ import {
   Banknote,
   Calendar,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocation } from 'wouter'
 import { api, type FinanceCategory, type FinanceCategoryKind } from '@/lib/api'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+type SalaryExtra = {
+  label: string
+  amount: string
+}
+
+type ParsedSalaryPayment = {
+  salaryMonth: string
+  plannedBase: number
+  paidBase: number
+  remainingBase: number
+  extras: SalaryExtra[]
+  note: string
+}
 
 type DatePreset = 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter' | 'ytd' | 'last_year' | 'custom'
 
@@ -145,6 +159,187 @@ function toInputDate(dateStr?: string): string {
   return dateStr.split('T')[0]
 }
 
+function toInputMonth(dateStr?: string): string {
+  const source = toInputDate(dateStr)
+  return source.slice(0, 7)
+}
+
+function formatMonthLabel(monthValue: string): string {
+  const [year, month] = monthValue.split('-')
+  const monthIndex = Number(month) - 1
+  if (!year || monthIndex < 0 || monthIndex >= MONTHS.length) {
+    return monthValue
+  }
+  return `${MONTHS[monthIndex]} ${year}`
+}
+
+function parseMoney(value: number | string | null | undefined): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  if (typeof value !== 'string') return 0
+  const normalized = value.replace(/[^0-9.-]/g, '')
+  const parsed = parseFloat(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatMoneyInput(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  return value.toFixed(2).replace(/\.00$/, '')
+}
+
+function cloneSalaryExtras(extras: SalaryExtra[]): SalaryExtra[] {
+  return extras.map((extra) => ({ ...extra }))
+}
+
+function normalizeSalaryExtras(value: unknown): SalaryExtra[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+
+    const label = typeof (item as { label?: unknown }).label === 'string'
+      ? (item as { label: string }).label.trim()
+      : ''
+    const amount = parseMoney((item as { amount?: unknown }).amount as string | number | null | undefined)
+
+    if (!label || amount <= 0) return []
+
+    return [{
+      label,
+      amount: formatMoneyInput(amount),
+    }]
+  })
+}
+
+function getRemainingDefaultExtras(
+  defaultExtras: SalaryExtra[],
+  payments: Array<{ parsed: ParsedSalaryPayment }>
+): SalaryExtra[] {
+  const defaultsByLabel = new Map<string, { label: string; amount: number }>()
+
+  for (const extra of defaultExtras) {
+    const label = extra.label.trim()
+    const amount = parseMoney(extra.amount)
+    if (!label || amount <= 0) continue
+
+    const key = label.toLowerCase()
+    const existing = defaultsByLabel.get(key)
+    defaultsByLabel.set(key, {
+      label: existing?.label || label,
+      amount: (existing?.amount || 0) + amount,
+    })
+  }
+
+  const paidByLabel = new Map<string, number>()
+  for (const payment of payments) {
+    for (const extra of payment.parsed.extras) {
+      const label = extra.label.trim()
+      const amount = parseMoney(extra.amount)
+      if (!label || amount <= 0) continue
+
+      const key = label.toLowerCase()
+      paidByLabel.set(key, (paidByLabel.get(key) || 0) + amount)
+    }
+  }
+
+  return Array.from(defaultsByLabel.entries()).flatMap(([key, extra]) => {
+    const remaining = Math.max(extra.amount - (paidByLabel.get(key) || 0), 0)
+    if (remaining <= 0) return []
+
+    return [{
+      label: extra.label,
+      amount: formatMoneyInput(remaining),
+    }]
+  })
+}
+
+function parseMonthLabel(monthLabel: string): string | null {
+  const match = monthLabel.trim().match(/^([A-Za-z]{3})\s+(\d{4})$/)
+  if (!match) return null
+
+  const monthIndex = MONTHS.findIndex((month) => month.toLowerCase() === match[1].toLowerCase())
+  if (monthIndex < 0) return null
+
+  return `${match[2]}-${String(monthIndex + 1).padStart(2, '0')}`
+}
+
+function parseSalaryPaymentDescription(
+  description: string | null,
+  amount: number | string,
+  transactionDate: string
+): ParsedSalaryPayment {
+  const text = description?.trim() || ''
+  const dashIndex = text.indexOf('—')
+  const monthLabel = dashIndex >= 0 ? text.slice(0, dashIndex).trim() : ''
+  const salaryMonth = parseMonthLabel(monthLabel) || toInputMonth(transactionDate)
+  const details = dashIndex >= 0 ? text.slice(dashIndex + 1).trim() : text
+  const parts = details ? details.split(/\s*\+\s*/) : []
+
+  let plannedBase = 0
+  let paidBase: number | null = null
+  let remainingBase: number | null = null
+  let note = ''
+  const extras: SalaryExtra[] = []
+
+  for (const part of parts) {
+    if (part.startsWith('Note:')) {
+      note = part.slice(5).trim()
+      continue
+    }
+
+    const paymentMatch = part.match(/^(Advance|Salary Payment):\s*\$?([\d.]+)\s+of\s+\$?([\d.]+)$/)
+    if (paymentMatch) {
+      paidBase = parseMoney(paymentMatch[2])
+      plannedBase = parseMoney(paymentMatch[3])
+      continue
+    }
+
+    const baseMatch = part.match(/^Base Salary:\s*\$?([\d.]+)$/)
+    if (baseMatch) {
+      plannedBase = parseMoney(baseMatch[1])
+      continue
+    }
+
+    const remainingMatch = part.match(/^Remaining Salary:\s*\$?([\d.]+)$/)
+    if (remainingMatch) {
+      remainingBase = parseMoney(remainingMatch[1])
+      continue
+    }
+
+    const extraMatch = part.match(/^(.+?):\s*\$?([\d.]+)$/)
+    if (extraMatch) {
+      extras.push({ label: extraMatch[1].trim(), amount: extraMatch[2] })
+    }
+  }
+
+  const extrasTotal = extras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
+  const paymentAmount = parseMoney(amount)
+
+  if (paidBase === null) {
+    paidBase = Math.max(paymentAmount - extrasTotal, 0)
+  }
+
+  if (plannedBase <= 0 && remainingBase !== null) {
+    plannedBase = paidBase + remainingBase
+  }
+
+  if (plannedBase <= 0) {
+    plannedBase = paidBase
+  }
+
+  if (remainingBase === null) {
+    remainingBase = Math.max(plannedBase - paidBase, 0)
+  }
+
+  return {
+    salaryMonth,
+    plannedBase,
+    paidBase,
+    remainingBase,
+    extras,
+    note,
+  }
+}
+
 interface OverviewData {
   totalIncome: number
   totalExpenses: number
@@ -197,6 +392,7 @@ interface SalaryMember {
   name: string
   position: string | null
   monthlyRate: number
+  monthlySalaryExtras?: SalaryExtra[]
   hourlyRate: number | null
   isBillable: boolean
   avatarUrl: string | null
@@ -227,6 +423,7 @@ interface SalaryPayment {
 interface SalariesData {
   members: SalaryMember[]
   recentPayments: SalaryPayment[]
+  allPayments?: SalaryPayment[]
   year: number
 }
 
@@ -315,8 +512,10 @@ export function FinancesPage() {
   const [selectedMember, setSelectedMember] = useState<SalaryMember | null>(null)
   const [editingSalaryPayment, setEditingSalaryPayment] = useState<SalaryPayment | null>(null)
   const [salaryForm, setSalaryForm] = useState({
+    salaryMonth: toInputMonth(),
     baseSalary: '',
-    extras: [] as { label: string; amount: string }[],
+    paymentAmount: '',
+    extras: [] as SalaryExtra[],
     transactionDate: toInputDate(),
     note: '',
   })
@@ -325,7 +524,12 @@ export function FinancesPage() {
   // Rate editing state
   const [showRateModal, setShowRateModal] = useState(false)
   const [rateMember, setRateMember] = useState<SalaryMember | null>(null)
-  const [rateForm, setRateForm] = useState({ monthlyRate: '', effectiveDate: toInputDate(), note: '' })
+  const [rateForm, setRateForm] = useState({
+    monthlyRate: '',
+    effectiveDate: toInputDate(),
+    note: '',
+    monthlyExtras: [] as SalaryExtra[],
+  })
   const [rateSaving, setRateSaving] = useState(false)
   const [rateHistory, setRateHistory] = useState<RateHistoryEntry[]>([])
   const [rateHistoryLoading, setRateHistoryLoading] = useState(false)
@@ -753,17 +957,103 @@ export function FinancesPage() {
     }
   }
 
+  const parsedSalaryPayments = useMemo(() => {
+    const payments = salariesData?.allPayments ?? salariesData?.recentPayments ?? []
+    return payments.map((payment) => ({
+      payment,
+      parsed: parseSalaryPaymentDescription(payment.description, payment.amount, payment.transactionDate),
+    }))
+  }, [salariesData])
+
+  const getSalaryMonthContext = (teamMemberId: number, salaryMonth: string, excludePaymentId?: number) => {
+    const matchingPayments = parsedSalaryPayments.filter(({ payment, parsed }) => {
+      if (payment.teamMemberId !== teamMemberId) return false
+      if (parsed.salaryMonth !== salaryMonth) return false
+      if (excludePaymentId && payment.id === excludePaymentId) return false
+      return true
+    })
+
+    const alreadyPaidBase = matchingPayments.reduce((sum, entry) => sum + entry.parsed.paidBase, 0)
+    const existingBase =
+      matchingPayments.find((entry) => entry.parsed.plannedBase > 0)?.parsed.plannedBase ?? 0
+
+    return {
+      matchingPayments,
+      alreadyPaidBase,
+      existingBase,
+    }
+  }
+
+  const salaryMonthContext = useMemo(() => {
+    if (!selectedMember) {
+      return {
+        matchingPayments: [],
+        alreadyPaidBase: 0,
+        existingBase: 0,
+      }
+    }
+
+    return getSalaryMonthContext(selectedMember.id, salaryForm.salaryMonth, editingSalaryPayment?.id)
+  }, [selectedMember, salaryForm.salaryMonth, editingSalaryPayment?.id, parsedSalaryPayments])
+
+  const plannedSalaryAmount = parseMoney(salaryForm.baseSalary)
+  const salaryPaymentAmount = parseMoney(salaryForm.paymentAmount)
+  const extrasTotal = salaryForm.extras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
+  const salaryTotal = salaryPaymentAmount + extrasTotal
+  const maxSalaryPayment = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase, 0)
+  const remainingSalary = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase - salaryPaymentAmount, 0)
+  const salaryOverpayment = Math.max(salaryPaymentAmount - maxSalaryPayment, 0)
+  const salaryBaseTooLow = plannedSalaryAmount < salaryMonthContext.alreadyPaidBase
+  const salaryCanSave = salaryTotal > 0 && !salaryBaseTooLow && salaryOverpayment <= 0
+  const salaryIsAdvance = remainingSalary > 0
+
   // Salary payment
   const openRecordSalary = (member: SalaryMember) => {
+    const salaryMonth = toInputMonth()
+    const monthContext = getSalaryMonthContext(member.id, salaryMonth)
+    const defaultBase = monthContext.existingBase || parseMoney(member.monthlyRate)
+    const defaultPayment = Math.max(defaultBase - monthContext.alreadyPaidBase, 0)
+    const defaultExtras = getRemainingDefaultExtras(
+      normalizeSalaryExtras(member.monthlySalaryExtras),
+      monthContext.matchingPayments
+    )
+
     setEditingSalaryPayment(null)
     setSelectedMember(member)
     setSalaryForm({
-      baseSalary: String(member.monthlyRate || 0),
-      extras: [],
+      salaryMonth,
+      baseSalary: formatMoneyInput(defaultBase),
+      paymentAmount: formatMoneyInput(defaultPayment),
+      extras: cloneSalaryExtras(defaultExtras),
       transactionDate: toInputDate(),
       note: '',
     })
     setShowSalaryModal(true)
+  }
+
+  const handleSalaryMonthChange = (salaryMonth: string) => {
+    setSalaryForm((prev) => {
+      if (!selectedMember) {
+        return { ...prev, salaryMonth }
+      }
+
+      const monthContext = getSalaryMonthContext(selectedMember.id, salaryMonth, editingSalaryPayment?.id)
+      const defaultBase = monthContext.existingBase || parseMoney(selectedMember.monthlyRate)
+      const defaultExtras = getRemainingDefaultExtras(
+        normalizeSalaryExtras(selectedMember.monthlySalaryExtras),
+        monthContext.matchingPayments
+      )
+
+      return {
+        ...prev,
+        salaryMonth,
+        baseSalary: formatMoneyInput(defaultBase),
+        paymentAmount: editingSalaryPayment
+          ? prev.paymentAmount
+          : formatMoneyInput(Math.max(defaultBase - monthContext.alreadyPaidBase, 0)),
+        extras: editingSalaryPayment ? prev.extras : cloneSalaryExtras(defaultExtras),
+      }
+    })
   }
 
   const addSalaryExtra = () => {
@@ -788,28 +1078,25 @@ export function FinancesPage() {
     }))
   }
 
-  const salaryTotal = (() => {
-    const base = parseFloat(salaryForm.baseSalary) || 0
-    const extrasSum = salaryForm.extras.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
-    return base + extrasSum
-  })()
-
   const handleRecordSalary = async () => {
-    if (!selectedMember || salaryTotal <= 0) return
+    if (!selectedMember || !salaryCanSave) return
     try {
       setSalarySaving(true)
-      const txDate = new Date(salaryForm.transactionDate)
-      const monthName = MONTHS[txDate.getMonth()]
+      const monthLabel = formatMonthLabel(salaryForm.salaryMonth)
+      const paymentLabel = salaryIsAdvance ? 'Advance' : 'Salary Payment'
+      const parts: string[] = [
+        `${paymentLabel}: $${salaryPaymentAmount.toFixed(2)} of $${plannedSalaryAmount.toFixed(2)}`,
+        `Remaining Salary: $${remainingSalary.toFixed(2)}`,
+      ]
 
-      // Build description with breakdown
-      const parts: string[] = [`Base Salary: $${parseFloat(salaryForm.baseSalary).toFixed(2)}`]
       for (const extra of salaryForm.extras) {
         if (extra.label && extra.amount) {
-          parts.push(`${extra.label}: $${parseFloat(extra.amount).toFixed(2)}`)
+          parts.push(`${extra.label}: $${parseMoney(extra.amount).toFixed(2)}`)
         }
       }
+
       if (salaryForm.note) parts.push(`Note: ${salaryForm.note}`)
-      const description = `${monthName} ${txDate.getFullYear()} — ${parts.join(' + ')}`
+      const description = `${monthLabel} — ${parts.join(' + ')}`
 
       if (editingSalaryPayment) {
         await api.updateFinancialTransaction(editingSalaryPayment.id, {
@@ -842,38 +1129,19 @@ export function FinancesPage() {
     const member = salariesData?.members.find((m) => m.id === payment.teamMemberId)
     if (!member) return
 
-    let baseSalary = String(member.monthlyRate || 0)
-    const extras: { label: string; amount: string }[] = []
-    let note = ''
-
-    // Parse description: "Jan 2026 — Base Salary: $3000.00 + Cursor: $20.00 + Note: some text"
-    const desc = payment.description || ''
-    const dashIdx = desc.indexOf('—')
-    const breakdown = dashIdx >= 0 ? desc.slice(dashIdx + 1).trim() : desc
-    const parts = breakdown.split(/\s*\+\s*/)
-
-    for (const part of parts) {
-      const match = part.match(/^(.+?):\s*\$?([\d.]+)$/)
-      if (match) {
-        const label = match[1].trim()
-        const amount = match[2]
-        if (label === 'Base Salary') {
-          baseSalary = amount
-        } else {
-          extras.push({ label, amount })
-        }
-      } else if (part.startsWith('Note:')) {
-        note = part.slice(5).trim()
-      }
-    }
+    const parsed = parseSalaryPaymentDescription(payment.description, payment.amount, payment.transactionDate)
+    const monthContext = getSalaryMonthContext(member.id, parsed.salaryMonth, payment.id)
+    const baseSalary = parsed.plannedBase || monthContext.existingBase || parseMoney(member.monthlyRate)
 
     setEditingSalaryPayment(payment)
     setSelectedMember(member)
     setSalaryForm({
-      baseSalary,
-      extras,
+      salaryMonth: parsed.salaryMonth,
+      baseSalary: formatMoneyInput(baseSalary),
+      paymentAmount: formatMoneyInput(parsed.paidBase),
+      extras: parsed.extras,
       transactionDate: toInputDate(payment.transactionDate),
-      note,
+      note: parsed.note,
     })
     setShowSalaryModal(true)
   }
@@ -890,6 +1158,28 @@ export function FinancesPage() {
     }
   }
 
+  const addRateExtra = () => {
+    setRateForm((prev) => ({
+      ...prev,
+      monthlyExtras: [...prev.monthlyExtras, { label: '', amount: '' }],
+    }))
+  }
+
+  const updateRateExtra = (index: number, field: 'label' | 'amount', value: string) => {
+    setRateForm((prev) => {
+      const monthlyExtras = [...prev.monthlyExtras]
+      monthlyExtras[index] = { ...monthlyExtras[index], [field]: value }
+      return { ...prev, monthlyExtras }
+    })
+  }
+
+  const removeRateExtra = (index: number) => {
+    setRateForm((prev) => ({
+      ...prev,
+      monthlyExtras: prev.monthlyExtras.filter((_, i) => i !== index),
+    }))
+  }
+
   // Rate editing
   const openRateModal = async (member: SalaryMember) => {
     setRateMember(member)
@@ -897,6 +1187,7 @@ export function FinancesPage() {
       monthlyRate: String(member.monthlyRate || 0),
       effectiveDate: toInputDate(),
       note: '',
+      monthlyExtras: normalizeSalaryExtras(member.monthlySalaryExtras),
     })
     setShowRateModal(true)
     // Load history
@@ -915,10 +1206,19 @@ export function FinancesPage() {
     if (!rateMember || !rateForm.monthlyRate || parseFloat(rateForm.monthlyRate) < 0) return
     try {
       setRateSaving(true)
-      await api.updateSalaryRate(rateMember.id, {
-        monthlyRate: parseFloat(rateForm.monthlyRate),
-        effectiveDate: rateForm.effectiveDate,
-        note: rateForm.note || undefined,
+      const normalizedRate = parseMoney(rateForm.monthlyRate)
+      const rateChanged = Math.abs(normalizedRate - parseMoney(rateMember.monthlyRate)) > 0.0001
+
+      if (rateChanged) {
+        await api.updateSalaryRate(rateMember.id, {
+          monthlyRate: normalizedRate,
+          effectiveDate: rateForm.effectiveDate,
+          note: rateForm.note || undefined,
+        })
+      }
+
+      await api.updateSalaryMonthlyExtras(rateMember.id, {
+        monthlyExtras: rateForm.monthlyExtras,
       })
       setShowRateModal(false)
       setRateMember(null)
@@ -1728,6 +2028,9 @@ export function FinancesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(salariesData?.members || []).map((member) => {
                   const initials = member.name.split(' ').map((n) => n[0]).join('')
+                  const monthlyExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
+                  const monthlyExtrasTotal = monthlyExtras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
+                  const monthlyTotalWithExtras = parseMoney(member.monthlyRate) + monthlyExtrasTotal
 
                   return (
                     <div key={member.id} className="stripe-card p-6">
@@ -1772,6 +2075,50 @@ export function FinancesPage() {
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        </div>
+                        {monthlyExtras.length > 0 ? (
+                          <details className="group rounded-lg border stripe-border bg-gray-50/50">
+                            <summary className="list-none cursor-pointer px-3 py-2">
+                              <div className="flex items-center justify-between gap-3 text-sm">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="stripe-text-secondary">Monthly Extras</span>
+                                  <span className="text-xs stripe-text-muted whitespace-nowrap">
+                                    {monthlyExtras.length} item{monthlyExtras.length === 1 ? '' : 's'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="font-medium stripe-text-primary">
+                                    {formatCurrency(monthlyExtrasTotal)}
+                                  </span>
+                                  <ChevronDown className="w-4 h-4 stripe-text-muted transition-transform group-open:rotate-180" />
+                                </div>
+                              </div>
+                            </summary>
+                            <div className="px-3 pb-3 pt-0 space-y-1 border-t stripe-border">
+                              {monthlyExtras.map((extra, index) => (
+                                <div
+                                  key={`${member.id}-${extra.label}-${index}`}
+                                  className="flex justify-between gap-3 text-xs stripe-text-muted pt-2"
+                                >
+                                  <span className="truncate">{extra.label}</span>
+                                  <span className="whitespace-nowrap">{formatCurrency(extra.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : (
+                          <div className="flex justify-between text-sm">
+                            <span className="stripe-text-secondary">Monthly Extras</span>
+                            <span className="font-medium stripe-text-primary">
+                              {formatCurrency(monthlyExtrasTotal)}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm">
+                          <span className="stripe-text-secondary">Monthly Total</span>
+                          <span className="font-semibold text-blue-600">
+                            {formatCurrency(monthlyTotalWithExtras)}
+                          </span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="stripe-text-secondary">Paid This Year</span>
@@ -2217,10 +2564,26 @@ export function FinancesPage() {
             </p>
 
             <div className="space-y-4">
-              {/* Base Salary */}
+              {/* Salary Month */}
               <div>
                 <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Base Salary
+                  Salary Month
+                </label>
+                <input
+                  type="month"
+                  value={salaryForm.salaryMonth}
+                  onChange={(e) => handleSalaryMonthChange(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                />
+                <p className="text-xs stripe-text-muted mt-1.5">
+                  Defaults to the current month. Use this when paying salary for a previous or future month.
+                </p>
+              </div>
+
+              {/* Planned Salary */}
+              <div>
+                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
+                  Full Salary For Month
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm stripe-text-muted">$</span>
@@ -2234,6 +2597,32 @@ export function FinancesPage() {
                     className="w-full pl-7 pr-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                   />
                 </div>
+                <p className="text-xs stripe-text-muted mt-1.5">
+                  Total salary due for {formatMonthLabel(salaryForm.salaryMonth)} before any partial payouts.
+                </p>
+              </div>
+
+              {/* Payment Amount */}
+              <div>
+                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
+                  Pay Salary Now
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm stripe-text-muted">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    max={maxSalaryPayment > 0 ? maxSalaryPayment : undefined}
+                    value={salaryForm.paymentAmount}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, paymentAmount: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                  />
+                </div>
+                <p className="text-xs stripe-text-muted mt-1.5">
+                  Enter a partial payout to record an advance. Leave extras below for bonuses or reimbursements.
+                </p>
               </div>
 
               {/* Extras */}
@@ -2288,30 +2677,85 @@ export function FinancesPage() {
                 </div>
               </div>
 
-              {/* Total */}
+              {/* Summary */}
               <div className="rounded-lg p-3 stripe-surface stripe-border" style={{ borderWidth: '1px' }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold stripe-text-primary">Total Payment</span>
-                  <span className="text-lg font-bold" style={{ color: 'var(--stripe-primary)' }}>
-                    {formatCurrency(salaryTotal)}
-                  </span>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs stripe-text-muted uppercase tracking-wide">Already Paid</p>
+                    <p className="font-semibold stripe-text-primary">
+                      {formatCurrency(salaryMonthContext.alreadyPaidBase)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs stripe-text-muted uppercase tracking-wide">Remaining After</p>
+                    <p className={`font-semibold ${remainingSalary > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {formatCurrency(remainingSalary)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs stripe-text-muted uppercase tracking-wide">Extras</p>
+                    <p className="font-semibold stripe-text-primary">
+                      {formatCurrency(extrasTotal)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs stripe-text-muted uppercase tracking-wide">Total Payout Now</p>
+                    <p className="text-lg font-bold" style={{ color: 'var(--stripe-primary)' }}>
+                      {formatCurrency(salaryTotal)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t space-y-1.5" style={{ borderColor: 'var(--stripe-border)' }}>
+                  <div className="flex justify-between text-xs stripe-text-muted">
+                    <span>Salary month</span>
+                    <span>{formatMonthLabel(salaryForm.salaryMonth)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs stripe-text-muted">
+                    <span>Full salary</span>
+                    <span>{formatCurrency(plannedSalaryAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs stripe-text-muted">
+                    <span>Paying now</span>
+                    <span>{formatCurrency(salaryPaymentAmount)}</span>
+                  </div>
                 </div>
                 {salaryForm.extras.length > 0 && (
                   <div className="mt-2 pt-2 border-t space-y-0.5" style={{ borderColor: 'var(--stripe-border)' }}>
                     <div className="flex justify-between text-xs stripe-text-muted">
-                      <span>Base</span>
-                      <span>{formatCurrency(parseFloat(salaryForm.baseSalary) || 0)}</span>
+                      <span>Salary now</span>
+                      <span>{formatCurrency(salaryPaymentAmount)}</span>
                     </div>
                     {salaryForm.extras.map((extra, i) => (
                       extra.label && extra.amount ? (
                         <div key={i} className="flex justify-between text-xs stripe-text-muted">
                           <span>{extra.label}</span>
-                          <span>{formatCurrency(parseFloat(extra.amount) || 0)}</span>
+                          <span>{formatCurrency(parseMoney(extra.amount))}</span>
                         </div>
                       ) : null
                     ))}
                   </div>
                 )}
+                <div className="mt-3">
+                  {salaryIsAdvance ? (
+                    <p className="text-xs font-medium text-amber-600">
+                      This payout will be recorded as an advance for {formatMonthLabel(salaryForm.salaryMonth)}.
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-emerald-600">
+                      This payout closes the salary balance for {formatMonthLabel(salaryForm.salaryMonth)}.
+                    </p>
+                  )}
+                  {salaryBaseTooLow && (
+                    <p className="text-xs font-medium text-red-600 mt-1.5">
+                      Full salary cannot be lower than what has already been paid for this month.
+                    </p>
+                  )}
+                  {salaryOverpayment > 0 && (
+                    <p className="text-xs font-medium text-red-600 mt-1.5">
+                      Salary payment exceeds the remaining balance by {formatCurrency(salaryOverpayment)}.
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Date */}
@@ -2347,7 +2791,7 @@ export function FinancesPage() {
                 </button>
                 <button
                   onClick={handleRecordSalary}
-                  disabled={salarySaving || salaryTotal <= 0}
+                  disabled={salarySaving || !salaryCanSave}
                   className="flex-1 stripe-btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                 >
                   {salarySaving
@@ -2382,7 +2826,7 @@ export function FinancesPage() {
                 )}
               </div>
               <div>
-                <h3 className="text-lg font-semibold stripe-text-primary">Edit Monthly Base</h3>
+                <h3 className="text-lg font-semibold stripe-text-primary">Salary Settings</h3>
                 <p className="text-sm stripe-text-muted">{rateMember.name}</p>
               </div>
             </div>
@@ -2427,6 +2871,64 @@ export function FinancesPage() {
                 />
               </div>
 
+              <div className="pt-2 border-t stripe-border">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="block text-sm font-medium stripe-text-secondary">Default Monthly Extras</label>
+                    <p className="text-xs stripe-text-muted mt-1">
+                      These extras will auto-fill in future salary payments and can still be changed during payout.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addRateExtra}
+                    className="text-xs font-medium px-2.5 py-1 rounded-md transition-colors"
+                    style={{ color: 'var(--stripe-primary)' }}
+                  >
+                    + Add Extra
+                  </button>
+                </div>
+
+                {rateForm.monthlyExtras.length === 0 && (
+                  <p className="text-xs stripe-text-muted italic py-2">
+                    No default monthly extras. Add bonuses, subscriptions, or fixed reimbursements here.
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  {rateForm.monthlyExtras.map((extra, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={extra.label}
+                        onChange={(e) => updateRateExtra(index, 'label', e.target.value)}
+                        placeholder="e.g. Bonus, Cursor"
+                        className="flex-1 px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                      />
+                      <div className="relative w-28 flex-shrink-0">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm stripe-text-muted">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={extra.amount}
+                          onChange={(e) => updateRateExtra(index, 'amount', e.target.value)}
+                          placeholder="0.00"
+                          className="w-full pl-6 pr-2 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeRateExtra(index)}
+                        className="p-1.5 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Buttons */}
               <div className="flex gap-3 pt-1">
                 <button
@@ -2440,7 +2942,7 @@ export function FinancesPage() {
                   disabled={rateSaving || !rateForm.monthlyRate}
                   className="flex-1 stripe-btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                 >
-                  {rateSaving ? 'Saving...' : 'Save Rate'}
+                  {rateSaving ? 'Saving...' : 'Save Settings'}
                 </button>
               </div>
 

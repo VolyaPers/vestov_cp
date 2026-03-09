@@ -63,6 +63,7 @@ export const teamMembers = pgTable('team_members', {
   bio: text('bio'),
   hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }), // base rate
   monthlyRate: decimal('monthly_rate', { precision: 10, scale: 2 }),
+  monthlySalaryExtras: jsonb('monthly_salary_extras'),
   employmentType: varchar('employment_type', { length: 20 }).notNull().default('fulltime'), // 'fulltime' | 'part_time' | 'freelancer'
   isBillable: boolean('is_billable').notNull().default(true), // true for billable resources, false for HR/PM/internal
   status: varchar('status', { length: 20 }).notNull().default('active'), // 'bench' | 'active'

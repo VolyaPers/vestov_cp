@@ -73,6 +73,33 @@ async function ensureCategoryExists(kind: FinanceCategoryKind, rawName: string, 
   return created
 }
 
+type SalaryExtraPayload = {
+  label: string
+  amount: number
+}
+
+function normalizeSalaryExtras(value: unknown): SalaryExtraPayload[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+
+    const rawLabel = 'label' in item ? item.label : ''
+    const rawAmount = 'amount' in item ? item.amount : ''
+    const label = typeof rawLabel === 'string' ? rawLabel.trim() : ''
+    const amount = typeof rawAmount === 'number' ? rawAmount : parseFloat(String(rawAmount ?? ''))
+
+    if (!label || !Number.isFinite(amount) || amount <= 0) {
+      return []
+    }
+
+    return [{
+      label,
+      amount: Number(amount.toFixed(2)),
+    }]
+  })
+}
+
 // GET /overview - Dashboard summary
 router.get('/overview', async (req, res) => {
   if (!isAdmin(req, res)) return
@@ -426,6 +453,7 @@ router.get('/salaries', async (req, res) => {
         isBillable: teamMembers.isBillable,
         avatarUrl: teamMembers.avatarUrl,
         status: teamMembers.status,
+        monthlySalaryExtras: teamMembers.monthlySalaryExtras,
       })
       .from(teamMembers)
       .orderBy(teamMembers.name)
@@ -465,6 +493,21 @@ router.get('/salaries', async (req, res) => {
       .orderBy(desc(financialTransactions.transactionDate))
       .limit(50)
 
+    const allPayments = await db
+      .select({
+        id: financialTransactions.id,
+        teamMemberId: financialTransactions.teamMemberId,
+        teamMemberName: teamMembers.name,
+        amount: financialTransactions.amount,
+        description: financialTransactions.description,
+        transactionDate: financialTransactions.transactionDate,
+        createdAt: financialTransactions.createdAt,
+      })
+      .from(financialTransactions)
+      .leftJoin(teamMembers, eq(financialTransactions.teamMemberId, teamMembers.id))
+      .where(eq(financialTransactions.type, 'salary'))
+      .orderBy(desc(financialTransactions.transactionDate), desc(financialTransactions.id))
+
     // Merge payment summaries into members
     const paymentMap = new Map(
       salaryPayments.map((p) => [p.teamMemberId, p])
@@ -477,12 +520,14 @@ router.get('/salaries', async (req, res) => {
         totalPaidThisYear: payments ? parseFloat(payments.totalPaid) : 0,
         lastPaymentDate: payments?.lastPaymentDate || null,
         paymentCount: payments?.paymentCount || 0,
+        monthlySalaryExtras: normalizeSalaryExtras(m.monthlySalaryExtras),
       }
     })
 
     res.json({
       members: membersWithPayments,
       recentPayments,
+      allPayments,
       year: targetYear,
     })
   } catch (error) {
@@ -850,6 +895,38 @@ router.put('/salaries/:teamMemberId/rate', async (req, res) => {
   } catch (error) {
     console.error('Update salary rate error:', error)
     res.status(500).json({ error: 'Failed to update salary rate' })
+  }
+})
+
+router.put('/salaries/:teamMemberId/monthly-extras', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const teamMemberId = parseInt(req.params.teamMemberId)
+    const monthlyExtras = normalizeSalaryExtras(req.body?.monthlyExtras)
+
+    const [updated] = await db
+      .update(teamMembers)
+      .set({
+        monthlySalaryExtras: monthlyExtras,
+        updatedAt: new Date(),
+      })
+      .where(eq(teamMembers.id, teamMemberId))
+      .returning({
+        id: teamMembers.id,
+        monthlySalaryExtras: teamMembers.monthlySalaryExtras,
+      })
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    res.json({
+      success: true,
+      monthlyExtras: normalizeSalaryExtras(updated.monthlySalaryExtras),
+    })
+  } catch (error) {
+    console.error('Update monthly salary extras error:', error)
+    res.status(500).json({ error: 'Failed to update monthly salary extras' })
   }
 })
 

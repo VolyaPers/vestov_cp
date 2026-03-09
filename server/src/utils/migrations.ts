@@ -97,6 +97,17 @@ export async function ensureUserColumns(pool: Pool): Promise<void> {
 }
 
 export async function ensureFinanceTables(pool: Pool): Promise<void> {
+  try {
+    const hasMonthlySalaryExtras = await checkColumnExists(pool, 'team_members', 'monthly_salary_extras')
+    if (!hasMonthlySalaryExtras) {
+      console.log('[MIGRATIONS] Adding missing column: team_members.monthly_salary_extras')
+      await pool.query(`ALTER TABLE "team_members" ADD COLUMN IF NOT EXISTS "monthly_salary_extras" jsonb;`)
+    }
+  } catch (error) {
+    const err = error as Error
+    console.warn('[MIGRATIONS] Could not ensure team_members.monthly_salary_extras:', err.message)
+  }
+
   // financial_transactions
   try {
     const hasFT = await pool.query(`

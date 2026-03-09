@@ -569,6 +569,10 @@ class ApiClient {
     return this.request(`/finances/salaries/${teamMemberId}/rate`, { method: 'PUT', body: JSON.stringify(data) })
   }
 
+  async updateSalaryMonthlyExtras(teamMemberId: number, data: { monthlyExtras: Array<{ label: string; amount: string | number }> }) {
+    return this.request(`/finances/salaries/${teamMemberId}/monthly-extras`, { method: 'PUT', body: JSON.stringify(data) })
+  }
+
   async getSalaryRateHistory(teamMemberId: number) {
     return this.request(`/finances/salaries/${teamMemberId}/rate-history`)
   }
