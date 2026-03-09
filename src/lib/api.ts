@@ -21,6 +21,45 @@ const API_BASE = envApiUrl
   ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
   : '/api'
 
+const buildQueryString = (params: Record<string, string | number | undefined>) => {
+  const searchParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.set(key, String(value))
+    }
+  })
+
+  const query = searchParams.toString()
+  return query ? `?${query}` : ''
+}
+
+export const resolveApiAssetUrl = (assetUrl?: string | null) => {
+  if (!assetUrl) {
+    return undefined
+  }
+
+  if (/^(https?:)?\/\//i.test(assetUrl) || assetUrl.startsWith('data:') || assetUrl.startsWith('blob:')) {
+    return assetUrl
+  }
+
+  const normalizedPath = assetUrl.startsWith('/') ? assetUrl : `/${assetUrl}`
+  const apiAssetPath = normalizedPath.startsWith('/uploads/')
+    ? `/api${normalizedPath}`
+    : normalizedPath
+
+  if (typeof window === 'undefined') {
+    return apiAssetPath
+  }
+
+  try {
+    const apiOrigin = new URL(envApiUrl || API_BASE, window.location.origin).origin
+    return `${apiOrigin}${apiAssetPath}`
+  } catch {
+    return apiAssetPath
+  }
+}
+
 export type FinanceCategoryKind = 'income' | 'expense'
 
 export interface FinanceCategory {
@@ -283,8 +322,14 @@ class ApiClient {
   }
 
   // Leave Requests
-  getLeaveRequests = async (): Promise<LeaveRequest[]> => {
-    return this.request('/vacation/requests') as Promise<LeaveRequest[]>
+  getLeaveRequests = async (filters: {
+    status?: string
+    employeeId?: number
+    startDate?: string
+    endDate?: string
+    clientId?: number
+  } = {}): Promise<LeaveRequest[]> => {
+    return this.request(`/vacation/requests${buildQueryString(filters)}`) as Promise<LeaveRequest[]>
   }
 
   createLeaveRequest = async (data: CreateLeaveRequestData): Promise<LeaveRequest> => {
@@ -338,8 +383,8 @@ class ApiClient {
   }
 
   // Vacation/Leave Management
-  getVacationEmployees = async () => {
-    return this.request('/vacation/employees')
+  getVacationEmployees = async (clientId?: number) => {
+    return this.request(`/vacation/employees${buildQueryString({ clientId })}`)
   }
 
   getMyVacationBalance = async () => {

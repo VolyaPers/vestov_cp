@@ -41,6 +41,58 @@ function calculateDays(startDate: Date, endDate: Date, halfDayStart: boolean, ha
   return totalDays
 }
 
+async function getActiveClientServiceTeamMemberIds(clientId: number) {
+  const today = new Date().toISOString().split('T')[0]
+
+  const activeServices = await db
+    .select({
+      id: clientServices.id,
+      serviceCategory: serviceTypes.category,
+    })
+    .from(clientServices)
+    .innerJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
+    .where(and(
+      eq(clientServices.clientId, clientId),
+      eq(clientServices.isActive, true),
+      or(
+        sql`${clientServices.endDate} IS NULL`,
+        gte(clientServices.endDate, today)
+      )
+    ))
+
+  const relevantServiceIds = activeServices
+    .filter(service =>
+      service.serviceCategory === 'outsourcing' || service.serviceCategory === 'outstaffing'
+    )
+    .map(service => service.id)
+
+  if (relevantServiceIds.length === 0) {
+    return {
+      serviceIds: [],
+      teamMemberIds: [],
+    }
+  }
+
+  const activeAssignments = await db
+    .select({
+      teamMemberId: clientServiceTeamMembers.teamMemberId,
+    })
+    .from(clientServiceTeamMembers)
+    .where(and(
+      inArray(clientServiceTeamMembers.clientServiceId, relevantServiceIds),
+      eq(clientServiceTeamMembers.isActive, true),
+      or(
+        sql`${clientServiceTeamMembers.endDate} IS NULL`,
+        gte(clientServiceTeamMembers.endDate, today)
+      )
+    ))
+
+  return {
+    serviceIds: relevantServiceIds,
+    teamMemberIds: [...new Set(activeAssignments.map(assignment => assignment.teamMemberId))],
+  }
+}
+
 // Get current employee profile (for logged-in team members)
 router.get('/my-profile', auth, async (req: Request, res) => {
   try {
@@ -978,7 +1030,7 @@ router.get('/requests', auth, async (req, res) => {
       return res.status(403).json({ error: 'Admin access required' })
     }
 
-    const { status, employeeId, startDate, endDate } = req.query
+    const { status, employeeId, startDate, endDate, clientId } = req.query
 
     let conditions = []
 
@@ -997,6 +1049,22 @@ router.get('/requests', auth, async (req, res) => {
           between(leaveRequests.endDate, startDate as string, endDate as string)
         )
       )
+    }
+
+    if (clientId) {
+      const parsedClientId = parseInt(clientId as string)
+
+      if (Number.isNaN(parsedClientId)) {
+        return res.status(400).json({ error: 'Invalid client ID' })
+      }
+
+      const { teamMemberIds } = await getActiveClientServiceTeamMemberIds(parsedClientId)
+
+      if (teamMemberIds.length === 0) {
+        return res.json([])
+      }
+
+      conditions.push(inArray(leaveRequests.employeeId, teamMemberIds))
     }
 
     const requests = await db
@@ -3334,6 +3402,25 @@ router.delete('/admin/requests/bulk-delete', auth, async (req, res) => {
 // Get all team members for dropdown selection
 router.get('/employees', auth, async (req, res) => {
   try {
+    const { clientId } = req.query
+    let employeeConditions = [eq(teamMembers.status, 'active')]
+
+    if (clientId) {
+      const parsedClientId = parseInt(clientId as string)
+
+      if (Number.isNaN(parsedClientId)) {
+        return res.status(400).json({ error: 'Invalid client ID' })
+      }
+
+      const { teamMemberIds } = await getActiveClientServiceTeamMemberIds(parsedClientId)
+
+      if (teamMemberIds.length === 0) {
+        return res.json([])
+      }
+
+      employeeConditions.push(inArray(teamMembers.id, teamMemberIds))
+    }
+
     const employees = await db
       .select({
         id: teamMembers.id,
@@ -3345,7 +3432,7 @@ router.get('/employees', auth, async (req, res) => {
         avatarUrl: teamMembers.avatarUrl,
       })
       .from(teamMembers)
-      .where(eq(teamMembers.status, 'active'))
+      .where(and(...employeeConditions))
       .orderBy(teamMembers.name)
 
     res.json(employees)
@@ -3634,41 +3721,19 @@ router.get('/client/team', async (req, res) => {
     const clientId = clientUserRecord.clientId
     console.log('[GET /client/team] Client ID:', clientId, 'User:', req.user.email)
 
-    // Get all active client services (outsourcing/outstaffing)
-    const activeServices = await db
-      .select({
-        id: clientServices.id,
-        clientId: clientServices.clientId,
-        serviceTypeId: clientServices.serviceTypeId,
-        isActive: clientServices.isActive,
-        serviceTypeName: serviceTypes.name,
-        serviceTypeCategory: serviceTypes.category
-      })
-      .from(clientServices)
-      .innerJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-      .where(and(
-        eq(clientServices.clientId, clientId),
-        eq(clientServices.isActive, true)
-      ))
+    const { serviceIds, teamMemberIds } = await getActiveClientServiceTeamMemberIds(clientId)
 
-    console.log('[GET /client/team] Found', activeServices.length, 'active services')
+    console.log('[GET /client/team] Found', serviceIds.length, 'active outsourcing/outstaffing services')
 
-    // Filter for outsourcing and outstaffing services (by category)
-    const relevantServices = activeServices.filter(service =>
-      service.serviceTypeCategory === 'outsourcing' || service.serviceTypeCategory === 'outstaffing'
-    )
-
-    console.log('[GET /client/team] Found', relevantServices.length, 'outsourcing/outstaffing services')
-
-    if (relevantServices.length === 0) {
+    if (serviceIds.length === 0) {
       return res.json({ vacations: [], message: 'No active outsourcing/outstaffing services found' })
     }
 
-    // Get team member IDs assigned to these services
-    const serviceIds = relevantServices.map(s => s.id)
-    console.log('[GET /client/team] Service IDs:', serviceIds)
-
     // Query to get vacation requests for team members in these services
+    if (teamMemberIds.length === 0) {
+      return res.json({ vacations: [] })
+    }
+
     const teamVacations = await db
       .select({
         request: leaveRequests,
@@ -3678,12 +3743,7 @@ router.get('/client/team', async (req, res) => {
       .innerJoin(teamMembers, eq(leaveRequests.employeeId, teamMembers.id))
       .where(
         and(
-          sql`${leaveRequests.employeeId} IN (
-            SELECT tm.id FROM team_members tm
-            JOIN client_service_team_members cstm ON cstm.team_member_id = tm.id
-            WHERE cstm.client_service_id IN (${sql.join(serviceIds.map(id => sql`${id}`), sql`, `)})
-            AND cstm.is_active = true
-          )`,
+          inArray(leaveRequests.employeeId, teamMemberIds),
           // Only show approved requests (ongoing or upcoming vacations)
           eq(leaveRequests.status, 'approved')
         )
@@ -3732,30 +3792,11 @@ router.get('/client/team/schedules', async (req, res) => {
 
     const clientId = clientUserRecord.clientId
 
-    // Get all active client services
-    const activeServices = await db
-      .select({
-        id: clientServices.id,
-        serviceTypeName: serviceTypes.name,
-        serviceCategory: serviceTypes.category,
-      })
-      .from(clientServices)
-      .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-      .where(and(
-        eq(clientServices.clientId, clientId),
-        eq(clientServices.isActive, true)
-      ))
+    const { serviceIds } = await getActiveClientServiceTeamMemberIds(clientId)
 
-    // Filter for outsourcing and outstaffing services (by category)
-    const relevantServices = activeServices.filter(service =>
-      service.serviceCategory === 'outsourcing' || service.serviceCategory === 'outstaffing'
-    )
-
-    if (relevantServices.length === 0) {
+    if (serviceIds.length === 0) {
       return res.json({ teamMembers: [] })
     }
-
-    const serviceIds = relevantServices.map(s => s.id)
 
     // Get team members assigned to these services with their work schedules
     const developersList = await db

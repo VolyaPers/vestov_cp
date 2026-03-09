@@ -46,7 +46,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { useCustomAlert } from '@/components/ui/custom-alert'
-import { api } from '@/lib/api'
+import { api, resolveApiAssetUrl } from '@/lib/api'
 import { parseLocalDate } from '@/lib/utils'
 
 interface Client {
@@ -1183,7 +1183,7 @@ function ClientRow({
               ) : hasValidLogo ? (
                 <>
                   <img
-                    src={client.logoUrl}
+                    src={resolveApiAssetUrl(client.logoUrl)}
                     alt={client.name}
                     className="h-full w-full object-contain p-0.5"
                     onError={() => setLogoError(true)}

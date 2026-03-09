@@ -12,7 +12,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, resolveApiAssetUrl } from '@/lib/api'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { GLOBAL_SEARCH_OPEN_EVENT } from '@/lib/globalSearch'
 import { getSearchShortcuts } from '@/lib/navigation'
@@ -77,7 +77,7 @@ function ResultMedia({ result }: { result: GlobalSearchResult }) {
   if (result.type === 'client' && result.imageUrl) {
     return (
       <span className="global-search-result-logo">
-        <img src={result.imageUrl} alt={result.title} className="h-6 w-6 object-contain" />
+        <img src={resolveApiAssetUrl(result.imageUrl)} alt={result.title} className="h-6 w-6 object-contain" />
       </span>
     )
   }
@@ -85,7 +85,7 @@ function ResultMedia({ result }: { result: GlobalSearchResult }) {
   if ((result.type === 'user' || result.type === 'team_member') && result.imageUrl) {
     return (
       <Avatar className="global-search-result-avatar">
-        <AvatarImage src={result.imageUrl} alt={result.title} />
+        <AvatarImage src={resolveApiAssetUrl(result.imageUrl)} alt={result.title} />
         <AvatarFallback className="bg-[rgba(99,91,255,0.12)] text-[var(--stripe-primary)] text-xs font-semibold">
           {getInitials(result.title)}
         </AvatarFallback>

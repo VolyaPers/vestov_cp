@@ -324,7 +324,9 @@ app.use('/api/finances', financesRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/search', searchRouter)
 
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
+const uploadsPath = path.join(process.cwd(), 'uploads')
+app.use('/api/uploads', express.static(uploadsPath))
+app.use('/uploads', express.static(uploadsPath))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

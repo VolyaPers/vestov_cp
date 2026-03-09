@@ -285,7 +285,7 @@ export function AdminDashboard() {
     refetch: refetchLeaveRequests,
   } = useQuery<LeaveDashboard[]>({
     queryKey: ['leaveRequestsDashboard'],
-    queryFn: api.getLeaveRequests,
+    queryFn: () => api.getLeaveRequests(),
   })
 
   const {

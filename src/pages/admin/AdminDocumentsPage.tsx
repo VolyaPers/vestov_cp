@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useCustomAlert } from '@/components/ui/custom-alert'
-import { api } from '@/lib/api'
+import { api, resolveApiAssetUrl } from '@/lib/api'
 
 interface DocumentType {
   value: string
@@ -809,7 +809,7 @@ export function AdminDocumentsPage() {
                       <ChevronRight className="h-5 w-5 text-gray-400" />
                     )}
                     {client.logoUrl ? (
-                      <img src={client.logoUrl} alt={client.name} className="h-10 w-10 rounded-full object-cover" />
+                      <img src={resolveApiAssetUrl(client.logoUrl)} alt={client.name} className="h-10 w-10 rounded-full object-cover" />
                     ) : (
                       <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                         <Building2 className="h-5 w-5 text-primary" />

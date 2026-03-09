@@ -20,7 +20,7 @@ import {
 import { InvoiceStatsChart } from '@/components/InvoiceStatsChart'
 import { EnhancedInvoiceForm } from '@/components/EnhancedInvoiceForm'
 import { useCustomAlert } from '@/components/ui/custom-alert'
-import { api } from '@/lib/api'
+import { api, resolveApiAssetUrl } from '@/lib/api'
 import { parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
@@ -1075,7 +1075,7 @@ export function ClientDetailsPage() {
               <div className="p-3 bg-primary/10 rounded-lg">
                 {client.logoUrl ? (
                   <img
-                    src={client.logoUrl}
+                    src={resolveApiAssetUrl(client.logoUrl)}
                     alt={`${client.name} logo`}
                     className="h-12 w-12 object-contain"
                   />

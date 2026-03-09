@@ -315,7 +315,7 @@ router.post('/clients/:id/logo', logoUpload.single('logo'), async (req, res) => 
     }
 
     // Update client with new logo URL
-    const logoUrl = `/uploads/logos/${req.file.filename}`
+    const logoUrl = `/api/uploads/logos/${req.file.filename}`
     const [updatedClient] = await db
       .update(clients)
       .set({

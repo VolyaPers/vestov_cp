@@ -1,18 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Clock, Plus, Check, X, Search, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { Clock, Plus, Check, X, Search, ChevronLeft, ChevronRight, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns'
 import { convertTime, getBrowserTimezone } from '@/lib/timezone'
-import type { TeamMember, LeaveType, CreateLeaveRequestData } from '@/types/common'
+import type { TeamMember, LeaveType, CreateLeaveRequestData, Client } from '@/types/common'
 import type { LeaveRequestWithNested } from '@/types/vacation'
 
 type LeaveRequest = LeaveRequestWithNested
@@ -50,6 +52,9 @@ export function VacationPage() {
   const { showAlert, showConfirm } = useCustomAlert()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
+  const [selectedClientId, setSelectedClientId] = useState('all')
+  const [selectedCalendarMemberIds, setSelectedCalendarMemberIds] = useState<string[]>([])
+  const [isTeamMemberFilterOpen, setIsTeamMemberFilterOpen] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showCalendarModal, setShowCalendarModal] = useState(false)
   const [showRequestModal, setShowRequestModal] = useState(false)
@@ -87,17 +92,25 @@ export function VacationPage() {
     status: '',
   })
   const queryClient = useQueryClient()
+  const teamMemberFilterRef = useRef<HTMLDivElement | null>(null)
+
+  const selectedClientNumericId = selectedClientId === 'all' ? undefined : Number(selectedClientId)
 
   // Fetch leave requests
   const { data: leaveRequests = [] } = useQuery({
-    queryKey: ['leaveRequests'],
-    queryFn: api.getLeaveRequests,
+    queryKey: ['leaveRequests', selectedClientNumericId ?? 'all'],
+    queryFn: () => api.getLeaveRequests({ clientId: selectedClientNumericId }),
   })
 
   // Fetch team members
   const { data: teamMembers = [], isLoading: isLoadingTeamMembers, error: teamMembersError } = useQuery({
-    queryKey: ['vacationEmployees'],
-    queryFn: api.getVacationEmployees,
+    queryKey: ['vacationEmployees', selectedClientNumericId ?? 'all'],
+    queryFn: () => api.getVacationEmployees(selectedClientNumericId),
+  })
+
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => api.getClients(),
   })
 
   // Fetch leave types
@@ -126,6 +139,57 @@ export function VacationPage() {
   })
 
   const viewerTimezone = currentUser?.timezone || getBrowserTimezone()
+
+  const projectClients = useMemo(() => {
+    return clients.filter((client: Client) =>
+      client.services?.some(service =>
+        service.isActive &&
+        (service.serviceCategory === 'outsourcing' || service.serviceCategory === 'outstaffing')
+      )
+    )
+  }, [clients])
+
+  const matchesCalendarMemberFilter = (memberId?: number | null) => {
+    if (selectedCalendarMemberIds.length === 0) {
+      return true
+    }
+
+    return memberId !== undefined && memberId !== null && selectedCalendarMemberIds.includes(String(memberId))
+  }
+
+  const calendarMemberFilterLabel = useMemo(() => {
+    if (selectedCalendarMemberIds.length === 0) {
+      return 'All team members'
+    }
+
+    if (selectedCalendarMemberIds.length === 1) {
+      const selectedMember = teamMembers.find((member: TeamMember) => String(member.id) === selectedCalendarMemberIds[0])
+      return selectedMember?.name || '1 team member'
+    }
+
+    return `${selectedCalendarMemberIds.length} team members`
+  }, [selectedCalendarMemberIds, teamMembers])
+
+  useEffect(() => {
+    setSelectedCalendarMemberIds((previousIds) =>
+      previousIds.filter((memberId) => teamMembers.some((member: TeamMember) => String(member.id) === memberId))
+    )
+  }, [teamMembers])
+
+  useEffect(() => {
+    if (!isTeamMemberFilterOpen) {
+      return
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!teamMemberFilterRef.current?.contains(event.target as Node)) {
+        setIsTeamMemberFilterOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isTeamMemberFilterOpen])
 
   // Helper: get shift time for a member on a specific date
   const getShiftTimeForMember = (memberId: number, date: Date) => {
@@ -442,7 +506,10 @@ export function VacationPage() {
   // Filter requests for calendar display (approved and pending)
   const calendarRequests = leaveRequests.filter((item: LeaveRequest) => {
     const request = item.request || item
-    return request?.status === 'approved' || request?.status === 'pending'
+    const employeeId = item.employee?.id ?? request.employeeId
+
+    return matchesCalendarMemberFilter(employeeId) &&
+      (request?.status === 'approved' || request?.status === 'pending')
   })
 
   // Calculate summary statistics for future approved requests
@@ -451,8 +518,9 @@ export function VacationPage() {
 
   const futureApprovedRequests = leaveRequests.filter((item: LeaveRequest) => {
     const request = item.request || item
+    const employeeId = item.employee?.id ?? request.employeeId
     const endDate = new Date(request.endDate)
-    return request?.status === 'approved' && endDate >= today
+    return matchesCalendarMemberFilter(employeeId) && request?.status === 'approved' && endDate >= today
   })
 
   const summaryStats = futureApprovedRequests.reduce(
@@ -508,6 +576,10 @@ export function VacationPage() {
       .map((item: any) => item.employee?.id)
 
     return teamMembers.filter((member: any) => {
+      if (!matchesCalendarMemberFilter(member.id)) {
+        return false
+      }
+
       // Skip if hidden from calendar
       if (member.showOnCalendar === false) {
         return false
@@ -541,6 +613,18 @@ export function VacationPage() {
   // Create empty slots for days before the month starts
   const emptyDays = Array(firstDayOfMonth).fill(null)
 
+  const toggleCalendarMemberSelection = (memberId: string) => {
+    setSelectedCalendarMemberIds((currentIds) =>
+      currentIds.includes(memberId)
+        ? currentIds.filter((id) => id !== memberId)
+        : [...currentIds, memberId]
+    )
+  }
+
+  const selectAllCalendarMembers = () => {
+    setSelectedCalendarMemberIds(teamMembers.map((member: TeamMember) => String(member.id)))
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Section - Stripe style */}
@@ -554,6 +638,30 @@ export function VacationPage() {
               View team schedules, shifts, and leave requests
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="stripe-card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Project filter</p>
+            <p className="text-sm text-gray-500">
+              Show only developers assigned to active services for the selected client.
+            </p>
+          </div>
+          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+            <SelectTrigger className="w-full lg:w-[280px]">
+              <SelectValue placeholder="All clients" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Clients</SelectItem>
+              {projectClients.map((client: Client) => (
+                <SelectItem key={client.id} value={client.id.toString()}>
+                  {client.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -746,6 +854,99 @@ export function VacationPage() {
 
         {/* Calendar Tab (with Summary) */}
         <TabsContent value="calendar" className="space-y-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <p className="text-sm text-gray-600">
+              Narrow the calendar to specific team members without changing the requests list.
+            </p>
+            <div ref={teamMemberFilterRef} className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsTeamMemberFilterOpen((isOpen) => !isOpen)}
+                className="w-full justify-between gap-3 lg:w-[260px]"
+              >
+                <span className="truncate">{calendarMemberFilterLabel}</span>
+                <Users className="h-4 w-4 text-gray-500" />
+              </Button>
+
+              {isTeamMemberFilterOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-[320px] rounded-xl border border-gray-200 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Team members</p>
+                      <p className="text-xs text-gray-500">
+                        {selectedCalendarMemberIds.length === 0
+                          ? 'All visible in calendar'
+                          : `${selectedCalendarMemberIds.length} selected`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCalendarMemberIds([])}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <div className="max-h-72 overflow-y-auto p-2">
+                    {teamMembers.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-gray-500">No team members available for this filter.</p>
+                    ) : (
+                      teamMembers.map((member: TeamMember) => {
+                        const isChecked = selectedCalendarMemberIds.includes(String(member.id))
+
+                        return (
+                          <button
+                            key={member.id}
+                            type="button"
+                            onClick={() => toggleCalendarMemberSelection(String(member.id))}
+                            className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-gray-50"
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={() => toggleCalendarMemberSelection(String(member.id))}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={member.avatarUrl} alt={member.name} />
+                              <AvatarFallback className="bg-primary/10 text-primary">
+                                {member.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || 'TM'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-900">{member.name}</p>
+                              <p className="truncate text-xs text-gray-500">{member.position || member.email}</p>
+                            </div>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {teamMembers.length > 0 && (
+                    <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={selectAllCalendarMembers}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsTeamMemberFilterOpen(false)}
+                        className="text-xs font-medium text-gray-600 hover:underline"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Summary Dashboard */}
           <Card>
             <CardHeader>

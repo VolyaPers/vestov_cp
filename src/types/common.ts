@@ -116,8 +116,10 @@ export interface TeamMember {
   name: string
   email: string
   position: string
+  phone?: string
   skills: string[]
   hourlyRate: number
+  monthlyRate?: number
   experienceLevel: 'junior' | 'middle' | 'senior' | 'lead'
   status: TeamMemberStatus
   employmentType?: EmploymentType
@@ -125,6 +127,9 @@ export interface TeamMember {
   bio?: string
   location?: string
   timezone?: string
+  avatarUrl?: string
+  showOnCalendar?: boolean
+  workSchedule?: Record<string, string>
   clientId?: number
   createdAt?: string
   updatedAt?: string
