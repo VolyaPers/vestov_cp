@@ -390,7 +390,7 @@ export function EmployeeDashboard() {
         </CardContent>
       </Card>
 
-      <Card className="content-auto">
+      <Card className="relative z-10">
         <CardHeader>
           <SectionHeading title="My Preferred Shifts" description="Set your preferred working hours for each day" icon={<Clock className="w-5 h-5" />} />
         </CardHeader>
