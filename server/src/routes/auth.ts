@@ -542,6 +542,50 @@ router.post('/stop-impersonation', requireAuth, async (req, res) => {
   }
 })
 
+function normalizeAbsoluteUrl(value?: string | null): string | null {
+  if (!value) {
+    return null
+  }
+
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null
+    }
+    url.hash = ''
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
+function normalizeFrontendOrigin(value?: string | null): string | null {
+  const normalizedUrl = normalizeAbsoluteUrl(value)
+  if (!normalizedUrl) {
+    return null
+  }
+
+  try {
+    return new URL(normalizedUrl).origin
+  } catch {
+    return null
+  }
+}
+
+function normalizeGoogleCallbackUrl(value?: string | null): string | null {
+  const normalizedUrl = normalizeAbsoluteUrl(value)
+  if (!normalizedUrl) {
+    return null
+  }
+
+  try {
+    const url = new URL(normalizedUrl)
+    return url.pathname.endsWith('/google/callback') ? normalizedUrl : null
+  } catch {
+    return null
+  }
+}
+
 function getFrontendUrl(): string {
   const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
   const normalizedUrl = frontendUrl.endsWith('/') ? frontendUrl.slice(0, -1) : frontendUrl
@@ -555,6 +599,25 @@ function getFrontendUrl(): string {
   return normalizedUrl
 }
 
+function getRequestedFrontendUrl(req: Request): string {
+  const sessionFrontendUrl = normalizeFrontendOrigin((req.session as any)?.googleOAuthFrontendUrl)
+  const queryFrontendUrl = normalizeFrontendOrigin(
+    typeof req.query.frontend_origin === 'string' ? req.query.frontend_origin : undefined
+  )
+  const refererOrigin = normalizeFrontendOrigin(req.get('referer'))
+
+  return sessionFrontendUrl || queryFrontendUrl || refererOrigin || getFrontendUrl()
+}
+
+function getRequestedCallbackUrl(req: Request): string | undefined {
+  const sessionCallbackUrl = normalizeGoogleCallbackUrl((req.session as any)?.googleOAuthCallbackUrl)
+  const queryCallbackUrl = normalizeGoogleCallbackUrl(
+    typeof req.query.callback_url === 'string' ? req.query.callback_url : undefined
+  )
+
+  return sessionCallbackUrl || queryCallbackUrl || undefined
+}
+
 function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) {
   const googleClientId = process.env.GOOGLE_CLIENT_ID
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
@@ -563,8 +626,25 @@ function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) 
     return res.status(503).json({ error: 'Google OAuth is not configured' })
   }
 
+  const frontendUrl = getRequestedFrontendUrl(req)
+  const callbackUrl = getRequestedCallbackUrl(req)
+
+  ;(req.session as any).googleOAuthFrontendUrl = frontendUrl
+  if (callbackUrl) {
+    ;(req.session as any).googleOAuthCallbackUrl = callbackUrl
+  } else {
+    delete (req.session as any).googleOAuthCallbackUrl
+  }
+
+  console.log('[GOOGLE OAUTH] Init request URLs:', {
+    frontendUrl,
+    callbackUrl: callbackUrl || 'strategy_default',
+    referer: req.get('referer'),
+  })
+
   passport.authenticate('google', {
-    scope: ['profile', 'email']
+    scope: ['profile', 'email'],
+    ...(callbackUrl ? { callbackURL: callbackUrl } : {})
   })(req, res, next)
 }
 
@@ -572,7 +652,11 @@ router.get('/google', handleGoogleOAuthInit)
 router.get('/auth/google', handleGoogleOAuthInit)
 
 router.get('/google/callback', (req, res, next) => {
-  const frontendUrl = getFrontendUrl()
+  const frontendUrl = getRequestedFrontendUrl(req)
+  const callbackUrl = getRequestedCallbackUrl(req)
+
+  delete (req.session as any).googleOAuthFrontendUrl
+  delete (req.session as any).googleOAuthCallbackUrl
 
   if (!frontendUrl || frontendUrl === 'http://localhost:5173') {
     console.error('[GOOGLE OAUTH] WARNING: Frontend URL not properly configured! Using fallback.')
@@ -580,7 +664,8 @@ router.get('/google/callback', (req, res, next) => {
 
   passport.authenticate('google', {
     failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
-    session: true
+    session: true,
+    ...(callbackUrl ? { callbackURL: callbackUrl } : {})
   }, (err: unknown, user: Express.User | false, info?: GoogleAuthInfo) => {
     if (err) {
       const error = err as Error

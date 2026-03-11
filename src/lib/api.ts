@@ -17,9 +17,12 @@ import type {
 } from '../types/common'
 
 const envApiUrl = import.meta.env.VITE_API_URL
-const API_BASE = envApiUrl
+const normalizedEnvApiUrl = envApiUrl
   ? (envApiUrl.endsWith('/api') ? envApiUrl : `${envApiUrl.replace(/\/$/, '')}/api`)
   : '/api'
+
+// Use same-origin API paths in the browser so auth/session cookies stay first-party.
+const API_BASE = typeof window === 'undefined' ? normalizedEnvApiUrl : '/api'
 
 const buildQueryString = (params: Record<string, string | number | undefined>) => {
   const searchParams = new URLSearchParams()
@@ -53,7 +56,7 @@ export const resolveApiAssetUrl = (assetUrl?: string | null) => {
   }
 
   try {
-    const apiOrigin = new URL(envApiUrl || API_BASE, window.location.origin).origin
+    const apiOrigin = new URL(API_BASE, window.location.origin).origin
     return `${apiOrigin}${apiAssetPath}`
   } catch {
     return apiAssetPath
