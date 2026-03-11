@@ -48,6 +48,7 @@ import { Label } from '@/components/ui/label'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api, resolveApiAssetUrl } from '@/lib/api'
 import { parseLocalDate } from '@/lib/utils'
+import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Client {
   id: number
@@ -520,97 +521,34 @@ export function ClientsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold stripe-text-primary">Clients</h1>
-          <p className="stripe-text-secondary text-sm mt-1">
-            Manage client relationships, services, and financials
-          </p>
-        </div>
-        <button
-          onClick={() => setIsClientDialogOpen(true)}
-          className="stripe-btn-primary"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Client
-        </button>
-      </div>
+      <PageHero
+        eyebrow="Client Management"
+        title="Accounts, services and financial context in one view."
+        description="The client area now follows the same advanced visual system as the rest of the product, with stronger hierarchy across CRM, service allocation and billing signal."
+        theme="amber"
+        actions={
+          <Button onClick={() => setIsClientDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Client
+          </Button>
+        }
+        meta={
+          <>
+            <span>{filteredAndSortedClients.length} visible clients</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{analytics?.activeClients || 0} active</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>${totalOutstanding.toLocaleString()} outstanding</span>
+          </>
+        }
+      />
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-              <Building className="h-4.5 w-4.5 text-blue-600" />
-            </div>
-            <span className="text-sm stripe-text-secondary">Total</span>
-          </div>
-          <div className="text-2xl font-bold stripe-text-primary">{analytics?.totalClients || 0}</div>
-          <div className="text-xs stripe-text-muted mt-1">
-            {analytics?.activeClients || 0} active
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-              <TrendingUp className="h-4.5 w-4.5 text-emerald-600" />
-            </div>
-            <span className="text-sm stripe-text-secondary">MRR</span>
-          </div>
-          <div className="text-2xl font-bold stripe-text-primary">
-            ${(analytics?.totalRevenue || 0).toLocaleString()}
-          </div>
-          <div className="text-xs stripe-text-muted mt-1">
-            ${analytics?.activeClients ? Math.round((analytics.totalRevenue || 0) / analytics.activeClients).toLocaleString() : 0}/client avg
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center">
-              <Receipt className="h-4.5 w-4.5 text-violet-600" />
-            </div>
-            <span className="text-sm stripe-text-secondary">Invoiced</span>
-          </div>
-          <div className="text-2xl font-bold stripe-text-primary">
-            ${totalInvoiced.toLocaleString()}
-          </div>
-          <div className="text-xs stripe-text-muted mt-1">
-            All time total
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
-              <DollarSign className="h-4.5 w-4.5 text-green-600" />
-            </div>
-            <span className="text-sm stripe-text-secondary">Collected</span>
-          </div>
-          <div className="text-2xl font-bold stripe-text-primary">
-            ${totalPaid.toLocaleString()}
-          </div>
-          <div className="text-xs stripe-text-muted mt-1">
-            {totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0}% collection rate
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
-              <AlertCircle className="h-4.5 w-4.5 text-amber-600" />
-            </div>
-            <span className="text-sm stripe-text-secondary">Outstanding</span>
-          </div>
-          <div className={`text-2xl font-bold ${totalOutstanding > 0 ? 'text-amber-600' : 'stripe-text-primary'}`}>
-            ${totalOutstanding.toLocaleString()}
-          </div>
-          <div className="text-xs stripe-text-muted mt-1">
-            Unpaid balance
-          </div>
-        </div>
+        <MetricTile label="Total" value={analytics?.totalClients || 0} hint={`${analytics?.activeClients || 0} active`} icon={<Building className="h-5 w-5" />} tone="primary" />
+        <MetricTile label="MRR" value={`$${(analytics?.totalRevenue || 0).toLocaleString()}`} hint={`$${analytics?.activeClients ? Math.round((analytics.totalRevenue || 0) / analytics.activeClients).toLocaleString() : 0}/client avg`} icon={<TrendingUp className="h-5 w-5" />} tone="emerald" />
+        <MetricTile label="Invoiced" value={`$${totalInvoiced.toLocaleString()}`} hint="All time total" icon={<Receipt className="h-5 w-5" />} tone="violet" />
+        <MetricTile label="Collected" value={`$${totalPaid.toLocaleString()}`} hint={`${totalInvoiced > 0 ? Math.round((totalPaid / totalInvoiced) * 100) : 0}% collection rate`} icon={<DollarSign className="h-5 w-5" />} tone="emerald" />
+        <MetricTile label="Outstanding" value={`$${totalOutstanding.toLocaleString()}`} hint="Unpaid balance" icon={<AlertCircle className="h-5 w-5" />} tone="amber" />
       </div>
 
       {/* Filters & Search */}
@@ -725,21 +663,18 @@ export function ClientsPage() {
         </div>
 
         {filteredAndSortedClients.length === 0 && (
-          <div className="text-center py-16">
-            <Building className="mx-auto h-10 w-10 text-gray-300 mb-3" />
-            <h3 className="text-sm font-medium text-gray-900 mb-1">No clients found</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              {searchTerm ? 'Try adjusting your search or filters.' : 'Get started by adding your first client.'}
-            </p>
-            {!searchTerm && (
-              <button
-                onClick={() => setIsClientDialogOpen(true)}
-                className="stripe-btn-primary text-sm"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Client
-              </button>
-            )}
+          <div className="p-6">
+            <EmptyState
+              icon={<Building className="h-6 w-6" />}
+              title="No clients found"
+              description={searchTerm ? 'Try adjusting your search or filters.' : 'Get started by adding your first client.'}
+              action={!searchTerm ? (
+                <Button onClick={() => setIsClientDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Client
+                </Button>
+              ) : undefined}
+            />
           </div>
         )}
       </div>

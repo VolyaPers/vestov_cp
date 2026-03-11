@@ -1,21 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  MessageSquare,
-  Star,
-  User,
   Briefcase,
   Calendar,
-  Send,
   Check,
+  MessageSquare,
+  Send,
+  Star,
+  User,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface Service {
   id: number
@@ -52,8 +53,6 @@ export function ClientFeedbackPage() {
   const [developers, setDevelopers] = useState<Developer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // Form states
   const [selectedServiceId, setSelectedServiceId] = useState<string>('')
   const [selectedDeveloperId, setSelectedDeveloperId] = useState<string>('')
   const [rating, setRating] = useState<number>(0)
@@ -66,7 +65,7 @@ export function ClientFeedbackPage() {
 
   useEffect(() => {
     if (selectedServiceId && selectedServiceId !== 'none') {
-      loadDevelopers(parseInt(selectedServiceId))
+      loadDevelopers(parseInt(selectedServiceId, 10))
     } else {
       setDevelopers([])
       setSelectedDeveloperId('')
@@ -102,8 +101,8 @@ export function ClientFeedbackPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
 
     if (rating === 0) {
       showAlert({ message: 'Please select a rating', type: 'warning' })
@@ -118,22 +117,19 @@ export function ClientFeedbackPage() {
     try {
       setIsSubmitting(true)
       await api.submitFeedback({
-        clientServiceId: selectedServiceId && selectedServiceId !== 'none' ? parseInt(selectedServiceId) : undefined,
-        teamMemberId: selectedDeveloperId && selectedDeveloperId !== 'none' ? parseInt(selectedDeveloperId) : undefined,
+        clientServiceId: selectedServiceId && selectedServiceId !== 'none' ? parseInt(selectedServiceId, 10) : undefined,
+        teamMemberId: selectedDeveloperId && selectedDeveloperId !== 'none' ? parseInt(selectedDeveloperId, 10) : undefined,
         rating,
         comments: comments.trim(),
         feedbackType: selectedDeveloperId && selectedDeveloperId !== 'none' ? 'team_member' : 'general',
       })
 
-      // Reset form
       setSelectedServiceId('')
       setSelectedDeveloperId('')
       setRating(0)
       setComments('')
 
-      // Reload feedbacks
       await loadData()
-
       showAlert({ message: 'Thank you for your feedback!', type: 'success' })
     } catch (error) {
       console.error('Error submitting feedback:', error)
@@ -143,7 +139,9 @@ export function ClientFeedbackPage() {
     }
   }
 
-  const renderStars = (currentRating: number, interactive: boolean = false) => {
+  const renderStars = (currentRating: number, interactive = false, size: 'sm' | 'md' = 'md') => {
+    const starClass = size === 'sm' ? 'h-4 w-4' : 'h-6 w-6'
+
     return (
       <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
@@ -152,10 +150,10 @@ export function ClientFeedbackPage() {
             type="button"
             onClick={interactive ? () => setRating(star) : undefined}
             disabled={!interactive}
-            className={`${interactive ? 'cursor-pointer hover:scale-110 transition-transform' : 'cursor-default'}`}
+            className={interactive ? 'cursor-pointer transition-transform hover:scale-110' : 'cursor-default'}
           >
             <Star
-              className={`h-6 w-6 ${star <= currentRating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
+              className={`${starClass} ${star <= currentRating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
             />
           </button>
         ))}
@@ -175,209 +173,267 @@ export function ClientFeedbackPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     )
   }
 
+  const respondedCount = feedbacks.filter((feedback) => feedback.status === 'reviewed').length
+  const averageRating = feedbacks.length
+    ? (feedbacks.reduce((sum, feedback) => sum + feedback.rating, 0) / feedbacks.length).toFixed(1)
+    : '0.0'
+
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Feedback
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Share your experience and view responses
-            </p>
-          </div>
-        </div>
+      <PageHero
+        eyebrow="Client Experience"
+        title="Feedback loop with your delivery team"
+        description="Send structured feedback, rate work quality, and track responses from Vestov operations in one stream."
+        theme="teal"
+        meta={(
+          <>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {services.length} service{services.length !== 1 ? 's' : ''} available
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {feedbacks.length} feedback thread{feedbacks.length !== 1 ? 's' : ''}
+            </span>
+          </>
+        )}
+      />
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricTile
+          label="Submitted"
+          value={feedbacks.length}
+          hint="All historical entries"
+          icon={<MessageSquare className="h-5 w-5" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Responded"
+          value={respondedCount}
+          hint={`${feedbacks.length - respondedCount} still open`}
+          icon={<Check className="h-5 w-5" />}
+          tone="emerald"
+        />
+        <MetricTile
+          label="Average Rating"
+          value={averageRating}
+          hint="Across submitted feedback"
+          icon={<Star className="h-5 w-5" />}
+          tone="amber"
+        />
       </div>
 
-      {/* Submit Feedback Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Send className="h-5 w-5" />
-            Submit Feedback
-          </CardTitle>
-          <CardDescription>
-            We value your feedback! Let us know how we can improve our services.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Service Select */}
-              <div>
-                <Label htmlFor="service">Service (optional)</Label>
-                <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select a service..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none" label="General Feedback">General Feedback</SelectItem>
-                    {services.map(service => (
-                      <SelectItem key={service.id} value={service.id.toString()} label={service.serviceTitle}>
-                        {service.serviceTitle}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      <div className="grid gap-6 xl:grid-cols-[1.04fr_0.96fr]">
+        <Card className="border-white/80 bg-white/88">
+          <CardContent className="p-6 sm:p-7">
+            <SectionHeading
+              title="Submit feedback"
+              description="Tie feedback to a service or teammate, or keep it general."
+              icon={<Send className="h-5 w-5" />}
+            />
 
-              {/* Developer Select */}
-              <div>
-                <Label htmlFor="developer">Team Member (optional)</Label>
-                {(!selectedServiceId || selectedServiceId === 'none' || loadingDevelopers) ? (
-                  <div className="mt-1">
-                    <div className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-gray-100 px-3 py-2 text-sm text-gray-400 cursor-not-allowed">
-                      {loadingDevelopers ? 'Loading...' : 'Select a service first'}
-                    </div>
-                  </div>
-                ) : (
-                  <Select
-                    value={selectedDeveloperId}
-                    onValueChange={setSelectedDeveloperId}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select a team member..." />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="service">Service</Label>
+                  <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Select a service..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none" label="No specific person">No specific person</SelectItem>
-                      {developers.map(dev => (
-                        <SelectItem key={dev.id} value={dev.id.toString()} label={dev.fullName}>
-                          {dev.fullName} ({dev.role})
+                      <SelectItem value="none" label="General Feedback">
+                        General Feedback
+                      </SelectItem>
+                      {services.map((service) => (
+                        <SelectItem key={service.id} value={service.id.toString()} label={service.serviceTitle}>
+                          {service.serviceTitle}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                )}
+                </div>
+
+                <div>
+                  <Label htmlFor="developer">Team Member</Label>
+                  {!selectedServiceId || selectedServiceId === 'none' || loadingDevelopers ? (
+                    <div className="mt-2 flex h-11 w-full items-center justify-between rounded-xl border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
+                      {loadingDevelopers ? 'Loading team members...' : 'Select a service first'}
+                    </div>
+                  ) : (
+                    <Select value={selectedDeveloperId} onValueChange={setSelectedDeveloperId}>
+                      <SelectTrigger className="mt-2">
+                        <SelectValue placeholder="Select a team member..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none" label="No specific person">
+                          No specific person
+                        </SelectItem>
+                        {developers.map((developer) => (
+                          <SelectItem key={developer.id} value={developer.id.toString()} label={developer.fullName}>
+                            {developer.fullName} ({developer.role})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Rating */}
-            <div>
-              <Label>Rating *</Label>
-              <div className="mt-2">
-                {renderStars(rating, true)}
+              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
+                <Label>Rating</Label>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  {renderStars(rating, true)}
+                  <p className="text-sm text-muted-foreground">
+                    {rating > 0 ? `${rating}/5 selected` : 'Choose a rating before submitting'}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            {/* Comments */}
-            <div>
-              <Label htmlFor="comments">Your Feedback *</Label>
-              <Textarea
-                id="comments"
-                value={comments}
-                onChange={(e) => setComments(e.target.value)}
-                placeholder="Tell us about your experience..."
-                rows={4}
-                className="mt-1"
-              />
-            </div>
+              <div>
+                <Label htmlFor="comments">Your Feedback</Label>
+                <Textarea
+                  id="comments"
+                  value={comments}
+                  onChange={(event) => setComments(event.target.value)}
+                  placeholder="What is working well, where are you seeing friction, and what should improve?"
+                  rows={6}
+                  className="mt-2"
+                />
+              </div>
 
-            <Button type="submit" disabled={isSubmitting || rating === 0 || !comments.trim()}>
-              {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-dashed border-border/70 bg-muted/15 px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Feedback can be general, service-specific, or attached to a teammate.
+                </p>
+                <Button type="submit" disabled={isSubmitting || rating === 0 || !comments.trim()}>
+                  {isSubmitting ? 'Submitting...' : 'Submit feedback'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
 
-      {/* My Feedbacks */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">My Submitted Feedbacks</h2>
+        <Card className="border-white/80 bg-white/88">
+          <CardContent className="p-6 sm:p-7">
+            <SectionHeading
+              title="How responses work"
+              description="What to expect after your feedback is sent."
+              icon={<MessageSquare className="h-5 w-5" />}
+            />
 
-        {feedbacks.length === 0 ? (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center">
-                <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No feedbacks yet</h3>
-                <p className="text-gray-500">
-                  You haven't submitted any feedback yet. Use the form above to share your experience.
+            <div className="space-y-3">
+              <div className="rounded-[1.2rem] border border-border/70 bg-slate-950 p-5 text-white">
+                <p className="text-sm font-semibold text-white/90">Direct visibility</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Vestov operations reviews incoming feedback and can respond directly inside the same thread.
                 </p>
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {feedbacks.map(feedback => (
-              <Card key={feedback.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  {/* Header Row */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      {feedback.service ? (
-                        <Badge className="text-xs bg-primary text-white">
-                          <Briefcase className="h-3 w-3 mr-1" />
-                          {feedback.service.serviceTitle}
+              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-5">
+                <p className="text-sm font-semibold text-foreground">Service context</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Link feedback to a service or specific teammate when the request needs targeted follow-up.
+                </p>
+              </div>
+              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-5">
+                <p className="text-sm font-semibold text-foreground">Clear status tracking</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Each feedback item moves from pending review to responded once the team closes the loop.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-white/80 bg-white/88">
+        <CardContent className="p-6 sm:p-7">
+          <SectionHeading
+            title="Submitted feedback"
+            description="Historical entries and responses from the team."
+            icon={<MessageSquare className="h-5 w-5" />}
+          />
+
+          {feedbacks.length === 0 ? (
+            <EmptyState
+              icon={<MessageSquare className="h-6 w-6" />}
+              title="No feedback yet"
+              description="Use the form above to start the first feedback thread."
+            />
+          ) : (
+            <div className="space-y-4">
+              {feedbacks.map((feedback) => (
+                <div
+                  key={feedback.id}
+                  className="rounded-[1.35rem] border border-border/70 bg-muted/15 p-5 shadow-[0_26px_50px_-38px_rgba(15,23,42,0.4)]"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {feedback.service ? (
+                          <Badge className="bg-primary text-white">
+                            <Briefcase className="mr-1 h-3 w-3" />
+                            {feedback.service.serviceTitle}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-primary text-white">
+                            <MessageSquare className="mr-1 h-3 w-3" />
+                            General Feedback
+                          </Badge>
+                        )}
+
+                        {feedback.teamMember && (
+                          <Badge variant="outline">
+                            <User className="mr-1 h-3 w-3" />
+                            {feedback.teamMember.fullName}
+                          </Badge>
+                        )}
+
+                        <Badge
+                          className={feedback.status === 'reviewed'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'}
+                        >
+                          {feedback.status === 'reviewed' ? 'Responded' : 'Pending'}
                         </Badge>
-                      ) : (
-                        <Badge className="text-xs bg-primary text-white">
-                          <MessageSquare className="h-3 w-3 mr-1" />
-                          General Feedback
-                        </Badge>
-                      )}
-                      {feedback.teamMember && (
-                        <Badge variant="outline" className="text-xs">
-                          <User className="h-3 w-3 mr-1" />
-                          {feedback.teamMember.fullName}
-                        </Badge>
-                      )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-4">
+                        {renderStars(feedback.rating, false, 'sm')}
+                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {formatDate(feedback.createdAt)}
+                        </span>
+                      </div>
                     </div>
-                    <Badge
-                      variant={feedback.status === 'reviewed' ? 'default' : 'secondary'}
-                      className={feedback.status === 'reviewed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
-                    >
-                      {feedback.status === 'reviewed' ? (
-                        <>
-                          <Check className="h-3 w-3 mr-1" />
-                          Responded
-                        </>
-                      ) : (
-                        'Pending'
-                      )}
-                    </Badge>
                   </div>
 
-                  {/* Rating and Date */}
-                  <div className="flex items-center gap-4 mb-3">
-                    {renderStars(feedback.rating)}
-                    <span className="text-sm text-gray-500 flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDate(feedback.createdAt)}
-                    </span>
+                  <div className="mt-4 rounded-[1.1rem] border border-border/60 bg-white/85 p-4">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{feedback.comments}</p>
                   </div>
 
-                  {/* Comment */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-gray-700 whitespace-pre-wrap">{feedback.comments}</p>
-                  </div>
-
-                  {/* Admin Response */}
                   {feedback.adminResponse && (
-                    <div className="border-l-4 border-blue-500 pl-4 mt-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-blue-600">Response from Team</span>
+                    <div className="mt-4 rounded-[1.1rem] border border-sky-200/80 bg-sky-50/80 p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-sky-900">Response from team</p>
                         {feedback.adminRespondedAt && (
-                          <span className="text-xs text-gray-400">
-                            {formatDate(feedback.adminRespondedAt)}
-                          </span>
+                          <span className="text-xs text-sky-700">{formatDate(feedback.adminRespondedAt)}</span>
                         )}
                       </div>
-                      <p className="text-gray-700 text-sm whitespace-pre-wrap">{feedback.adminResponse}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-sky-900">
+                        {feedback.adminResponse}
+                      </p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

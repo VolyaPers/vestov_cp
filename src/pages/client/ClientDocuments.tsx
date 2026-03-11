@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { api } from '@/lib/api'
 import { parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 import type { ClientService } from '@/types/common'
 
 interface Document {
@@ -251,29 +252,37 @@ export function ClientDocuments() {
     return total
   }
 
+  const getTotalFolders = () => {
+    return Object.values(serviceDocuments).reduce((total, service) => total + service.folders.length, 0)
+  }
+
   const renderDocument = (doc: DocumentWithUploader) => {
     const uploadedByClient = doc.uploadedBy?.email?.includes('@') &&
       !doc.uploadedBy?.email?.includes('vestov') &&
       !doc.uploadedBy?.email?.includes('admin')
 
     return (
-      <Card key={doc.document.id} className="hover:shadow-md transition-shadow" data-testid="document-item">
+      <Card
+        key={doc.document.id}
+        className="border-white/80 bg-white/92 shadow-[0_22px_45px_-34px_rgba(15,23,42,0.35)] transition-all hover:-translate-y-0.5 hover:shadow-[0_28px_60px_-34px_rgba(15,23,42,0.48)]"
+        data-testid="document-item"
+      >
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4 flex-1 min-w-0">
-              <div className="p-2 bg-gray-100 rounded flex-shrink-0">
-                <FileText className="h-5 w-5 text-gray-600" />
+              <div className="flex-shrink-0 rounded-[0.95rem] bg-primary/10 p-2.5 text-primary">
+                <FileText className="h-5 w-5" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-gray-900 truncate">
+                  <h3 className="truncate font-semibold text-foreground">
                     {doc.document.documentTitle || doc.document.name}
                   </h3>
                 </div>
                 {doc.document.documentTitle && (
-                  <p className="text-xs text-gray-400 truncate mb-1">{doc.document.name}</p>
+                  <p className="mb-1 truncate text-xs text-muted-foreground">{doc.document.name}</p>
                 )}
-                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   {doc.document.type && (
                     <Badge variant="outline" className="text-xs">
                       {doc.document.type}
@@ -288,8 +297,8 @@ export function ClientDocuments() {
                     <Badge
                       variant="outline"
                       className={uploadedByClient
-                        ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
-                        : "bg-purple-50 text-purple-700 border-purple-200 text-xs"
+                        ? 'border-sky-200 bg-sky-50 text-sky-700 text-xs'
+                        : 'border-violet-200 bg-violet-50 text-violet-700 text-xs'
                       }
                     >
                       {uploadedByClient ? (
@@ -346,16 +355,16 @@ export function ClientDocuments() {
   const renderFolderCard = (folder: DocumentFolder) => (
     <div
       key={folder.id}
-      className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+      className="cursor-pointer rounded-[1.2rem] border border-border/70 bg-white/85 p-4 shadow-[0_20px_40px_-34px_rgba(15,23,42,0.32)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-32px_rgba(15,23,42,0.4)]"
       onClick={() => openFolderViewDialog(folder)}
     >
       <div className="flex items-center gap-3">
-        <div className="p-2 bg-yellow-50 rounded-lg">
-          <Folder className="h-5 w-5 text-yellow-500" />
+        <div className="rounded-[0.95rem] bg-amber-100 p-2.5 text-amber-700">
+          <Folder className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <h4 className="font-medium text-gray-900">{folder.name}</h4>
-          <p className="text-xs text-gray-500">
+          <h4 className="font-medium text-foreground">{folder.name}</h4>
+          <p className="text-xs text-muted-foreground">
             {folder.documents.length} document{folder.documents.length !== 1 ? 's' : ''}
           </p>
         </div>
@@ -373,14 +382,14 @@ export function ClientDocuments() {
     if (isLoadingDocs) {
       return (
         <div className="p-4 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary" />
         </div>
       )
     }
 
     if (!docs) {
       return (
-        <div className="p-4 text-center text-gray-500">
+        <div className="p-4 text-center text-muted-foreground">
           <p>Loading documents...</p>
         </div>
       )
@@ -390,9 +399,12 @@ export function ClientDocuments() {
 
     if (!hasContent) {
       return (
-        <div className="p-4 text-center text-gray-500">
-          <FileText className="mx-auto h-8 w-8 text-gray-300 mb-2" />
-          <p>No documents available for this service yet</p>
+        <div className="p-4">
+          <EmptyState
+            icon={<FileText className="h-6 w-6" />}
+            title="No documents yet"
+            description="Files uploaded to this service will appear here."
+          />
         </div>
       )
     }
@@ -402,7 +414,7 @@ export function ClientDocuments() {
         {/* Folders Grid */}
         {docs.folders.length > 0 && (
           <div>
-            <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+            <h5 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Folders
             </h5>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -415,7 +427,7 @@ export function ClientDocuments() {
         {docs.rootDocuments.length > 0 && (
           <div className={docs.folders.length > 0 ? 'border-t pt-4' : ''}>
             {docs.folders.length > 0 && (
-              <h5 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+              <h5 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 General Documents
               </h5>
             )}
@@ -431,47 +443,76 @@ export function ClientDocuments() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Documents
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Your project documents and files
-              {getTotalDocuments() > 0 && (
-                <span className="ml-2">({getTotalDocuments()} documents)</span>
-              )}
-            </p>
-          </div>
-        </div>
+      <PageHero
+        eyebrow="Client Workspace"
+        title="Document center"
+        description="Access service folders, client-uploaded files, and shared project documents from a single structured workspace."
+        theme="ocean"
+        meta={(
+          <>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              Access: {accessLevel || 'read'}
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {services.length} service{services.length !== 1 ? 's' : ''}
+            </span>
+          </>
+        )}
+      />
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricTile
+          label="Documents"
+          value={getTotalDocuments()}
+          hint="Across all visible services"
+          icon={<FileText className="h-5 w-5" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Folders"
+          value={getTotalFolders()}
+          hint="Structured project archives"
+          icon={<Folder className="h-5 w-5" />}
+          tone="amber"
+        />
+        <MetricTile
+          label="Upload Access"
+          value={canUpload ? 'Enabled' : 'Read only'}
+          hint={canUpload ? 'You can add new client documents' : 'Uploads require write or admin access'}
+          icon={<Upload className="h-5 w-5" />}
+          tone={canUpload ? 'emerald' : 'slate'}
+        />
       </div>
 
       {services.length > 0 ? (
         <div className="space-y-4">
+          <SectionHeading
+            title="Services and folders"
+            description="Each service keeps its own file stream, folders, and general documents."
+            icon={<Building2 className="h-5 w-5" />}
+          />
           {services.map(service => (
-            <Card key={service.id}>
+            <Card key={service.id} className="overflow-hidden border-white/80 bg-white/90">
               <CardHeader
-                className="cursor-pointer hover:bg-gray-50"
+                className="cursor-pointer transition-colors hover:bg-muted/25"
                 onClick={() => toggleService(service.id)}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {expandedServices.has(service.id) ? (
-                      <ChevronDown className="h-5 w-5 text-gray-400" />
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
                     ) : (
-                      <ChevronRight className="h-5 w-5 text-gray-400" />
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
                     )}
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <Building2 className="h-5 w-5 text-primary" />
+                    <div className="rounded-[0.95rem] bg-primary/10 p-2.5 text-primary">
+                      <Building2 className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -486,13 +527,13 @@ export function ClientDocuments() {
                         <Badge
                           variant="outline"
                           className={service.serviceCategory === 'outstaffing'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-green-50 text-green-700 border-green-200'
+                            ? 'border-sky-200 bg-sky-50 text-sky-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           }
                         >
                           {service.serviceCategory}
                         </Badge>
-                        <span className="text-gray-500">
+                        <span className="text-muted-foreground">
                           Started {parseLocalDate(service.startDate).toLocaleDateString()}
                         </span>
                       </CardDescription>
@@ -528,7 +569,7 @@ export function ClientDocuments() {
               </CardHeader>
 
               {expandedServices.has(service.id) && (
-                <CardContent className="border-t">
+                <CardContent className="border-t border-border/70">
                   {renderServiceContent(service)}
                 </CardContent>
               )}
@@ -536,13 +577,11 @@ export function ClientDocuments() {
           ))}
         </div>
       ) : (
-        <Card>
-          <CardContent className="text-center py-12">
-            <FileText className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No documents available</h3>
-            <p className="text-gray-600">Your project documents will appear here when they're uploaded.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<FileText className="h-6 w-6" />}
+          title="No documents available"
+          description="Project files will appear here once the first service documents are uploaded."
+        />
       )}
 
       {/* Document Preview Dialog */}

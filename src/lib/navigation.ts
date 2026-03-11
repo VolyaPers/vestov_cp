@@ -34,6 +34,12 @@ export interface NavItem {
   children?: NavItemChild[]
 }
 
+export interface MobileNavItem {
+  name: string
+  href: string
+  icon: LucideIcon
+}
+
 export interface SearchShortcut {
   id: string
   type: 'page'
@@ -105,6 +111,65 @@ export function getNavigation(role: UserRole, currentClient?: Client | null): Na
   if (role === 'admin') return adminNavigation
   if (role === 'team_member') return teamMemberNavigation
   return getClientNavigation(currentClient?.id)
+}
+
+export function getPrimaryMobileNavigation(role: UserRole, currentClient?: Client | null): MobileNavItem[] {
+  if (role === 'admin') {
+    return [
+      { name: 'Home', href: '/admin/dashboard', icon: BarChart3 },
+      { name: 'Reports', href: '/admin/reports', icon: TrendingUp },
+      { name: 'Users', href: '/admin/users', icon: UserCog },
+      { name: 'Finance', href: '/admin/finances', icon: Wallet },
+    ]
+  }
+
+  if (role === 'team_member') {
+    return [
+      { name: 'Home', href: '/employee/dashboard', icon: BarChart3 },
+      { name: 'Calendar', href: '/employee/vacations', icon: Calendar },
+      { name: 'Expenses', href: '/employee/reimbursements', icon: Receipt },
+      { name: 'Profile', href: '/employee/profile', icon: User },
+    ]
+  }
+
+  if (currentClient?.id) {
+    return [
+      { name: 'Overview', href: `/client/portal/${currentClient.id}`, icon: Building },
+      { name: 'Team', href: '/client/team-status', icon: Users },
+      { name: 'Docs', href: `/client/documents/${currentClient.id}`, icon: FileText },
+      { name: 'Bills', href: `/client/invoices/${currentClient.id}`, icon: DollarSign },
+    ]
+  }
+
+  return [
+    { name: 'Team', href: '/client/team-status', icon: Users },
+    { name: 'Feedback', href: '/client/feedback', icon: Star },
+    { name: 'Profile', href: '/client/profile', icon: User },
+  ]
+}
+
+export function getActiveNavigationLabel(
+  role: UserRole,
+  pathname: string,
+  currentClient?: Client | null
+): string | null {
+  const navigation = getNavigation(role, currentClient)
+
+  for (const item of navigation) {
+    if (pathname === item.href || pathname.startsWith(item.href + '/')) {
+      return item.name
+    }
+
+    if (item.children) {
+      for (const child of item.children) {
+        if (pathname === child.href || pathname.startsWith(child.href + '/')) {
+          return child.name
+        }
+      }
+    }
+  }
+
+  return null
 }
 
 export function getSearchShortcuts(role: UserRole, currentClientId?: number | null): SearchShortcut[] {

@@ -1492,11 +1492,11 @@ export function FinancesPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setLocation(`/admin/finances/${value}`)} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="salaries">Salaries</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto p-1 touch-scroll-x sm:grid sm:grid-cols-4 sm:justify-center sm:overflow-visible">
+          <TabsTrigger value="overview" className="min-w-[6.5rem] flex-none sm:min-w-0 sm:flex-1">Overview</TabsTrigger>
+          <TabsTrigger value="transactions" className="min-w-[8.25rem] flex-none sm:min-w-0 sm:flex-1">Transactions</TabsTrigger>
+          <TabsTrigger value="salaries" className="min-w-[6.5rem] flex-none sm:min-w-0 sm:flex-1">Salaries</TabsTrigger>
+          <TabsTrigger value="categories" className="min-w-[7rem] flex-none sm:min-w-0 sm:flex-1">Categories</TabsTrigger>
         </TabsList>
 
         {/* ========== TAB 1: OVERVIEW ========== */}
@@ -1594,16 +1594,16 @@ export function FinancesPage() {
           ) : (
             <>
               {/* Hero P&L Card */}
-              <div className={`stripe-card p-6 border-l-4 ${netPL >= 0 ? 'border-l-emerald-500' : 'border-l-red-500'}`}>
-                <div className="flex items-center justify-between">
-                  <div>
+              <div className={`stripe-card overflow-hidden border-l-4 p-4 sm:p-6 ${netPL >= 0 ? 'border-l-emerald-500' : 'border-l-red-500'}`}>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-500 mb-1">
                       <LabelWithInfo label="Net Profit / Loss" infoKey="netProfitLoss" />
                     </p>
-                    <p className={`text-3xl font-bold ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <p className={`text-[1.75rem] font-bold leading-none sm:text-3xl ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatCurrency(netPL)}
                     </p>
-                    <div className="flex items-center gap-4 mt-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                       <span className="text-xs text-gray-500">
                         <LabelWithInfo label="Margin" infoKey="margin" className="font-normal" />:{' '}
                         <span className={`font-semibold ${profitMargin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{profitMargin.toFixed(1)}%</span>
@@ -1624,12 +1624,12 @@ export function FinancesPage() {
                       })()}
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500 mb-0.5">
+                  <div className="grid w-full min-w-0 grid-cols-2 gap-3 border-t border-gray-100 pt-4 lg:w-auto lg:border-t-0 lg:pt-0 lg:pl-6">
+                    <div className="min-w-0 text-left lg:text-right">
+                      <p className="mb-0.5 text-xs text-gray-500">
                         <LabelWithInfo label="Revenue" infoKey="totalRevenue" />
                       </p>
-                      <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalIncome)}</p>
+                      <p className="truncate text-base font-bold text-emerald-600 sm:text-lg">{formatCurrency(totalIncome)}</p>
                       {compareEnabled && comparisonData ? (() => {
                         const ch = computeChange(totalIncome, compTotalIncome)
                         return (
@@ -1643,12 +1643,11 @@ export function FinancesPage() {
                         </div>
                       )}
                     </div>
-                    <div className="w-px h-12 bg-gray-200" />
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500 mb-0.5">
+                    <div className="min-w-0 border-l border-gray-200 pl-3 text-left lg:text-right">
+                      <p className="mb-0.5 text-xs text-gray-500">
                         <LabelWithInfo label="Costs" infoKey="totalCosts" />
                       </p>
-                      <p className="text-lg font-bold text-red-500">{formatCurrency(totalExpenses)}</p>
+                      <p className="truncate text-base font-bold text-red-500 sm:text-lg">{formatCurrency(totalExpenses)}</p>
                       {compareEnabled && comparisonData ? (() => {
                         const ch = computeChange(totalExpenses, compTotalExpenses)
                         return (

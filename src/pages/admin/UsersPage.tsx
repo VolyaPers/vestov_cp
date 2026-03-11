@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Link, useLocation } from 'wouter'
+import { useLocation } from 'wouter'
 import { Plus, Edit, Trash2, User, Mail, UserCheck, UserX, Users, Shield, Briefcase, Search, Building, X, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 import { TimezoneSelect } from '@/components/TimezoneSelect'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface User {
   id: number
@@ -343,47 +344,83 @@ export function UsersPage() {
     return matchesSearch && matchesRole
   })
 
+  const activeUsers = users.filter((user) => user.isActive).length
+  const clientUsers = users.filter((user) => user.role === 'client').length
+  const teamUsers = users.filter((user) => user.role === 'team_member').length
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              User Management
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Manage system users and their roles
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsUserDialogOpen(true)} className="stripe-btn-primary" title="Create a new user">
-              <Plus className="h-4 w-4 mr-2" />
-              Create User
-            </button>
-          </div>
+    <div className="space-y-4 sm:space-y-6">
+      <PageHero
+        eyebrow="Administration"
+        title="User management"
+        description="Manage system users, assign roles, and control client portal access from one operational workspace."
+        theme="violet"
+        actions={(
+          <Button onClick={() => setIsUserDialogOpen(true)} title="Create a new user">
+            <Plus className="mr-2 h-4 w-4" />
+            Create user
+          </Button>
+        )}
+        meta={(
+          <>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {users.length} total users
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {activeUsers} active
+            </span>
+          </>
+        )}
+      />
+
+      <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible">
+        <div className="min-w-[15rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile
+            label="Active Accounts"
+            value={activeUsers}
+            hint={`${users.length - activeUsers} inactive`}
+            icon={<UserCheck className="h-5 w-5" />}
+            tone="emerald"
+          />
+        </div>
+        <div className="min-w-[15rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile
+            label="Team Members"
+            value={teamUsers}
+            hint="Internal staff accounts"
+            icon={<Briefcase className="h-5 w-5" />}
+            tone="primary"
+          />
+        </div>
+        <div className="min-w-[15rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile
+            label="Client Users"
+            value={clientUsers}
+            hint="Portal-assigned external users"
+            icon={<Building className="h-5 w-5" />}
+            tone="amber"
+          />
         </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
+      <Card className="border-white/80 bg-white/88 content-auto">
+        <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
             Search & Filter
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <div className="flex-1">
+        <CardContent className="pt-0">
+          <div className="grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_14rem_auto] xl:items-end">
+            <div className="space-y-2.5">
               <Label htmlFor="search">Search Users</Label>
               <Input
                 id="search"
@@ -393,7 +430,7 @@ export function UsersPage() {
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
               />
             </div>
-            <div className="w-48">
+            <div className="space-y-2.5">
               <Label htmlFor="roleFilter">Filter by Role</Label>
               <Select value={roleFilter} onValueChange={setRoleFilter}>
                 <SelectTrigger>
@@ -407,31 +444,33 @@ export function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
-              <Button onClick={handleSearch} title="Search users">Search</Button>
+            <div className="flex xl:justify-end">
+              <Button onClick={handleSearch} title="Search users" className="w-full xl:w-auto">
+                Search
+              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Users List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Users ({filteredUsers.length})
-          </CardTitle>
-          <CardDescription>
-            All system users with their roles and status
-          </CardDescription>
+      <Card className="border-white/80 bg-white/88 content-auto">
+        <CardHeader className="pb-3">
+          <SectionHeading
+            title={`Users (${filteredUsers.length})`}
+            description="All system users with role assignments, status, and client access."
+            icon={<Users className="h-5 w-5" />}
+          />
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {filteredUsers.length > 0 ? (
             <div className="space-y-4">
               {filteredUsers.map((user) => (
-                <div key={user.id} className="p-4 border rounded-lg hover:bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
+                <div
+                  key={user.id}
+                  className="rounded-[1.35rem] border border-border/70 bg-muted/15 px-4 pb-4 pt-4 shadow-[0_22px_45px_-36px_rgba(15,23,42,0.35)] sm:px-5 sm:pb-5 sm:pt-5"
+                >
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="flex items-start gap-3.5">
                       {user.avatarUrl ? (
                         <img
                           src={user.avatarUrl}
@@ -439,13 +478,13 @@ export function UsersPage() {
                           className="w-10 h-10 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                           {getRoleIcon(user.role)}
                         </div>
                       )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900">{user.fullName}</p>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-foreground">{user.fullName}</p>
                           <Badge className={getRoleBadgeClass(user.role)}>
                             {user.role.replace('_', ' ')}
                           </Badge>
@@ -455,7 +494,7 @@ export function UsersPage() {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
                           <span>@{user.username}</span>
                           <span className="flex items-center gap-1">
                             <Mail className="h-3 w-3" />
@@ -465,7 +504,7 @@ export function UsersPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex w-full shrink-0 flex-wrap items-center gap-2 self-start sm:w-auto">
                       {user.role === 'client' && (
                         <Button
                           variant="outline"
@@ -509,9 +548,9 @@ export function UsersPage() {
 
                   {/* Client Assignments Section */}
                   {user.role === 'client' && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <div className="mt-4 border-t border-border/70 pt-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h4 className="flex items-center gap-2 text-sm font-medium text-foreground">
                           <Building className="h-4 w-4" />
                           Client Assignments
                         </h4>
@@ -519,9 +558,12 @@ export function UsersPage() {
                       {user.clientAssignments && user.clientAssignments.length > 0 ? (
                         <div className="space-y-2">
                           {user.clientAssignments.map((assignment) => (
-                            <div key={assignment.assignmentId} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                            <div
+                              key={assignment.assignmentId}
+                              className="flex items-start justify-between gap-3 rounded-[1rem] border border-border/60 bg-white/90 px-4 pb-4 pt-4"
+                            >
                               <div className="flex-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-medium text-sm">{assignment.clientName}</span>
                                   <Badge className={
                                     assignment.accessLevel === 'admin' ? 'bg-red-100 text-red-800' :
@@ -536,7 +578,7 @@ export function UsersPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-xs text-gray-500">
+                                <p className="mt-1.5 text-xs text-muted-foreground">
                                   Assigned: {new Date(assignment.assignedAt).toLocaleDateString()}
                                 </p>
                               </div>
@@ -570,8 +612,8 @@ export function UsersPage() {
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-2 text-gray-500 text-sm">
-                          <Building className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+                        <div className="py-3 text-center text-sm text-muted-foreground">
+                          <Building className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
                           <p>No client assignments</p>
                           <Button
                             variant="link"
@@ -587,7 +629,7 @@ export function UsersPage() {
                   )}
 
                   {/* Metadata */}
-                  <div className="flex items-center gap-4 text-xs text-gray-500 mt-3 pt-2 border-t">
+                  <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
                     <span>Created: {new Date(user.createdAt).toLocaleDateString()}</span>
                     {user.lastLoginAt && (
                       <span>Last login: {new Date(user.lastLoginAt).toLocaleDateString()}</span>
@@ -597,11 +639,11 @@ export function UsersPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Users Found</h3>
-              <p>No users match your search criteria.</p>
-            </div>
+            <EmptyState
+              icon={<Users className="h-6 w-6" />}
+              title="No users found"
+              description="No users match the current search and role filters."
+            />
           )}
         </CardContent>
       </Card>

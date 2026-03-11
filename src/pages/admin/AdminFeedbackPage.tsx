@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import { EmptyState, PageHero } from '@/components/page-primitives'
 
 interface Feedback {
   id: number
@@ -175,19 +176,19 @@ export function AdminFeedbackPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Feedback Management
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              View and respond to client feedback
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="Feedback Management"
+        title="Client sentiment and response workflow in one place."
+        description="Feedback now lives inside the same upgraded UI system, with cleaner filters and less visual friction around response handling."
+        theme="teal"
+        meta={
+          <>
+            <span>{feedbacks.length} total feedback items</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{filteredFeedbacks.length} currently visible</span>
+          </>
+        }
+      />
 
       {/* Filters */}
       <Card>
@@ -241,15 +242,13 @@ export function AdminFeedbackPage() {
       {filteredFeedbacks.length === 0 ? (
         <Card>
           <CardContent className="py-12">
-            <div className="text-center">
-              <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No feedbacks found</h3>
-              <p className="text-gray-500">
-                {feedbacks.length === 0
-                  ? 'No feedback has been submitted yet.'
-                  : 'No feedbacks match your current filters.'}
-              </p>
-            </div>
+            <EmptyState
+              icon={<MessageSquare className="h-6 w-6" />}
+              title="No feedbacks found"
+              description={feedbacks.length === 0
+                ? 'No feedback has been submitted yet.'
+                : 'No feedbacks match your current filters.'}
+            />
           </CardContent>
         </Card>
       ) : (

@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'wouter'
 import {
+  BriefcaseBusiness,
+  Building2,
   LogOut,
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { UserImpersonation } from '@/components/UserImpersonation'
 import { ShiftWidget } from '@/components/ShiftWidget'
 import vestovLogo from '@/assets/vestov-logo.png'
@@ -29,8 +34,28 @@ export interface SidebarProps {
   currentClient?: Client | null
 }
 
+const roleThemes = {
+  admin: {
+    badge: 'Admin HQ',
+    icon: ShieldCheck,
+    glow: 'from-cyan-500/8 via-sky-400/4 to-transparent',
+  },
+  team_member: {
+    badge: 'Employee Space',
+    icon: BriefcaseBusiness,
+    glow: 'from-emerald-400/9 via-teal-400/5 to-transparent',
+  },
+  client: {
+    badge: 'Client Portal',
+    icon: Building2,
+    glow: 'from-amber-400/8 via-cyan-400/4 to-transparent',
+  },
+} as const
+
 export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
   const [location] = useLocation()
+  const theme = roleThemes[role]
+  const ThemeIcon = theme.icon
 
   // Get navigation based on role
   const navigation = getNavigation(role, currentClient)
@@ -50,23 +75,56 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
   const showImpersonation = role === 'admin' || user?.isImpersonating
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 stripe-card stripe-border shadow-sm">
-      <div className="flex-1 flex flex-col pt-8 pb-6 overflow-y-auto">
-        {/* Header with logo */}
-        <div className="flex items-center flex-shrink-0 px-6 mb-8">
-          <div className="flex items-center gap-3">
-            <img src={vestovLogo} alt="Vestov Logo" className="h-10 w-auto drop-shadow-lg" />
-            <div>
-              <h1 className="text-xl font-bold stripe-text-primary">
+    <div className="flex min-h-full flex-col overflow-visible rounded-[1.75rem] border border-white/70 bg-white/78 shadow-[0_28px_56px_-28px_rgba(15,23,42,0.32)] backdrop-blur-2xl lg:h-full lg:min-h-0 lg:overflow-hidden">
+      <div className="relative overflow-hidden border-b border-border/60 px-5 pb-4 pt-5">
+        <div className={cn('absolute inset-0 bg-gradient-to-br opacity-80', theme.glow)} />
+        <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-primary/6 blur-3xl" />
+        <div className="relative">
+          <Badge variant="outline" className="border-white/70 bg-white/72 text-[0.6rem] text-muted-foreground">
+            {theme.badge}
+          </Badge>
+
+          <div className="mt-4 flex items-start gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/80 bg-white/90 shadow-[0_14px_26px_-22px_rgba(15,23,42,0.7)]">
+              <img src={vestovLogo} alt="Vestov Logo" className="h-9 w-auto" />
+            </div>
+            <div className="min-w-0 pt-1">
+              <h1 className="font-display text-[1.45rem] font-semibold text-foreground">
                 Vestov Hub
               </h1>
-              <p className="text-xs stripe-text-muted font-medium">{roleSubtitles[role]}</p>
             </div>
           </div>
-        </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-4 space-y-1">
+          <div className="mt-3 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+              <ThemeIcon className="h-4 w-4" />
+            </div>
+            <Badge variant="outline" className="border-white/70 bg-white/72 text-muted-foreground">
+              {roleSubtitles[role]}
+            </Badge>
+          </div>
+
+          {role === 'client' && currentClient && (
+            <div className="mt-3 rounded-[1.15rem] border border-white/75 bg-white/72 p-3 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.7)]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Current account</p>
+                  <p className="mt-1.5 font-display text-base font-semibold text-foreground">{currentClient.name}</p>
+                </div>
+                <Badge variant="outline" className="border-primary/20 bg-primary/10 text-primary">
+                  {currentClient.accessLevel || 'read'}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="px-3 py-3 lg:flex-1 lg:overflow-y-auto">
+        <div className="mb-2 px-2 text-[0.66rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">
+          Workspace
+        </div>
+        <nav className="space-y-1">
           {navigation.map((item) => {
             const hasChildren = !!item.children
 
@@ -83,10 +141,10 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                     )}
                   >
                     <div className={cn(
-                      'flex items-center justify-center w-8 h-8 rounded-md mr-3 transition-all duration-150',
+                      'mr-3 flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150',
                       !isParentActive && 'text-[var(--stripe-text-tertiary)]'
                     )}>
-                      <item.icon className="h-5 w-5" />
+                      <item.icon className="h-4.5 w-4.5" />
                     </div>
                     <span className="flex-1 font-medium text-left">{item.name}</span>
                     {crmOpen || isParentActive ? (
@@ -96,17 +154,17 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                     )}
                   </button>
                   {(crmOpen || isParentActive) && item.children && (
-                    <div className="ml-4 mt-1 space-y-1">
+                    <div className="ml-3 mt-1.5 space-y-1">
                       {item.children.map((child) => {
                         const isChildActive = location === child.href || location.startsWith(child.href + '/')
                         return (
-                          <Link key={child.name} href={child.href}>
+                          <Link key={child.name} href={child.href} className="stripe-nav-link block no-underline hover:no-underline">
                             <div className={cn(
-                              'stripe-nav-item pl-8',
+                              'stripe-nav-item pl-4.5',
                               isChildActive && 'stripe-nav-item-active'
                             )}>
                               <div className={cn(
-                                'flex items-center justify-center w-6 h-6 rounded-md mr-3 transition-all duration-150',
+                                'mr-3 flex h-7 w-7 items-center justify-center rounded-xl transition-all duration-150',
                                 !isChildActive && 'text-[var(--stripe-text-tertiary)]'
                               )}>
                                 <child.icon className="h-4 w-4" />
@@ -130,10 +188,10 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="stripe-nav-item"
+                  className="stripe-nav-item no-underline hover:no-underline"
                 >
                   <item.icon
-                    className="mr-3 flex-shrink-0 h-5 w-5 transition-colors text-[var(--stripe-text-tertiary)]"
+                    className="mr-3 h-4.5 w-4.5 flex-shrink-0 transition-colors text-[var(--stripe-text-tertiary)]"
                     aria-hidden="true"
                   />
                   <span className="flex-1">{item.name}</span>
@@ -145,16 +203,16 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
             // Handle regular internal links
             const isActive = location === item.href || location.startsWith(item.href + '/')
             return (
-              <Link key={item.name} href={item.href}>
+              <Link key={item.name} href={item.href} className="stripe-nav-link block no-underline hover:no-underline">
                 <div className={cn(
                   'stripe-nav-item',
                   isActive && 'stripe-nav-item-active'
                 )}>
                   <div className={cn(
-                    'flex items-center justify-center w-8 h-8 rounded-md mr-3 transition-all duration-150',
+                    'mr-3 flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150',
                     !isActive && 'text-[var(--stripe-text-tertiary)]'
                   )}>
-                    <item.icon className="h-5 w-5" />
+                    <item.icon className="h-4.5 w-4.5" />
                   </div>
                   <span className="flex-1 font-medium">{item.name}</span>
                 </div>
@@ -164,54 +222,36 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
         </nav>
       </div>
 
-      {/* Bottom section with widgets and user info */}
-      <div className="flex-shrink-0 p-4 space-y-4" style={{ borderTopColor: 'var(--stripe-border)' }}>
-        {/* ShiftWidget - Team Member only */}
-        {role === 'team_member' && <ShiftWidget />}
-
-        {/* Current Client Info - Client only */}
-        {role === 'client' && currentClient && (
-          <div className="rounded-lg bg-gray-50 p-4">
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Current Client</h3>
-            <p className="text-sm text-gray-600 font-medium">{currentClient.name}</p>
-            <p className="text-xs text-gray-500 mt-1">You have read-only access</p>
+      <div className="space-y-4 border-t border-border/60 bg-white/50 p-4 backdrop-blur-sm">
+        {role === 'team_member' && (
+          <div className="rounded-[1.15rem] border border-white/75 bg-white/72 p-3 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.7)]">
+            <ShiftWidget />
           </div>
         )}
 
-        {/* User Impersonation */}
         {showImpersonation && (
-          <div className={role !== 'admin' ? 'stripe-border-bottom pb-4' : ''} style={{ borderBottomColor: 'var(--stripe-border)' }}>
-            <UserImpersonation
-              currentUser={user}
-              onImpersonate={async () => {
-                // API handles impersonation and reloads page
-              }}
-              onStopImpersonation={async () => {
-                // API handles stop impersonation and reloads page
-              }}
-            />
-          </div>
+          <UserImpersonation
+            currentUser={user}
+            onImpersonate={async () => {
+              // API handles impersonation and reloads page
+            }}
+            onStopImpersonation={async () => {
+              // API handles stop impersonation and reloads page
+            }}
+          />
         )}
 
-        {/* User info */}
         {user && (
-          <div className={cn(
-            'flex items-center rounded-lg p-4',
-            role === 'admin' ? 'stripe-surface stripe-border' : 'stripe-card-hover'
-          )}>
-            {role === 'admin' ? (
-              // Admin avatar style (initials)
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg shadow-sm mr-3" style={{ backgroundColor: 'var(--stripe-primary)', color: 'white' }}>
-                <span className="text-sm font-bold">
+          <div className="rounded-[1.2rem] border border-white/75 bg-white/80 p-4 shadow-[0_16px_28px_-24px_rgba(15,23,42,0.65)]">
+            <div className="flex items-start gap-3.5">
+              {role === 'admin' ? (
+                <div className="flex h-10 w-10 items-center justify-center rounded-[0.95rem] bg-primary text-sm font-bold text-primary-foreground shadow-[0_16px_30px_-18px_hsl(var(--primary)/0.8)]">
                   {user.fullName?.split(' ').map((n: string) => n[0]).join('') || 'AD'}
-                </span>
-              </div>
-            ) : (
-              // Team member and client avatar style
-              <div className="flex-shrink-0">
-                <Avatar className="h-10 w-10">
+                </div>
+              ) : (
+                <Avatar className="h-10 w-10 border border-white/70 shadow-[0_12px_24px_-18px_rgba(15,23,42,0.7)]">
                   <AvatarImage src={(user as any).avatarUrl} alt={user.fullName || user.username} />
-                  <AvatarFallback className="bg-blue-100 text-blue-600 text-sm font-semibold">
+                  <AvatarFallback className="bg-primary/12 text-primary text-sm font-semibold">
                     {(user.fullName || user.username)
                       .split(' ')
                       .map((n: string) => n[0])
@@ -220,46 +260,43 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                       .slice(0, 2)}
                   </AvatarFallback>
                 </Avatar>
-              </div>
-            )}
-            <div className={cn('flex-1 min-w-0', role !== 'admin' && 'ml-3')}>
-              <p className="text-sm font-semibold stripe-text-primary truncate">{user.fullName || user.username || 'User'}</p>
-              <p className="text-xs stripe-text-muted font-medium">
-                {role === 'admin' ? (user.role || 'Administrator') :
-                 role === 'team_member' ? ((user as any).position || 'Team Member') :
-                 'Client Role'}
-              </p>
-            </div>
-            {/* Logout button in user info - Admin and Client only (Team Member has separate Sign Out) */}
-            {role !== 'team_member' && (
-              <button
-                onClick={onLogout}
-                className={cn(
-                  'ml-2 h-9 w-9 p-0 rounded-lg transition-all duration-150 flex items-center justify-center',
-                  role === 'admin'
-                    ? 'stripe-btn-secondary hover:bg-red-50 hover:text-red-600 hover:border-red-200'
-                    : ''
-                )}
-                title="Sign out"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        )}
+              )}
 
-        {/* Sign Out button (Team Member style) */}
-        {role === 'team_member' && (
-          <button
-            onClick={onLogout}
-            className="w-full stripe-nav-item"
-          >
-            <LogOut
-              className="mr-3 flex-shrink-0 h-5 w-5 text-[var(--stripe-text-tertiary)]"
-              aria-hidden="true"
-            />
-            Sign Out
-          </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{user.fullName || user.username || 'User'}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {role === 'admin' ? (user.role || 'Administrator') :
+                       role === 'team_member' ? ((user as any).position || 'Team Member') :
+                       'Client access'}
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={onLogout}
+                    className="h-9 w-9 rounded-xl border-border/60 bg-white/75"
+                    title="Sign out"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <Badge variant="outline" className="border-white/70 bg-muted/70 text-muted-foreground">
+                    {roleSubtitles[role]}
+                  </Badge>
+                  {user.isImpersonating && (
+                    <Badge variant="destructive" className="bg-destructive/10 text-destructive">
+                      Impersonation
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

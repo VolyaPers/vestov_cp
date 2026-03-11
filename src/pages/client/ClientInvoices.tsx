@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
+import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Invoice {
   id: number
@@ -100,66 +101,29 @@ export function ClientInvoices() {
 
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Invoices
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Your billing history and payment information
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="Client Billing"
+        title="Invoices and payment status, redesigned for clarity."
+        description="This client billing area now follows the same visual language as the rest of the portal, with cleaner summary tiles and better invoice readability."
+        theme="ocean"
+        meta={
+          <>
+            <span>{invoices.length} invoices available</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{formatCurrency(totals?.pendingAmount || 0)} pending</span>
+          </>
+        }
+      />
 
-      {/* Summary Cards */}
       {totals && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <div className="stripe-stat-card p-6">
-            <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Billed</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.totalAmount || totals.totalInvoiced || 0)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="stripe-stat-card p-6">
-            <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Paid</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.paidAmount || totals.totalPaid || 0)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="stripe-stat-card p-6">
-            <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-yellow-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.pendingAmount || 0)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="stripe-stat-card p-6">
-            <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-red-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Overdue</p>
-                <p className="text-2xl font-bold">{formatCurrency(totals.overdueAmount || 0)}</p>
-              </div>
-            </div>
-          </div>
+          <MetricTile label="Total Billed" value={formatCurrency(totals.totalAmount || totals.totalInvoiced || 0)} hint="Total generated invoice value" icon={<DollarSign className="h-5 w-5" />} tone="primary" />
+          <MetricTile label="Paid" value={formatCurrency(totals.paidAmount || totals.totalPaid || 0)} hint="Settled invoices" icon={<DollarSign className="h-5 w-5" />} tone="emerald" />
+          <MetricTile label="Pending" value={formatCurrency(totals.pendingAmount || 0)} hint="Open balance awaiting payment" icon={<DollarSign className="h-5 w-5" />} tone="amber" />
+          <MetricTile label="Overdue" value={formatCurrency(totals.overdueAmount || 0)} hint="Requires attention" icon={<DollarSign className="h-5 w-5" />} tone="rose" />
         </div>
       )}
 
-      {/* Invoices List */}
       {invoices.length > 0 ? (
         <div className="space-y-4">
           {invoices.map((invoice) => (
@@ -167,17 +131,17 @@ export function ClientInvoices() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4 flex-1">
-                    <div className="p-2 bg-gray-100 rounded">
-                      <FileText className="h-6 w-6 text-gray-600" />
+                    <div className="rounded-[0.95rem] bg-muted/70 p-2">
+                      <FileText className="h-6 w-6 text-muted-foreground" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="font-semibold text-gray-900">{invoice.invoiceNumber}</h3>
+                        <h3 className="font-semibold text-foreground">{invoice.invoiceNumber}</h3>
                         <Badge className={getStatusColor(invoice.status)}>
                           {invoice.status}
                         </Badge>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center space-x-1">
                           <Calendar className="h-4 w-4" />
                           <span>Issued: {new Date(invoice.invoiceDate).toLocaleDateString()}</span>
@@ -194,21 +158,21 @@ export function ClientInvoices() {
                         )}
                       </div>
                       {invoice.description && (
-                        <p className="text-sm text-gray-600 mt-2">{invoice.description}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">{invoice.description}</p>
                       )}
                       {invoice.paidAt && (
-                        <p className="text-sm text-green-600 mt-2">
+                        <p className="mt-2 text-sm text-green-600">
                           Paid on {new Date(invoice.paidAt).toLocaleDateString()}
                         </p>
                       )}
                       {invoice.notes && (
-                        <p className="text-sm text-gray-500 mt-2 italic">"{invoice.notes}"</p>
+                        <p className="mt-2 text-sm italic text-muted-foreground">"{invoice.notes}"</p>
                       )}
                     </div>
                   </div>
                   <div className="text-right flex items-center space-x-4">
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{formatCurrency(invoice.amount)}</p>
+                      <p className="text-2xl font-bold text-foreground">{formatCurrency(invoice.amount)}</p>
                     </div>
                     <Button
                       variant="outline"
@@ -229,9 +193,11 @@ export function ClientInvoices() {
       ) : (
         <Card>
           <CardContent className="text-center py-12">
-            <DollarSign className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices yet</h3>
-            <p className="text-gray-600">Your billing information will appear here when invoices are generated.</p>
+            <EmptyState
+              icon={<DollarSign className="h-6 w-6" />}
+              title="No invoices yet"
+              description="Your billing information will appear here when invoices are generated."
+            />
           </CardContent>
         </Card>
       )}
@@ -251,7 +217,7 @@ export function ClientInvoices() {
 
           {viewInvoice && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between rounded-[1.2rem] bg-muted/55 p-4">
                 <div>
                   <div className="text-2xl font-bold">{viewInvoice.invoiceNumber}</div>
                   <Badge className={`mt-1 ${getStatusColor(viewInvoice.status)}`}>

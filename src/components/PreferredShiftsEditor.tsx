@@ -76,8 +76,8 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
   return (
     <div className="space-y-4">
       {timezone && (
-        <p className="text-sm text-gray-500">
-          Times are in your timezone: <span className="font-medium">{timezone}</span>
+        <p className="text-sm text-muted-foreground">
+          Times are shown in your timezone: <span className="font-semibold text-foreground">{timezone}</span>
         </p>
       )}
 
@@ -87,18 +87,20 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
           return (
             <div
               key={schedule.dayOfWeek}
-              className={`flex items-center gap-3 p-3 rounded-lg border ${
-                schedule.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-60'
+              className={`flex flex-col gap-3 rounded-[1.2rem] border p-4 md:flex-row md:items-center ${
+                schedule.isActive
+                  ? 'border-white/80 bg-white/75 shadow-[0_14px_28px_-20px_rgba(15,23,42,0.45)]'
+                  : 'border-border/50 bg-muted/45 opacity-75'
               }`}
             >
-              <div className="w-24">
-                <Label className="text-sm font-medium">{day?.name}</Label>
+              <div className="w-28">
+                <Label className="text-sm font-semibold text-foreground">{day?.name}</Label>
               </div>
               <Switch
                 checked={schedule.isActive}
                 onCheckedChange={(checked) => updateSchedule(schedule.dayOfWeek, 'isActive', checked)}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-1 items-center gap-2">
                 <Input
                   type="time"
                   value={schedule.startTime}
@@ -106,7 +108,7 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
                   className="w-32"
                   disabled={!schedule.isActive}
                 />
-                <span className="text-gray-400">-</span>
+                <span className="text-muted-foreground">-</span>
                 <Input
                   type="time"
                   value={schedule.endTime}

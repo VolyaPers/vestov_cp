@@ -198,20 +198,20 @@ export function ShiftControls() {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className="rounded-[1.6rem] border border-white/80 bg-white/82 p-6 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Clock className="w-6 h-6 text-blue-600" />
+        <h2 className="font-display text-xl font-semibold text-foreground flex items-center gap-2">
+          <Clock className="w-6 h-6 text-primary" />
           Shift Control
         </h2>
         {currentShift && (
           <div className="text-sm">
-            <span className="text-gray-600">Started at </span>
-            <span className="font-semibold text-gray-900">
+            <span className="text-muted-foreground">Started at </span>
+            <span className="font-semibold text-foreground">
               {formatTime(currentShift.startTime)}
             </span>
-            <span className="text-gray-600 ml-3">Duration: </span>
-            <span className="font-semibold text-gray-900">
+            <span className="text-muted-foreground ml-3">Duration: </span>
+            <span className="font-semibold text-foreground">
               {getDuration(currentShift.startTime)}
             </span>
           </div>
@@ -219,14 +219,14 @@ export function ShiftControls() {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+        <div className="mb-4 flex items-start gap-3 rounded-[1.2rem] border border-red-200 bg-red-50 p-4">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
 
       {hasTeamMember === false && (
-        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+        <div className="mb-4 flex items-start gap-3 rounded-[1.2rem] border border-amber-200 bg-amber-50 p-4">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-amber-800">
@@ -240,7 +240,7 @@ export function ShiftControls() {
       )}
 
       {currentShift && currentShift.isLate && (
-        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+        <div className="mb-4 flex items-start gap-3 rounded-[1.2rem] border border-amber-200 bg-amber-50 p-4">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800">
             You started {currentShift.lateMinutes} minutes late today.
@@ -250,15 +250,15 @@ export function ShiftControls() {
 
       {/* Service Selection */}
       {!currentShift && myServices.length > 0 && (
-        <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+        <div className="mb-6 rounded-[1.2rem] border border-border/60 bg-muted/45 p-4">
+          <label className="mb-2 block text-sm font-semibold text-foreground">
             Service Context (optional)
           </label>
           <select
             value={selectedServiceId || ''}
             onChange={(e) => setSelectedServiceId(e.target.value ? Number(e.target.value) : null)}
             disabled={loading}
-            className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+            className="w-full rounded-xl border border-input/80 bg-background/90 p-2.5 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">No specific service</option>
             {myServices.map((service) => (
@@ -267,7 +267,7 @@ export function ShiftControls() {
               </option>
             ))}
           </select>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             Select the client/service you're working on. Leave empty for general work (notifications go to default channel).
           </p>
         </div>
@@ -275,7 +275,7 @@ export function ShiftControls() {
 
       {!currentShift && (
         <div className="mb-6">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <label className="mb-2 block text-sm font-semibold text-foreground">
             Shift Note (optional)
           </label>
           <textarea
@@ -284,15 +284,15 @@ export function ShiftControls() {
             disabled={loading}
             placeholder="Optional note (e.g. started 40 mins ago)..."
             rows={2}
-            className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm resize-none"
+            className="w-full resize-none rounded-xl border border-input/80 bg-background/90 p-2.5 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       )}
 
       {currentShift && selectedServiceId && (
         <div className="mb-4 px-1">
-          <p className="text-sm font-medium text-gray-500">
-            Current Service: <span className="text-blue-600 font-semibold">
+          <p className="text-sm font-medium text-muted-foreground">
+            Current Service: <span className="text-primary font-semibold">
               {myServices.find(s => s.serviceId === selectedServiceId)?.clientName} - {myServices.find(s => s.serviceId === selectedServiceId)?.serviceName}
             </span>
           </p>
@@ -304,7 +304,7 @@ export function ShiftControls() {
           <button
             onClick={handleStartShift}
             disabled={loading || hasTeamMember === false || hasTeamMember === null}
-            className="col-span-full h-32 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-3"
+            className="col-span-full flex h-32 flex-col items-center justify-center gap-3 rounded-[1.4rem] bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-[0_26px_48px_-20px_rgba(16,185,129,0.55)] transition-all duration-200 hover:from-emerald-600 hover:to-teal-700 hover:-translate-y-0.5 hover:shadow-[0_30px_54px_-18px_rgba(16,185,129,0.6)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Play className="w-12 h-12" fill="currentColor" />
             <span className="text-2xl font-bold">Start Shift</span>
@@ -314,7 +314,7 @@ export function ShiftControls() {
             <button
               onClick={handleEndShift}
               disabled={loading}
-              className="h-32 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-3"
+              className="flex h-32 flex-col items-center justify-center gap-3 rounded-[1.4rem] bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-[0_26px_48px_-20px_rgba(244,63,94,0.55)] transition-all duration-200 hover:from-rose-600 hover:to-red-700 hover:-translate-y-0.5 hover:shadow-[0_30px_54px_-18px_rgba(244,63,94,0.6)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Square className="w-12 h-12" fill="currentColor" />
               <span className="text-xl font-bold">End Shift</span>
@@ -324,7 +324,7 @@ export function ShiftControls() {
               <button
                 onClick={handleStartBreak}
                 disabled={loading}
-                className="h-32 bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-3"
+                className="flex h-32 flex-col items-center justify-center gap-3 rounded-[1.4rem] bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-[0_26px_48px_-20px_rgba(245,158,11,0.55)] transition-all duration-200 hover:from-amber-600 hover:to-orange-700 hover:-translate-y-0.5 hover:shadow-[0_30px_54px_-18px_rgba(245,158,11,0.6)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Coffee className="w-12 h-12" />
                 <span className="text-xl font-bold">Start Break</span>
@@ -333,7 +333,7 @@ export function ShiftControls() {
               <button
                 onClick={handleEndBreak}
                 disabled={loading}
-                className="h-32 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-3"
+                className="flex h-32 flex-col items-center justify-center gap-3 rounded-[1.4rem] bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-[0_26px_48px_-20px_rgba(14,165,233,0.55)] transition-all duration-200 hover:from-sky-600 hover:to-blue-700 hover:-translate-y-0.5 hover:shadow-[0_30px_54px_-18px_rgba(14,165,233,0.6)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Coffee className="w-12 h-12" />
                 <span className="text-xl font-bold">End Break</span>
@@ -343,12 +343,12 @@ export function ShiftControls() {
               </button>
             )}
 
-            <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl shadow-inner flex flex-col items-center justify-center gap-2 border-2 border-gray-300">
-              <div className="text-sm font-medium text-gray-600 uppercase">Status</div>
+            <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-[1.4rem] border border-white/80 bg-gradient-to-br from-slate-50 to-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+              <div className="text-sm font-medium uppercase text-muted-foreground">Status</div>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${activeBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500 animate-pulse'
                   }`} />
-                <span className="text-xl font-bold text-gray-900">
+                <span className="text-xl font-bold text-foreground">
                   {activeBreak ? 'On Break' : 'Working'}
                 </span>
               </div>
@@ -358,33 +358,33 @@ export function ShiftControls() {
       </div>
 
       {currentShift && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
+        <div className="mt-6 border-t border-border/60 pt-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
             <div>
-              <div className="text-sm text-gray-600 mb-1">Shift Start</div>
-              <div className="text-lg font-semibold text-gray-900">
+              <div className="mb-1 text-sm text-muted-foreground">Shift Start</div>
+              <div className="text-lg font-semibold text-foreground">
                 {formatTime(currentShift.startTime)}
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600 mb-1">Status</div>
+              <div className="mb-1 text-sm text-muted-foreground">Status</div>
               <div className="flex items-center justify-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${currentShift.status === 'on_break' ? 'bg-amber-500' : 'bg-green-500'
                   }`} />
-                <span className="text-lg font-semibold text-gray-900 capitalize">
+                <span className="text-lg font-semibold text-foreground capitalize">
                   {currentShift.status === 'on_break' ? 'On Break' : 'Active'}
                 </span>
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600 mb-1">Duration</div>
-              <div className="text-lg font-semibold text-gray-900">
+              <div className="mb-1 text-sm text-muted-foreground">Duration</div>
+              <div className="text-lg font-semibold text-foreground">
                 {getDuration(currentShift.startTime)}
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600 mb-1">Breaks Taken</div>
-              <div className="text-lg font-semibold text-gray-900">
+              <div className="mb-1 text-sm text-muted-foreground">Breaks Taken</div>
+              <div className="text-lg font-semibold text-foreground">
                 {activeBreak ? '1+' : '0'}
               </div>
             </div>

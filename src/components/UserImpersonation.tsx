@@ -1,13 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Users, X, ChevronDown, LogOut } from 'lucide-react'
+import { Users, X, LogOut, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import type { User } from '@/types/common'
 import { api } from '@/lib/api'
 import { useCustomAlert } from '@/components/ui/custom-alert'
@@ -123,18 +117,21 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   // Show stop impersonation button if currently impersonating
   if (currentUser?.isImpersonating) {
     return (
-      <div className="stripe-card p-3 mb-4">
-        <div className="flex items-center justify-between">
+      <div className="rounded-[1.1rem] border border-amber-200 bg-amber-50/80 p-4 shadow-[0_16px_28px_-24px_rgba(217,119,6,0.35)]">
+        <div className="space-y-4">
           <div>
-            <div className="text-xs stripe-text-muted mb-1">Impersonating</div>
-            <div className="text-sm font-medium stripe-text-primary">{currentUser.fullName}</div>
-            <div className="text-xs stripe-text-secondary">{currentUser.email}</div>
+            <div className="mb-2.5 flex items-center gap-2">
+              <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-700">Impersonating</Badge>
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Admin override</span>
+            </div>
+            <div className="text-sm font-semibold text-foreground">{currentUser.fullName}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{currentUser.email}</div>
           </div>
           <Button
             size="sm"
             onClick={handleStopImpersonation}
             disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white"
+            className="w-full justify-center bg-amber-600 text-white hover:bg-amber-700"
             title="Stop impersonating and return to your account"
           >
             <LogOut className="w-4 h-4 mr-1" />
@@ -146,47 +143,55 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   }
 
   return (
-    <div className="stripe-card p-3 mb-4">
-      <div className="text-xs stripe-text-muted mb-2">Super Admin</div>
-
+    <div className="rounded-[1.1rem] border border-white/80 bg-white/75 p-4 shadow-[0_16px_28px_-24px_rgba(15,23,42,0.45)]">
       {!showDropdown ? (
-        <Button
-          size="sm"
-          onClick={() => setShowDropdown(true)}
-          className="w-full stripe-btn-primary"
-          variant="outline"
-          title="Impersonate another user"
-        >
-          <Users className="w-4 h-4 mr-2" />
-          Switch to User
-        </Button>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.95rem] bg-primary/10 text-primary">
+              <ShieldCheck className="h-4.5 w-4.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">Admin impersonation</div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setShowDropdown(true)}
+            className="w-full justify-center"
+            title="Impersonate another user"
+          >
+            <Users className="mr-2 h-4 w-4" />
+            Switch to User
+          </Button>
+        </div>
       ) : (
-        <div className="space-y-2">
-          <div className="text-sm font-medium stripe-text-primary mb-2">Select User:</div>
-          <div className="max-h-64 overflow-y-auto space-y-1">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-foreground">Select user</div>
+            <Button
+              size="sm"
+              onClick={() => setShowDropdown(false)}
+              variant="outline"
+              className="h-8 px-2"
+              title="Cancel user selection"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
             {users.map((user) => (
               <button
                 key={user.id}
                 onClick={() => handleImpersonate(user.id)}
                 disabled={loading}
-                className="w-full text-left p-2 rounded-lg hover:bg-gray-100 stripe-text-primary text-sm transition-colors"
+                className="w-full rounded-[1rem] border border-border/60 bg-white/70 px-3.5 pb-3.5 pt-3 text-left text-sm transition-colors hover:border-primary/25 hover:bg-primary/5"
               >
-                <div className="font-medium">{user.fullName}</div>
-                <div className="text-xs stripe-text-secondary">{user.email}</div>
-                <div className="text-xs stripe-text-muted capitalize">{user.role}</div>
+                <div className="font-medium text-foreground">{user.fullName}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{user.email}</div>
+                <div className="mt-1 text-xs capitalize text-primary">{user.role}</div>
               </button>
             ))}
           </div>
-          <Button
-            size="sm"
-            onClick={() => setShowDropdown(false)}
-            variant="outline"
-            className="w-full"
-            title="Cancel user selection"
-          >
-            <X className="w-4 h-4 mr-1" />
-            Cancel
-          </Button>
         </div>
       )}
     </div>

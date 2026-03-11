@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react'
-import { User, Mail, Phone, MapPin, Calendar, Edit3, Save, X } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useEffect, useState } from 'react'
+import { Calendar, Edit3, Mail, MapPin, Phone, Save, User, X } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { api } from '@/lib/api'
 import { parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface TeamMember {
   id: number
@@ -31,7 +32,7 @@ export function EmployeeProfile() {
   const [formData, setFormData] = useState({
     phone: '',
     location: '',
-    bio: ''
+    bio: '',
   })
 
   useEffect(() => {
@@ -41,15 +42,13 @@ export function EmployeeProfile() {
   const loadProfile = async () => {
     try {
       setLoading(true)
-
-      // Get employee profile
       const member = await api.request('/vacation/my-profile')
 
       setTeamMember(member)
       setFormData({
         phone: member.phone || '',
         location: member.location || '',
-        bio: member.bio || ''
+        bio: member.bio || '',
       })
     } catch (error) {
       console.error('Error loading profile:', error)
@@ -65,7 +64,7 @@ export function EmployeeProfile() {
       setSaving(true)
       await api.updateTeamMember(String(teamMember.id), {
         ...teamMember,
-        ...formData
+        ...formData,
       })
 
       await loadProfile()
@@ -82,7 +81,7 @@ export function EmployeeProfile() {
     setFormData({
       phone: teamMember?.phone || '',
       location: teamMember?.location || '',
-      bio: teamMember?.bio || ''
+      bio: teamMember?.bio || '',
     })
     setEditing(false)
   }
@@ -90,155 +89,204 @@ export function EmployeeProfile() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     )
   }
 
   if (!teamMember) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Profile not found</p>
-      </div>
+      <EmptyState
+        icon={<User className="h-6 w-6" />}
+        title="Profile not found"
+        description="Your employee profile is unavailable right now."
+      />
     )
   }
 
   const initials = teamMember.name
     .split(' ')
-    .map(n => n[0])
+    .map((name) => name[0])
     .join('')
     .toUpperCase()
 
+  const profileCompletion = [teamMember.phone, teamMember.location, teamMember.bio].filter(Boolean).length
+  const startedAt = parseLocalDate(teamMember.startDate).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })
+
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              My Profile
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              View and edit your personal information
-            </p>
-          </div>
-          {!editing ? (
-            <Button
-              onClick={() => setEditing(true)}
-              className="bg-primary hover:bg-primary/90 text-white"
-            >
-              <Edit3 className="h-4 w-4 mr-2" />
-              Edit Profile
+      <PageHero
+        eyebrow="Employee Workspace"
+        title="Personal profile and contact card"
+        description="Keep your public team profile and contact details current for operations, HR, and client-facing collaboration."
+        theme="violet"
+        actions={editing ? (
+          <>
+            <Button variant="outline" onClick={handleCancel} disabled={saving}>
+              <X className="mr-2 h-4 w-4" />
+              Cancel
             </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button
-                onClick={handleCancel}
-                variant="outline"
-                disabled={saving}
-              >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="bg-primary hover:bg-primary/90 text-white"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </div>
-          )}
-        </div>
+            <Button onClick={handleSave} disabled={saving}>
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Saving...' : 'Save changes'}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={() => setEditing(true)}>
+            <Edit3 className="mr-2 h-4 w-4" />
+            Edit profile
+          </Button>
+        )}
+        meta={(
+          <>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {teamMember.role}
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              Started {startedAt}
+            </span>
+          </>
+        )}
+      />
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricTile
+          label="Profile Completion"
+          value={`${profileCompletion}/3`}
+          hint="Phone, location, and bio fields"
+          icon={<User className="h-5 w-5" />}
+          tone="violet"
+        />
+        <MetricTile
+          label="Primary Contact"
+          value={teamMember.phone || 'Not set'}
+          hint={teamMember.email}
+          icon={<Phone className="h-5 w-5" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Based In"
+          value={teamMember.location || 'Not set'}
+          hint={`Member since ${startedAt}`}
+          icon={<MapPin className="h-5 w-5" />}
+          tone="amber"
+        />
       </div>
 
-      <Card className="bg-white shadow-sm border border-gray-200">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-6 pb-6 border-b border-gray-200">
-            <Avatar className="h-24 w-24">
-              <AvatarImage src={teamMember.avatarUrl} alt={teamMember.name} />
-              <AvatarFallback className="text-2xl bg-blue-100 text-blue-600">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">{teamMember.name}</h2>
-              <p className="text-gray-600 mt-1">{teamMember.role}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <Calendar className="h-4 w-4 text-gray-400" />
-                <span className="text-sm text-gray-500">
-                  Started {parseLocalDate(teamMember.startDate).toLocaleDateString('en-US', {
-                    month: 'long',
-                    year: 'numeric'
-                  })}
-                </span>
+      <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
+        <Card className="overflow-hidden border-white/80 bg-white/88">
+          <CardContent className="p-6 sm:p-7">
+            <SectionHeading
+              title="Public profile card"
+              description="How your identity appears in the employee workspace."
+              icon={<User className="h-5 w-5" />}
+            />
+
+            <div className="rounded-[1.5rem] border border-border/70 bg-slate-950 p-6 text-white shadow-[0_30px_70px_-34px_rgba(15,23,42,0.92)]">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <Avatar className="h-24 w-24 border-4 border-white/10 shadow-[0_24px_40px_-24px_rgba(255,255,255,0.45)]">
+                  <AvatarImage src={teamMember.avatarUrl} alt={teamMember.name} />
+                  <AvatarFallback className="bg-white/10 font-display text-2xl text-white">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div className="space-y-2">
+                  <h2 className="font-display text-3xl font-semibold">{teamMember.name}</h2>
+                  <p className="text-sm text-slate-300">{teamMember.role}</p>
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-200">
+                    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">{teamMember.email}</span>
+                    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">Started {startedAt}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-            {/* Email (read-only) */}
-            <div>
-              <Label className="flex items-center gap-2 text-gray-700 mb-2">
-                <Mail className="h-4 w-4" />
-                Email
-              </Label>
-              <Input
-                value={teamMember.email}
-                disabled
-                className="bg-gray-50"
-              />
+            <div className="mt-5 grid gap-3">
+              <div className="rounded-[1.1rem] border border-border/70 bg-muted/25 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Mail className="h-4 w-4 text-primary" />
+                  Email
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{teamMember.email}</p>
+              </div>
+              <div className="rounded-[1.1rem] border border-border/70 bg-muted/25 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  Start date
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{startedAt}</p>
+              </div>
             </div>
+          </CardContent>
+        </Card>
 
-            {/* Phone */}
-            <div>
-              <Label className="flex items-center gap-2 text-gray-700 mb-2">
-                <Phone className="h-4 w-4" />
-                Phone
-              </Label>
-              <Input
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                disabled={!editing}
-                placeholder="Enter your phone number"
-                className={!editing ? 'bg-gray-50' : ''}
-              />
-            </div>
+        <Card className="border-white/80 bg-white/88">
+          <CardContent className="p-6 sm:p-7">
+            <SectionHeading
+              title="Editable details"
+              description="Update your operational contact information and short bio."
+              icon={<Edit3 className="h-5 w-5" />}
+            />
 
-            {/* Location */}
-            <div className="md:col-span-2">
-              <Label className="flex items-center gap-2 text-gray-700 mb-2">
-                <MapPin className="h-4 w-4" />
-                Location
-              </Label>
-              <Input
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                disabled={!editing}
-                placeholder="Enter your location"
-                className={!editing ? 'bg-gray-50' : ''}
-              />
-            </div>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <Label className="mb-2 flex items-center gap-2 text-foreground">
+                  <Mail className="h-4 w-4 text-primary" />
+                  Email
+                </Label>
+                <Input value={teamMember.email} disabled className="bg-muted/35" />
+              </div>
 
-            {/* Bio */}
-            <div className="md:col-span-2">
-              <Label className="flex items-center gap-2 text-gray-700 mb-2">
-                <User className="h-4 w-4" />
-                Bio
-              </Label>
-              <Textarea
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                disabled={!editing}
-                placeholder="Tell us about yourself..."
-                rows={4}
-                className={!editing ? 'bg-gray-50' : ''}
-              />
+              <div>
+                <Label className="mb-2 flex items-center gap-2 text-foreground">
+                  <Phone className="h-4 w-4 text-primary" />
+                  Phone
+                </Label>
+                <Input
+                  value={formData.phone}
+                  onChange={(event) => setFormData({ ...formData, phone: event.target.value })}
+                  disabled={!editing}
+                  placeholder="Enter your phone number"
+                  className={!editing ? 'bg-muted/35' : ''}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <Label className="mb-2 flex items-center gap-2 text-foreground">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Location
+                </Label>
+                <Input
+                  value={formData.location}
+                  onChange={(event) => setFormData({ ...formData, location: event.target.value })}
+                  disabled={!editing}
+                  placeholder="Enter your location"
+                  className={!editing ? 'bg-muted/35' : ''}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <Label className="mb-2 flex items-center gap-2 text-foreground">
+                  <User className="h-4 w-4 text-primary" />
+                  Bio
+                </Label>
+                <Textarea
+                  value={formData.bio}
+                  onChange={(event) => setFormData({ ...formData, bio: event.target.value })}
+                  disabled={!editing}
+                  placeholder="Tell us about yourself..."
+                  rows={6}
+                  className={!editing ? 'bg-muted/35' : ''}
+                />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

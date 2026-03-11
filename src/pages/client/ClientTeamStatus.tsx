@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface Shift {
   id: number
@@ -299,116 +300,88 @@ export function ClientTeamStatus() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <Clock className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading team status...</p>
-        </div>
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Your Team Status
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Monitor your development team's availability in real-time
-            </p>
-          </div>
-        </div>
+      <PageHero
+        eyebrow="Client Workspace"
+        title="Team availability radar"
+        description="Monitor who is online, who is away, and how planned leave affects delivery capacity across the current month."
+        theme="teal"
+        meta={(
+          <>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {getUniqueTeamSize()} team members
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              Viewer TZ: {viewerTimezone}
+            </span>
+          </>
+        )}
+      />
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <MetricTile
+          label="Team Size"
+          value={getUniqueTeamSize()}
+          hint="Unique teammates in scope"
+          icon={<Users className="h-5 w-5" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Working"
+          value={workingNow.length}
+          hint="Live active shifts"
+          icon={<Clock className="h-5 w-5" />}
+          tone="emerald"
+        />
+        <MetricTile
+          label="On Break"
+          value={onBreak.length}
+          hint="Temporary pauses"
+          icon={<Coffee className="h-5 w-5" />}
+          tone="amber"
+        />
+        <MetricTile
+          label="On Vacation"
+          value={currentVacations.length}
+          hint="Currently unavailable"
+          icon={<TreePalm className="h-5 w-5" />}
+          tone="violet"
+        />
+        <MetricTile
+          label="Upcoming Leave"
+          value={upcomingVacations.length}
+          hint="Planned absence"
+          icon={<Calendar className="h-5 w-5" />}
+          tone="rose"
+        />
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Team Size</p>
-              <p className="text-3xl font-bold text-blue-600">{getUniqueTeamSize()}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Currently Working</p>
-              <p className="text-3xl font-bold text-green-600">{workingNow.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-              <Clock className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">On Break</p>
-              <p className="text-3xl font-bold text-amber-600">{onBreak.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Coffee className="w-6 h-6 text-amber-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">On Vacation</p>
-              <p className="text-3xl font-bold text-purple-600">{currentVacations.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-              <TreePalm className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Upcoming Leave</p>
-              <p className="text-3xl font-bold text-orange-600">{upcomingVacations.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-{/* Active Team Members - Card Grid */}
-{activeShifts.length > 0 && (
+      {activeShifts.length > 0 && (
         <div>
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-green-600" />
-              Team Members Online ({activeShifts.length})
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">Your developers currently working on your projects</p>
-          </div>
+          <SectionHeading
+            title={`Team members online (${activeShifts.length})`}
+            description="Developers currently working on your projects."
+            icon={<Clock className="h-5 w-5" />}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {activeShifts.map((shift) => (
               <Card
                 key={shift.id}
-                className={`overflow-hidden transition-all hover:shadow-lg ${
+                className={`overflow-hidden border-white/80 bg-white/92 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.45)] transition-all hover:-translate-y-0.5 hover:shadow-[0_28px_60px_-34px_rgba(15,23,42,0.55)] ${
                   shift.status === 'on_break'
-                    ? 'border-amber-200 bg-amber-50/30'
-                    : 'border-green-200 bg-green-50/30'
+                    ? 'ring-1 ring-amber-200/70'
+                    : 'ring-1 ring-emerald-200/70'
                 }`}
               >
                 <CardContent className="p-4">
-                  {/* Avatar and Name */}
                   <div className="flex items-start gap-3 mb-4">
                     <div className="relative">
                       <Avatar className="h-14 w-14 border-2 border-white shadow-md">
@@ -431,35 +404,33 @@ export function ClientTeamStatus() {
                       }`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{shift.employee.name}</h3>
-                      <p className="text-xs text-gray-600 truncate">{shift.employee.position || 'Developer'}</p>
+                      <h3 className="truncate font-semibold text-foreground">{shift.employee.name}</h3>
+                      <p className="truncate text-xs text-muted-foreground">{shift.employee.position || 'Developer'}</p>
                     </div>
                   </div>
 
-                  {/* Status Badge */}
                   <div className="mb-3">
                     {shift.status === 'on_break' && shift.activeBreak ? (
-                      <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 w-full justify-center">
+                      <Badge variant="outline" className="w-full justify-center border-amber-300 bg-amber-100 text-amber-700">
                         <Coffee className="w-3 h-3 mr-1" />
                         On Break ({getDuration(shift.activeBreak.startTime)})
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 w-full justify-center">
+                      <Badge variant="outline" className="w-full justify-center border-emerald-300 bg-emerald-100 text-emerald-700">
                         <TrendingUp className="w-3 h-3 mr-1" />
                         Working
                       </Badge>
                     )}
                   </div>
 
-                  {/* Time Info */}
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-2 rounded-[1rem] border border-border/60 bg-muted/20 p-3 text-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Started</span>
-                      <span className="font-semibold text-gray-900">{formatTime(shift.startTime)}</span>
+                      <span className="text-muted-foreground">Started</span>
+                      <span className="font-semibold text-foreground">{formatTime(shift.startTime)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Duration</span>
-                      <span className="font-semibold text-gray-900">{getDuration(shift.startTime)}</span>
+                      <span className="text-muted-foreground">Duration</span>
+                      <span className="font-semibold text-foreground">{getDuration(shift.startTime)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -474,9 +445,9 @@ export function ClientTeamStatus() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Current Vacations */}
           {currentVacations.length > 0 && (
-            <Card className="border-blue-200">
+            <Card className="border-sky-200/80 bg-white/92">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-700">
+                <CardTitle className="flex items-center gap-2 text-sky-700">
                   <Calendar className="w-5 h-5" />
                   Currently On Vacation
                 </CardTitle>
@@ -487,7 +458,7 @@ export function ClientTeamStatus() {
                   {currentVacations.map((vacation) => (
                     <div
                       key={vacation.id}
-                      className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200"
+                      className="flex items-center justify-between rounded-[1rem] border border-sky-200/80 bg-sky-50/85 p-3"
                     >
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10 border-2 border-blue-200">
@@ -502,8 +473,8 @@ export function ClientTeamStatus() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold text-gray-900">{vacation.employee.name}</p>
-                          <p className="text-sm text-gray-600">
+                          <p className="font-semibold text-foreground">{vacation.employee.name}</p>
+                          <p className="text-sm text-muted-foreground">
                             {formatDate(vacation.startDate)} - {formatDate(vacation.endDate)}
                           </p>
                         </div>
@@ -520,9 +491,9 @@ export function ClientTeamStatus() {
 
           {/* Upcoming Vacations */}
           {upcomingVacations.length > 0 && (
-            <Card className="border-purple-200">
+            <Card className="border-violet-200/80 bg-white/92">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-purple-700">
+                <CardTitle className="flex items-center gap-2 text-violet-700">
                   <Calendar className="w-5 h-5" />
                   Upcoming Vacations
                 </CardTitle>
@@ -533,7 +504,7 @@ export function ClientTeamStatus() {
                   {upcomingVacations.slice(0, 5).map((vacation) => (
                     <div
                       key={vacation.id}
-                      className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200"
+                      className="flex items-center justify-between rounded-[1rem] border border-violet-200/80 bg-violet-50/85 p-3"
                     >
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10 border-2 border-purple-200">
@@ -548,8 +519,8 @@ export function ClientTeamStatus() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold text-gray-900">{vacation.employee.name}</p>
-                          <p className="text-sm text-gray-600">
+                          <p className="font-semibold text-foreground">{vacation.employee.name}</p>
+                          <p className="text-sm text-muted-foreground">
                             {formatDate(vacation.startDate)} - {formatDate(vacation.endDate)}
                           </p>
                         </div>
@@ -567,7 +538,7 @@ export function ClientTeamStatus() {
       )}
       {/* Vacation Calendar */}
       {vacations.length > 0 && (
-        <Card>
+        <Card className="border-white/80 bg-white/90">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -844,15 +815,11 @@ export function ClientTeamStatus() {
 
       {/* Empty State */}
       {activeShifts.length === 0 && vacations.length === 0 && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center text-gray-500">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-semibold mb-2">No Team Data Available</p>
-              <p className="text-sm">Your team members' activity will appear here once they start working</p>
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<AlertCircle className="h-6 w-6" />}
+          title="No team data available"
+          description="Team activity will appear here once members start logging shifts or vacation entries."
+        />
       )}
     </div>
   )

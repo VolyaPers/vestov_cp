@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useRoute } from 'wouter'
-import { Building, FileText, DollarSign, Users, Calendar, Mail, Phone, MapPin, Download, Eye, Star } from 'lucide-react'
+import { Building, FileText, DollarSign, Users, Calendar, Mail, Phone, Download, Eye, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
@@ -10,6 +10,7 @@ import { parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface ServiceDeveloper {
   id: number
@@ -247,122 +248,83 @@ export function ClientPortal() {
 
   if (!client) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
-        <p className="mt-2 text-gray-600">You don't have permission to view this client portal.</p>
-      </div>
+      <EmptyState
+        title="Access denied"
+        description="You do not have permission to view this client portal."
+      />
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              {client.name}
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              {client.industry || 'Company Overview'}
-            </p>
-            <div className="flex items-center space-x-4 mt-3">
-              <Badge className={client.status === 'active' ? 'bg-green-100 text-green-800' : client.status === 'inactive' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}>
-                {client.status}
+    <div className="space-y-4 sm:space-y-6">
+      <PageHero
+        eyebrow="Client Portal"
+        title={client.name}
+        description={client.industry || 'Company overview'}
+        theme="amber"
+        meta={
+          <>
+            <Badge className={client.status === 'active' ? 'bg-emerald-100 text-emerald-800' : client.status === 'inactive' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}>
+              {client.status}
+            </Badge>
+            {client.contractType && (
+              <Badge variant="outline" className="border-white/20 bg-white/10 capitalize text-white">
+                {client.contractType}
               </Badge>
-              {client.contractType && (
-                <Badge variant="outline" className="capitalize">
-                  {client.contractType}
-                </Badge>
-              )}
-            </div>
-          </div>
+            )}
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{documents.length} shared documents</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{invoices.length} invoices</span>
+          </>
+        }
+      />
+
+      <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible lg:grid-cols-4">
+        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile label="Team Size" value={getUniqueTeamSize()} hint="Assigned delivery specialists" icon={<Users className="h-5 w-5" />} tone="primary" />
+        </div>
+        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile label="Active Services" value={client.services.filter(s => s.isActive).length} hint="Current delivery lanes" icon={<Building className="h-5 w-5" />} tone="emerald" />
+        </div>
+        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile label="Documents" value={documents.length} hint="Shared files and folders" icon={<FileText className="h-5 w-5" />} tone="violet" />
+        </div>
+        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+          <MetricTile label="Invoices" value={invoices.length} hint="Billing history in portal" icon={<DollarSign className="h-5 w-5" />} tone="amber" />
         </div>
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-              <Users className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Team Size</p>
-              <p className="text-2xl font-bold text-gray-900">{getUniqueTeamSize()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-              <Building className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Services</p>
-              <p className="text-2xl font-bold text-gray-900">{client.services.filter(s => s.isActive).length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-              <FileText className="h-6 w-6 text-purple-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Documents</p>
-              <p className="text-2xl font-bold text-gray-900">{documents.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center">
-            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-              <DollarSign className="h-6 w-6 text-orange-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Invoices</p>
-              <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Contract Information */}
-      <Card>
+      <Card className="content-auto">
         <CardHeader>
-          <CardTitle>Contract Information</CardTitle>
-          <CardDescription>Current contract details and timeline</CardDescription>
+          <SectionHeading title="Contract Information" description="Current contract details and timeline" icon={<Calendar className="h-5 w-5" />} />
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-3">
             {client.contractStart && (
               <div className="flex items-center space-x-3">
-                <Calendar className="h-5 w-5 text-gray-400" />
+                <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Start Date</p>
-                  <p className="text-sm text-gray-600">{new Date(client.contractStart).toLocaleDateString()}</p>
+                  <p className="text-sm font-medium text-foreground">Start Date</p>
+                  <p className="text-sm text-muted-foreground">{new Date(client.contractStart).toLocaleDateString()}</p>
                 </div>
               </div>
             )}
             {client.contractEnd && (
               <div className="flex items-center space-x-3">
-                <Calendar className="h-5 w-5 text-gray-400" />
+                <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">End Date</p>
-                  <p className="text-sm text-gray-600">{new Date(client.contractEnd).toLocaleDateString()}</p>
+                  <p className="text-sm font-medium text-foreground">End Date</p>
+                  <p className="text-sm text-muted-foreground">{new Date(client.contractEnd).toLocaleDateString()}</p>
                 </div>
               </div>
             )}
             {client.billingCycle && (
               <div className="flex items-center space-x-3">
-                <DollarSign className="h-5 w-5 text-gray-400" />
+                <DollarSign className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Billing Cycle</p>
-                  <p className="text-sm text-gray-600 capitalize">{client.billingCycle}</p>
+                  <p className="text-sm font-medium text-foreground">Billing Cycle</p>
+                  <p className="text-sm capitalize text-muted-foreground">{client.billingCycle}</p>
                 </div>
               </div>
             )}
@@ -370,20 +332,18 @@ export function ClientPortal() {
         </CardContent>
       </Card>
 
-      {/* Services */}
-      <Card>
+      <Card className="content-auto">
         <CardHeader>
-          <CardTitle>Your Services</CardTitle>
-          <CardDescription>Services and team members assigned to your project</CardDescription>
+          <SectionHeading title="Your Services" description="Services and team members assigned to your project" icon={<Building className="h-5 w-5" />} />
         </CardHeader>
         <CardContent>
           {client.services.length > 0 ? (
             <div className="space-y-6">
               {client.services.map((service) => (
-                <div key={service.id} className="border rounded-lg overflow-hidden">
-                  <div className="p-4 bg-gray-50 border-b">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h4 className="font-medium">{service.serviceTypeName}</h4>
+                <div key={service.id} className="overflow-hidden rounded-[1.25rem] border border-border/70 bg-white/70">
+                  <div className="border-b border-border/60 bg-muted/45 p-4">
+                    <div className="mb-2 flex flex-wrap items-center gap-2.5 sm:gap-3">
+                      <h4 className="font-medium text-foreground">{service.serviceTypeName}</h4>
                       <Badge className={service.serviceCategory === 'outstaffing' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}>
                         {service.serviceCategory}
                       </Badge>
@@ -397,9 +357,9 @@ export function ClientPortal() {
                       )}
                     </div>
                     {service.serviceDescription && (
-                      <p className="text-sm text-gray-600 mb-2">{service.serviceDescription}</p>
+                      <p className="mb-2 text-sm text-muted-foreground">{service.serviceDescription}</p>
                     )}
-                    <div className="flex items-center gap-6 text-sm text-gray-500">
+                    <div className="flex flex-col gap-1.5 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
                       <span>Started: {parseLocalDate(service.startDate).toLocaleDateString()}</span>
                       {service.endDate && (
                         <span>Ended: {parseLocalDate(service.endDate).toLocaleDateString()}</span>
@@ -409,21 +369,21 @@ export function ClientPortal() {
 
                   {/* Team Members */}
                   <div className="p-4">
-                    <h5 className="text-sm font-medium text-gray-900 mb-3">Your Team</h5>
+                    <h5 className="mb-3 text-sm font-medium text-foreground">Your Team</h5>
                     {serviceDevelopers[service.id] && serviceDevelopers[service.id].length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
                         {serviceDevelopers[service.id].map((developer) => (
-                          <div key={developer.id} className="p-3 bg-white border rounded">
-                            <div className="flex items-center gap-3 mb-2">
-                              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                          <div key={developer.id} className="rounded-[1rem] border border-border/60 bg-white/80 p-3">
+                            <div className="mb-2 flex items-center gap-3">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
                                 <Users className="h-4 w-4 text-primary" />
                               </div>
-                              <div>
-                                <p className="font-medium text-gray-900">{developer.name}</p>
-                                <p className="text-sm text-gray-500">{developer.email}</p>
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-foreground">{developer.name}</p>
+                                <p className="truncate text-sm text-muted-foreground">{developer.email}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 mb-2">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
                               <Badge variant={developer.employmentType === 'fulltime' ? 'default' : 'secondary'} className="text-xs">
                                 {developer.employmentType === 'fulltime' ? 'Full-time' : 'Part-time'}
                               </Badge>
@@ -451,54 +411,53 @@ export function ClientPortal() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500">No team members assigned yet.</p>
+                      <p className="text-sm text-muted-foreground">No team members assigned yet.</p>
                     )}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-center py-8 text-gray-500">No services assigned yet.</p>
+            <EmptyState title="No services assigned" description="This portal does not currently have active services attached." />
           )}
         </CardContent>
       </Card>
 
       {/* Contact Information */}
       {contacts.length > 0 && (
-        <Card>
+        <Card className="content-auto">
           <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
-            <CardDescription>Your main points of contact</CardDescription>
+            <SectionHeading title="Contact Information" description="Your main points of contact" icon={<Mail className="h-5 w-5" />} />
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
               {contacts.map((contact) => (
-                <div key={contact.id} className="p-4 border rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-medium text-gray-900">{contact.fullName}</h4>
+                <div key={contact.id} className="rounded-[1rem] border border-border/60 bg-white/75 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <h4 className="font-medium text-foreground">{contact.fullName}</h4>
                     {contact.isPrimary && (
                       <Star className="h-4 w-4 text-yellow-500 fill-current" aria-label="Primary Contact" />
                     )}
                   </div>
                   {contact.position && (
-                    <p className="text-sm text-gray-600 mb-2">{contact.position}</p>
+                    <p className="mb-2 text-sm text-muted-foreground">{contact.position}</p>
                   )}
                   <div className="space-y-1">
                     {contact.email && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Mail className="h-4 w-4" />
                         <span>{contact.email}</span>
                       </div>
                     )}
                     {contact.phone && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Phone className="h-4 w-4" />
                         <span>{contact.phone}</span>
                       </div>
                     )}
                   </div>
                   {contact.notes && (
-                    <p className="text-xs text-gray-500 mt-2 italic">"{contact.notes}"</p>
+                    <p className="mt-2 text-xs italic text-muted-foreground">"{contact.notes}"</p>
                   )}
                 </div>
               ))}
@@ -508,27 +467,26 @@ export function ClientPortal() {
       )}
 
       {/* Documents */}
-      <Card>
+      <Card className="content-auto">
         <CardHeader>
-          <CardTitle>Documents</CardTitle>
-          <CardDescription>Your project documents and files</CardDescription>
+          <SectionHeading title="Documents" description="Your project documents and files" icon={<FileText className="h-5 w-5" />} />
         </CardHeader>
         <CardContent>
           {documents.length > 0 ? (
             <div className="space-y-3">
               {documents.map((doc) => (
-                <div key={doc.document.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                <div key={doc.document.id} className="flex flex-col gap-3 rounded-[1rem] border border-border/60 bg-white/75 p-4 transition hover:bg-primary/5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex items-start gap-3">
                       <FileText className="h-5 w-5 text-gray-400" />
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-gray-900">{doc.document.name}</p>
+                      <div className="min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <p className="break-words font-medium text-gray-900">{doc.document.name}</p>
                           <Badge className="bg-blue-100 text-blue-800 text-xs">
                             {doc.serviceTitle || doc.serviceName}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                           {doc.document.type && (
                             <Badge variant="outline" className="text-xs">
                               {doc.document.type}
@@ -540,7 +498,7 @@ export function ClientPortal() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
                     {canPreview(doc.document.name) && (
                       <Button
                         variant="outline"
@@ -572,22 +530,21 @@ export function ClientPortal() {
       </Card>
 
       {/* Invoices */}
-      <Card>
+      <Card className="content-auto">
         <CardHeader>
-          <CardTitle>Invoices</CardTitle>
-          <CardDescription>Your billing history and invoices</CardDescription>
+          <SectionHeading title="Invoices" description="Your billing history and invoice status" icon={<DollarSign className="h-5 w-5" />} />
         </CardHeader>
         <CardContent>
           {invoices.length > 0 ? (
             <div className="space-y-3">
               {invoices.map((invoice) => (
-                <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                <div key={invoice.id} className="flex flex-col gap-3 rounded-lg border p-4 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex items-start gap-3">
                       <DollarSign className="h-5 w-5 text-gray-400" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-medium text-gray-900">{invoice.invoiceNumber}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                           <span>Period: {new Date(invoice.periodStart).toLocaleDateString()} - {new Date(invoice.periodEnd).toLocaleDateString()}</span>
                           <span>Due: {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}</span>
                         </div>
@@ -597,7 +554,7 @@ export function ClientPortal() {
                       <p className="text-sm text-gray-600 mb-2">{invoice.description}</p>
                     )}
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right">
                     <p className="text-lg font-bold text-gray-900">{formatCurrency(invoice.amount)}</p>
                     <Badge className={
                       invoice.status === 'paid' ? 'bg-green-100 text-green-800' :

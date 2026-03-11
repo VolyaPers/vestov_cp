@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Building, DollarSign, TrendingUp, Calendar, Eye } from 'lucide-react'
+import { Building, DollarSign, TrendingUp, Calendar, Eye, Receipt } from 'lucide-react'
 import { useLocation } from 'wouter'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
+import { Card, CardContent } from '@/components/ui/card'
 import { api } from '@/lib/api'
 import { getDatePreset, getPresetLabel, type DatePreset } from '@/lib/datePresets'
+import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Invoice {
   id: number
@@ -57,141 +59,127 @@ export function InvoicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="stripe-card border-2 border-blue-200 shadow-lg bg-gradient-to-br from-white to-blue-50/30">
-        <div className="stripe-table-header bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
-          <div className="flex items-start justify-between gap-6 p-6">
-            {/* Left Side - Title */}
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                <DollarSign className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white flex items-center gap-2">
-                  Invoices Management
-                  {invoices.length > 0 && (
-                    <Badge className="bg-white text-blue-600 text-sm font-bold px-2 py-1 whitespace-nowrap hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                      {invoices.length} {invoices.length === 1 ? 'Invoice' : 'Invoices'}
-                    </Badge>
-                  )}
-                </h3>
-                <p className="text-blue-100 mt-1 text-sm">All invoices across all clients</p>
-              </div>
-            </div>
-
-            {/* Right Side - Date Controls */}
-            <div className="flex flex-col items-end gap-3">
-              {/* Date Presets */}
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                {(['thisMonth', 'lastMonth', 'thisYear', 'lastYear', 'allTime'] as DatePreset[]).map((preset) => (
-                  <Button
-                    key={preset}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const range = getDatePreset(preset)
-                      setDateRange(range)
-                    }}
-                    className="text-xs h-8 bg-white/10 border-white/20 text-white hover:bg-white hover:text-blue-600 transition-colors"
-                  >
-                    {getPresetLabel(preset)}
-                  </Button>
-                ))}
-              </div>
-
-              {/* Date Inputs */}
-              <div className="flex items-center gap-2">
-                <Label htmlFor="startDate" className="text-sm text-white whitespace-nowrap">FROM:</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={dateRange.startDate}
-                  onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                  className="w-40 bg-white/10 border-white/20 text-white placeholder:text-white/70"
-                />
-                <Label htmlFor="endDate" className="text-sm text-white whitespace-nowrap">TO:</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={dateRange.endDate}
-                  onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                  className="w-40 bg-white/10 border-white/20 text-white placeholder:text-white/70"
-                />
-              </div>
+      <PageHero
+        eyebrow="Invoice Management"
+        title="Billing visibility with cleaner controls and stronger signal."
+        description="The invoices workspace now follows the same advanced shell with sharper filters, cleaner totals and less visual noise around the table."
+        theme="ocean"
+        meta={
+          <>
+            <span>{invoices.length} invoices loaded</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{dateRange.startDate} to {dateRange.endDate}</span>
+          </>
+        }
+        aside={
+          <div className="rounded-[1.3rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Quick ranges</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(['thisMonth', 'lastMonth', 'thisYear', 'lastYear', 'allTime'] as DatePreset[]).map((preset) => (
+                <Button
+                  key={preset}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const range = getDatePreset(preset)
+                    setDateRange(range)
+                  }}
+                  className="border-white/15 bg-white/10 text-white hover:bg-white hover:text-slate-950"
+                >
+                  {getPresetLabel(preset)}
+                </Button>
+              ))}
             </div>
           </div>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricTile
+            label="Total Invoiced"
+            value={`$${invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0).toLocaleString()}`}
+            hint="Gross amount across current filter"
+            icon={<DollarSign className="h-5 w-5" />}
+            tone="primary"
+            className="bg-white/10 border-white/12 text-white [&_p]:text-current"
+          />
+          <MetricTile
+            label="Total Paid"
+            value={`$${invoices.filter(inv => inv.paidAt).reduce((sum, inv) => sum + parseFloat(inv.amount), 0).toLocaleString()}`}
+            hint="Settled invoice value"
+            icon={<TrendingUp className="h-5 w-5" />}
+            tone="emerald"
+            className="bg-white/10 border-white/12 text-white [&_p]:text-current"
+          />
+          <MetricTile
+            label="Outstanding"
+            value={`$${(invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0) - invoices.filter(inv => inv.paidAt).reduce((sum, inv) => sum + parseFloat(inv.amount), 0)).toLocaleString()}`}
+            hint="Unpaid balance in range"
+            icon={<Receipt className="h-5 w-5" />}
+            tone="amber"
+            className="bg-white/10 border-white/12 text-white [&_p]:text-current"
+          />
         </div>
+      </PageHero>
 
-        {/* Invoice Totals */}
-        <div className="px-6 pt-6 bg-white/50">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="flex items-center gap-3 p-5 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border-2 border-blue-300 shadow-md hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-blue-600 rounded-lg">
-                <DollarSign className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-blue-700 font-semibold uppercase tracking-wide">Total Invoiced</p>
-                <p className="text-3xl font-bold text-blue-900 mt-1">
-                  ${invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0).toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-5 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border-2 border-green-300 shadow-md hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-green-600 rounded-lg">
-                <TrendingUp className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-green-700 font-semibold uppercase tracking-wide">Total Paid</p>
-                <p className="text-3xl font-bold text-green-900 mt-1">
-                  ${invoices.filter(inv => inv.paidAt).reduce((sum, inv) => sum + parseFloat(inv.amount), 0).toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-5 bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border-2 border-amber-300 shadow-md hover:shadow-lg transition-shadow">
-              <div className="p-3 bg-amber-600 rounded-lg">
-                <Calendar className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-amber-700 font-semibold uppercase tracking-wide">Outstanding</p>
-                <p className="text-3xl font-bold text-amber-900 mt-1">
-                  ${(invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0) - invoices.filter(inv => inv.paidAt).reduce((sum, inv) => sum + parseFloat(inv.amount), 0)).toLocaleString()}
-                </p>
-              </div>
-            </div>
+      <Card className="border-white/80 bg-white/82">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <Label htmlFor="startDate" className="text-sm whitespace-nowrap text-muted-foreground">From</Label>
+            <Input
+              id="startDate"
+              type="date"
+              value={dateRange.startDate}
+              onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+              className="w-44"
+            />
+            <Label htmlFor="endDate" className="text-sm whitespace-nowrap text-muted-foreground">To</Label>
+            <Input
+              id="endDate"
+              type="date"
+              value={dateRange.endDate}
+              onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+              className="w-44"
+            />
+            <Badge variant="outline" className="ml-auto border-primary/20 bg-primary/10 text-primary">
+              Range active
+            </Badge>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="p-6 bg-white rounded-b-lg">
+      <Card className="border-white/80 bg-white/82">
+        <CardContent className="p-6">
           {invoicesLoading ? (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <p className="mt-4 text-gray-600 font-medium">Loading invoices...</p>
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <p className="mt-4 font-medium text-muted-foreground">Loading invoices...</p>
             </div>
           ) : invoices.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-              <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-lg font-semibold text-gray-600">No invoices found</p>
-              <p className="text-sm text-gray-500 mt-2">Try adjusting the date range filters</p>
-            </div>
+            <EmptyState
+              icon={<DollarSign className="h-6 w-6" />}
+              title="No invoices found"
+              description="Try expanding the date range or switching to a broader preset."
+            />
           ) : (
-            <div className="overflow-x-auto rounded-lg border-2 border-gray-200 shadow-sm">
+            <div className="overflow-x-auto rounded-[1.3rem] border border-border/70 bg-white/70 shadow-[0_20px_36px_-28px_rgba(15,23,42,0.55)]">
               <table className="w-full">
-                <thead className="bg-gradient-to-r from-gray-100 to-gray-50 border-b-2 border-gray-300">
+                <thead className="bg-muted/70 border-b border-border/70">
                   <tr>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Invoice #</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Client</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Date</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Period</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Amount</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Status</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold text-gray-800 uppercase tracking-wide">Actions</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Invoice #</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Client</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Date</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Period</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Amount</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Status</th>
+                    <th className="px-4 py-4 text-left text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-border/60 bg-white/70">
                   {invoices.map((invoice) => (
-                    <tr key={invoice.id} className="border-b hover:bg-blue-50/50 transition-colors">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{invoice.invoiceNumber}</td>
+                    <tr key={invoice.id} className="transition-colors hover:bg-primary/5">
+                      <td className="px-4 py-3 text-sm font-medium text-foreground">{invoice.invoiceNumber}</td>
                       <td 
-                        className="px-4 py-3 text-sm text-gray-700 cursor-pointer hover:bg-blue-50"
+                        className="cursor-pointer px-4 py-3 text-sm text-muted-foreground hover:bg-primary/5"
                         onClick={() => setLocation(`/admin/clients/${invoice.clientId}`)}
                       >
                         <div className="flex items-center gap-2">
@@ -202,20 +190,20 @@ export function InvoicesPage() {
                               className="h-6 w-6 object-contain rounded"
                             />
                           ) : (
-                            <Building className="h-5 w-5 text-gray-400" />
+                            <Building className="h-5 w-5 text-muted-foreground" />
                           )}
                           <span className="hover:text-blue-600 hover:underline font-medium">
                             {invoice.clientName}
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {new Date(invoice.invoiceDate).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
                         {new Date(invoice.periodStart).toLocaleDateString()} - {new Date(invoice.periodEnd).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                      <td className="px-4 py-3 text-sm font-semibold text-foreground">
                         ${parseFloat(invoice.amount).toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-sm">
@@ -249,9 +237,8 @@ export function InvoicesPage() {
               </table>
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
-

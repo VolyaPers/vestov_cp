@@ -1,20 +1,22 @@
 import { useState } from 'react'
-import { Route, Switch, Link } from 'wouter'
+import { Route, Switch, Link, useLocation } from 'wouter'
 import {
   FileText,
-  Menu,
-  X
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
 import { EmployeeDashboard } from '@/pages/employee/EmployeeDashboard'
 import { EmployeeProfile } from '@/pages/employee/EmployeeProfile'
 import { EmployeeVacations } from '@/pages/employee/EmployeeVacations'
 import { EmployeeReimbursements } from '@/pages/employee/EmployeeReimbursements'
 import { EmployeeRoadmap } from '@/pages/employee/EmployeeRoadmap'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
+import { MobileBottomNav } from '@/components/MobileBottomNav'
+import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
 import { Sidebar } from '@/components/Sidebar'
 import { ShiftReminderModal } from '@/components/ShiftReminderModal'
+import { getActiveNavigationLabel } from '@/lib/navigation'
 
 interface TeamMemberLayoutProps {
   user?: any
@@ -22,6 +24,13 @@ interface TeamMemberLayoutProps {
 
 export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [location] = useLocation()
+  const todayLabel = new Date().toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'long',
+    day: 'numeric',
+  })
+  const mobileTitle = getActiveNavigationLabel('team_member', location) ?? 'Workspace'
 
   const handleLogout = async () => {
     try {
@@ -34,63 +43,76 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--stripe-background)' }}>
+    <div className="app-shell min-h-screen">
       <ShiftReminderModal />
 
-      {/* Mobile sidebar */}
-      <div className={cn(
-        'fixed inset-0 flex z-50 lg:hidden',
-        sidebarOpen ? 'block' : 'hidden'
-      )}>
-        <div className="fixed inset-0 bg-black/20" onClick={() => setSidebarOpen(false)} />
-        <div className="relative flex-1 flex flex-col max-w-xs w-full stripe-card shadow-lg">
-          <div className="absolute top-0 right-0 -mr-12 pt-4">
-            <button
-              type="button"
-              className="stripe-btn-primary ml-1 h-10 w-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <Sidebar role="team_member" user={user} onLogout={handleLogout} />
-        </div>
-      </div>
+      <MobileSidebarSheet
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        title="Employee workspace"
+        subtitle="Roadmap, leave and expenses live inside one fast mobile shell."
+      >
+        <Sidebar role="team_member" user={user} onLogout={handleLogout} />
+      </MobileSidebarSheet>
 
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:w-72 lg:flex-col lg:fixed lg:inset-y-0">
+      <div className="fixed inset-y-4 left-4 z-30 hidden w-[288px] lg:flex">
         <Sidebar role="team_member" user={user} onLogout={handleLogout} />
       </div>
 
-      {/* Main content */}
-      <div className="lg:pl-72 flex flex-col flex-1 min-h-screen">
-        {/* Top bar */}
-        <div className="sticky top-0 z-10 lg:hidden">
-          <div className="stripe-card stripe-border-bottom px-4 py-3">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                className="stripe-btn-primary h-10 w-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20"
-                onClick={() => setSidebarOpen(true)}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              <div className="flex items-center gap-3">
-                <div className="stripe-badge-success">
-                  <div className="w-2 h-2 rounded-full animate-pulse mr-2" style={{ backgroundColor: 'var(--stripe-success)' }}></div>
-                  <span>Online</span>
-                </div>
+      <div className="flex min-h-screen flex-col lg:pl-[320px]">
+        <header className="sticky top-0 z-20">
+          <div className="mobile-top-chrome lg:hidden">
+            <div className="mobile-top-chrome-main">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.24em] text-primary/80">
+                  Employee Workspace
+                </p>
+                <h1 className="mt-1 truncate font-display text-[1.35rem] font-semibold text-foreground">
+                  {mobileTitle}
+                </h1>
               </div>
+              <div className="mobile-top-chip">{todayLabel}</div>
+            </div>
+
+            <div className="px-4 pb-4">
+              <GlobalSearchLauncher className="w-full" />
             </div>
           </div>
-        </div>
+
+          <div className="hidden border-b border-white/60 bg-background/70 backdrop-blur-xl lg:block">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.7rem] font-extrabold uppercase tracking-[0.26em] text-primary/80">
+                  Employee Workspace
+                </p>
+                <h1 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">
+                  Personal operations and growth dashboard
+                </h1>
+                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
+                  Schedule, reimbursements and roadmap now sit inside the same upgraded shadcn-driven shell.
+                </p>
+              </div>
+
+              <div className="hidden rounded-full border border-white/70 bg-white/75 px-4 py-2 text-sm font-semibold text-muted-foreground shadow-[0_16px_28px_-22px_rgba(15,23,42,0.7)] md:block">
+                {todayLabel}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="stripe-badge-success">
+                <div className="h-2 w-2 rounded-full animate-pulse bg-[var(--stripe-success)]"></div>
+                <span>Workspace synced</span>
+              </div>
+              <GlobalSearchLauncher className="w-full max-w-[280px]" />
+            </div>
+          </div>
+          </div>
+        </header>
 
         <main className="flex-1">
-          <div className="p-4 lg:p-6">
-            <div className="max-w-[95%] mx-auto">
-              <div className="mb-4 flex justify-end">
-                <GlobalSearchLauncher className="w-full sm:w-[220px]" />
-              </div>
+          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+            <div className="mx-auto max-w-[1500px]">
               <Switch>
                 <Route path="/employee/dashboard" component={EmployeeDashboard} />
                 <Route path="/employee/profile" component={EmployeeProfile} />
@@ -100,19 +122,21 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
                 <Route path="/employee" component={EmployeeDashboard} />
                 <Route path="*">
                   {() => (
-                    <div className="flex items-center justify-center min-h-[60vh]">
-                      <div className="text-center stripe-card p-12">
-                        <div className="w-16 h-16 mx-auto mb-6 rounded-lg flex items-center justify-center stripe-surface">
-                          <FileText className="h-8 w-8 stripe-text-muted" />
-                        </div>
-                        <h2 className="text-2xl font-bold stripe-text-primary mb-3">Page Not Found</h2>
-                        <p className="stripe-text-secondary mb-6 max-w-sm">The page you're looking for doesn't exist or has been moved.</p>
-                        <Link href="/employee/dashboard">
-                          <button className="stripe-btn-primary">
-                            Go to Dashboard
-                          </button>
-                        </Link>
-                      </div>
+                    <div className="flex min-h-[60vh] items-center justify-center">
+                      <Card className="max-w-lg text-center">
+                        <CardContent className="p-10 sm:p-12">
+                          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-[1.35rem] bg-primary/10 text-primary">
+                            <FileText className="h-8 w-8" />
+                          </div>
+                          <h2 className="font-display text-3xl font-semibold text-foreground">Page not found</h2>
+                          <p className="mx-auto mt-3 max-w-sm text-sm text-muted-foreground">
+                            This employee route is not available in the updated workspace shell.
+                          </p>
+                          <Link href="/employee/dashboard">
+                            <Button className="mt-6">Go to dashboard</Button>
+                          </Link>
+                        </CardContent>
+                      </Card>
                     </div>
                   )}
                 </Route>
@@ -121,6 +145,8 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
           </div>
         </main>
       </div>
+
+      <MobileBottomNav role="team_member" onOpenMenu={() => setSidebarOpen(true)} />
     </div>
   )
 }

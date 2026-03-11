@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 import { PreferredShiftsDisplay } from '@/components/PreferredShiftsDisplay'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface Shift {
   id: number
@@ -94,105 +95,81 @@ export function AdminShifts() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <Clock className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading shift data...</p>
-        </div>
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Shift Management
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Monitor and manage employee shifts in real-time
-            </p>
-          </div>
-        </div>
+      <PageHero
+        eyebrow="Operations"
+        title="Shift control center"
+        description="Track live shift activity, preferred schedules, and attendance exceptions from one operational workspace."
+        theme="ocean"
+        meta={(
+          <>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {activeShifts.length} active sessions
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+              {lateShifts.length + missedShifts.length} attendance alerts
+            </span>
+          </>
+        )}
+      />
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricTile
+          label="Working"
+          value={workingNow.length}
+          hint="Currently clocked in"
+          icon={<Users className="h-5 w-5" />}
+          tone="emerald"
+        />
+        <MetricTile
+          label="On Break"
+          value={onBreak.length}
+          hint="Live break sessions"
+          icon={<Coffee className="h-5 w-5" />}
+          tone="amber"
+        />
+        <MetricTile
+          label="Late Today"
+          value={lateShifts.length}
+          hint="Started behind schedule"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          tone="rose"
+        />
+        <MetricTile
+          label="Missed Starts"
+          value={missedShifts.length}
+          hint="Scheduled but not started"
+          icon={<Calendar className="h-5 w-5" />}
+          tone="violet"
+        />
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Currently Working</p>
-              <p className="text-3xl font-bold text-green-600">{workingNow.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-              <Users className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">On Break</p>
-              <p className="text-3xl font-bold text-amber-600">{onBreak.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Coffee className="w-6 h-6 text-amber-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Late Today</p>
-              <p className="text-3xl font-bold text-red-600">{lateShifts.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Missed Shifts</p>
-              <p className="text-3xl font-bold text-orange-600">{missedShifts.length}</p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Active Shifts - Card Grid */}
       <div>
-        <div className="mb-4">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-blue-600" />
-            Active Shifts ({activeShifts.length})
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">Employees currently working or on break</p>
-        </div>
+        <SectionHeading
+          title={`Active shifts (${activeShifts.length})`}
+          description="Employees currently working or on break."
+          icon={<Clock className="h-5 w-5" />}
+        />
 
         {activeShifts.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {activeShifts.map((shift) => (
               <Card
                 key={shift.id}
-                className={`overflow-hidden transition-all hover:shadow-lg ${
+                className={`overflow-hidden border-white/80 bg-white/92 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.45)] transition-all hover:-translate-y-0.5 hover:shadow-[0_28px_60px_-34px_rgba(15,23,42,0.55)] ${
                   shift.status === 'on_break'
-                    ? 'border-amber-200 bg-amber-50/30'
-                    : 'border-green-200 bg-green-50/30'
+                    ? 'ring-1 ring-amber-200/70'
+                    : 'ring-1 ring-emerald-200/70'
                 }`}
               >
                 <CardContent className="p-4">
-                  {/* Avatar and Name */}
                   <div className="flex items-start gap-3 mb-4">
                     <div className="relative">
                       <Avatar className="h-14 w-14 border-2 border-white shadow-md">
@@ -215,41 +192,38 @@ export function AdminShifts() {
                       }`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{shift.employee.name}</h3>
-                      <p className="text-xs text-gray-600 truncate">{shift.employee.email}</p>
+                      <h3 className="truncate font-semibold text-foreground">{shift.employee.name}</h3>
+                      <p className="truncate text-xs text-muted-foreground">{shift.employee.email}</p>
                     </div>
                   </div>
 
-                  {/* Status Badge */}
                   <div className="mb-3">
                     {shift.status === 'on_break' && shift.activeBreak ? (
-                      <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300 w-full justify-center">
+                      <Badge variant="outline" className="w-full justify-center border-amber-300 bg-amber-100 text-amber-700">
                         <Coffee className="w-3 h-3 mr-1" />
                         On Break ({getDuration(shift.activeBreak.startTime)})
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 w-full justify-center">
+                      <Badge variant="outline" className="w-full justify-center border-emerald-300 bg-emerald-100 text-emerald-700">
                         <TrendingUp className="w-3 h-3 mr-1" />
                         Working
                       </Badge>
                     )}
                   </div>
 
-                  {/* Time Info */}
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-2 rounded-[1rem] border border-border/60 bg-muted/20 p-3 text-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Started</span>
-                      <span className="font-semibold text-gray-900">{formatTime(shift.startTime)}</span>
+                      <span className="text-muted-foreground">Started</span>
+                      <span className="font-semibold text-foreground">{formatTime(shift.startTime)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Duration</span>
-                      <span className="font-semibold text-gray-900">{getDuration(shift.startTime)}</span>
+                      <span className="text-muted-foreground">Duration</span>
+                      <span className="font-semibold text-foreground">{getDuration(shift.startTime)}</span>
                     </div>
                   </div>
 
-                  {/* Late Badge */}
                   {shift.isLate && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="mt-3 border-t border-border/70 pt-3">
                       <Badge variant="destructive" className="w-full justify-center">
                         <AlertTriangle className="w-3 h-3 mr-1" />
                         Late {shift.lateMinutes}min
@@ -261,37 +235,29 @@ export function AdminShifts() {
             ))}
           </div>
         ) : (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center text-gray-500">
-                <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No active shifts at the moment</p>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={<Clock className="h-6 w-6" />}
+            title="No active shifts"
+            description="Live shift sessions will appear here once employees clock in."
+          />
         )}
       </div>
 
-      {/* Team Preferred Shifts */}
       <div>
-        <div className="mb-4">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-indigo-600" />
-            Team Preferred Shifts
-          </h2>
-          <p className="text-sm text-gray-600 mt-1">Preferred working hours for each team member (shown in your timezone)</p>
-        </div>
+        <SectionHeading
+          title="Team preferred shifts"
+          description="Preferred working hours for each team member in your timezone."
+          icon={<Calendar className="h-5 w-5" />}
+        />
 
         {isLoadingPreferred ? (
-          <Card>
-            <CardContent className="py-8">
-              <div className="text-center text-gray-500">Loading preferred shifts...</div>
-            </CardContent>
+          <Card className="border-white/80 bg-white/88">
+            <CardContent className="py-8 text-center text-muted-foreground">Loading preferred shifts...</CardContent>
           </Card>
         ) : preferredMembers.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {preferredMembers.map((item: any) => (
-              <Card key={item.employee.id} className="border-gray-200">
+              <Card key={item.employee.id} className="border-white/80 bg-white/92">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
@@ -324,25 +290,20 @@ export function AdminShifts() {
             ))}
           </div>
         ) : (
-          <Card>
-            <CardContent className="py-8">
-              <div className="text-center text-gray-500">
-                <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No team members have set preferred shifts yet</p>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={<Calendar className="h-6 w-6" />}
+            title="No preferred shifts yet"
+            description="Preferred schedules will appear here after the team configures them."
+          />
         )}
       </div>
 
-      {/* Late/Missed Shifts */}
       {(lateShifts.length > 0 || missedShifts.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Late Shifts */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {lateShifts.length > 0 && (
-            <Card className="border-red-200">
+            <Card className="border-rose-200/80 bg-white/92">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-700">
+                <CardTitle className="flex items-center gap-2 text-rose-700">
                   <AlertTriangle className="w-5 h-5" />
                   Late Arrivals Today
                 </CardTitle>
@@ -353,12 +314,12 @@ export function AdminShifts() {
                   {lateShifts.map(({ shift, employee }: any) => (
                     <div
                       key={shift.id}
-                      className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200"
+                      className="flex items-center justify-between rounded-[1rem] border border-rose-200/80 bg-rose-50/85 p-3"
                     >
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10 border-2 border-red-200">
+                        <Avatar className="h-10 w-10 border-2 border-rose-200">
                           <AvatarImage src={employee.avatarUrl} alt={employee.name} />
-                          <AvatarFallback className="bg-red-100 text-red-700 font-semibold text-sm">
+                          <AvatarFallback className="bg-rose-100 text-rose-700 font-semibold text-sm">
                             {employee.name
                               .split(' ')
                               .map((n: string) => n[0])
@@ -368,8 +329,8 @@ export function AdminShifts() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold text-gray-900">{employee.name}</p>
-                          <p className="text-sm text-gray-600">
+                          <p className="font-semibold text-foreground">{employee.name}</p>
+                          <p className="text-sm text-muted-foreground">
                             Started at {formatTime(shift.startTime)}
                           </p>
                         </div>
@@ -384,11 +345,10 @@ export function AdminShifts() {
             </Card>
           )}
 
-          {/* Missed Shifts */}
           {missedShifts.length > 0 && (
-            <Card className="border-orange-200">
+            <Card className="border-amber-200/80 bg-white/92">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-orange-700">
+                <CardTitle className="flex items-center gap-2 text-amber-700">
                   <Calendar className="w-5 h-5" />
                   Missed Shifts Today
                 </CardTitle>
@@ -399,12 +359,12 @@ export function AdminShifts() {
                   {missedShifts.map(({ schedule, employee }: any) => (
                     <div
                       key={`${employee.id}-${schedule.id}`}
-                      className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200"
+                      className="flex items-center justify-between rounded-[1rem] border border-amber-200/80 bg-amber-50/85 p-3"
                     >
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10 border-2 border-orange-200">
+                        <Avatar className="h-10 w-10 border-2 border-amber-200">
                           <AvatarImage src={employee.avatarUrl} alt={employee.name} />
-                          <AvatarFallback className="bg-orange-100 text-orange-700 font-semibold text-sm">
+                          <AvatarFallback className="bg-amber-100 text-amber-700 font-semibold text-sm">
                             {employee.name
                               .split(' ')
                               .map((n: string) => n[0])
@@ -414,8 +374,8 @@ export function AdminShifts() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold text-gray-900">{employee.name}</p>
-                          <p className="text-sm text-gray-600">
+                          <p className="font-semibold text-foreground">{employee.name}</p>
+                          <p className="text-sm text-muted-foreground">
                             Scheduled at {schedule.startTime}
                           </p>
                         </div>

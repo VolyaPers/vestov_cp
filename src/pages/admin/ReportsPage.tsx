@@ -29,11 +29,13 @@ import {
   ArrowDown,
   Filter,
 } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { getDatePreset, type DatePreset } from '@/lib/datePresets'
+import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Client {
   id: number
@@ -363,31 +365,46 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">Reports & Analytics</h1>
-            <p className="stripe-text-secondary text-lg">
-              Comprehensive insights into revenue, team growth, and client metrics
-            </p>
+      <PageHero
+        eyebrow="Reports & Analytics"
+        title="Performance, revenue and growth in one workspace."
+        description="This section now uses the same advanced visual system as the rest of the product, with clearer filters, stronger KPI hierarchy and cleaner chart surfaces."
+        theme="violet"
+        meta={
+          <>
+            <span>{clients.length} clients in dataset</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{filteredTeamMembers.length} team members in scope</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span>{filteredInvoices.length} invoices in selected range</span>
+          </>
+        }
+        aside={
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[1.3rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Reporting window</p>
+              <p className="mt-3 font-display text-2xl font-semibold text-white">{datePreset}</p>
+              <p className="mt-1 text-sm text-slate-300">{startDate} to {endDate}</p>
+            </div>
+            <div className="rounded-[1.3rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Revenue growth</p>
+              <p className="mt-3 font-display text-2xl font-semibold text-white">{revenueGrowth.toFixed(1)}%</p>
+              <p className="mt-1 text-sm text-slate-300">Versus the previous period.</p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <TrendingUp className="h-8 w-8 text-green-600" />
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Filters */}
-      <div className="stripe-card p-6">
+      <Card className="border-white/80 bg-white/82">
+        <CardContent className="p-6">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 stripe-text-muted" />
-            <span className="text-sm font-medium stripe-text-secondary">Filters:</span>
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-muted-foreground">Filters</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-sm stripe-text-secondary">Client:</label>
+            <label className="text-sm text-muted-foreground">Client:</label>
             <Select value={selectedClient} onValueChange={setSelectedClient}>
               <SelectTrigger className="w-48">
                 <SelectValue />
@@ -414,7 +431,7 @@ export function ReportsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-sm stripe-text-secondary">Period:</label>
+            <label className="text-sm text-muted-foreground">Period:</label>
             <Select value={datePreset} onValueChange={(val) => setDatePreset(val as DatePreset)}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -430,7 +447,7 @@ export function ReportsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-sm stripe-text-secondary">Granularity:</label>
+            <label className="text-sm text-muted-foreground">Granularity:</label>
             <Select value={granularity} onValueChange={(val) => setGranularity(val as any)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -442,63 +459,49 @@ export function ReportsPage() {
               </SelectContent>
             </Select>
           </div>
-        </div>
-      </div>
 
-      {/* KPI Cards */}
+          <Badge variant="outline" className="ml-auto border-primary/20 bg-primary/10 text-primary">
+            {selectedClient === 'all' ? 'All clients' : 'Filtered view'}
+          </Badge>
+        </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
-              <DollarSign className="h-6 w-6 text-green-600" />
+        <MetricTile
+          label="Total Revenue"
+          value={formatCurrency(totalRevenue)}
+          hint="Paid invoices in the selected window"
+          trend={
+            <div className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${revenueGrowth >= 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+              {revenueGrowth >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+              {Math.abs(revenueGrowth).toFixed(1)}% vs previous period
             </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-900 mb-1">{formatCurrency(totalRevenue)}</div>
-          <div className="text-sm text-gray-500 mb-2">Total Revenue</div>
-          <div className={`flex items-center gap-1 text-sm ${revenueGrowth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {revenueGrowth >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-            {Math.abs(revenueGrowth).toFixed(1)}% vs previous period
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-              <Users className="h-6 w-6 text-blue-600" />
-            </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-900 mb-1">{activeTeamMembers}</div>
-          <div className="text-sm text-gray-500 mb-2">Active Team Members</div>
-          <div className="text-sm text-gray-600">
-            {filteredTeamMembers.filter((m) => m.billable).length} billable
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
-              <Building2 className="h-6 w-6 text-purple-600" />
-            </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-900 mb-1">{activeClients}</div>
-          <div className="text-sm text-gray-500 mb-2">Active Clients</div>
-          <div className="text-sm text-gray-600">
-            {activeClients > 0 ? formatCurrency(totalRevenue / activeClients) : '$0'} avg revenue
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center">
-              <Briefcase className="h-6 w-6 text-orange-600" />
-            </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-900 mb-1">{activeServices}</div>
-          <div className="text-sm text-gray-500 mb-2">Active Services</div>
-          <div className="text-sm text-gray-600">
-            Across {selectedClient === 'all' ? activeClients : 1} {activeClients === 1 ? 'client' : 'clients'}
-          </div>
-        </div>
+          }
+          icon={<DollarSign className="h-5 w-5" />}
+          tone="emerald"
+        />
+        <MetricTile
+          label="Active Team"
+          value={activeTeamMembers}
+          hint={`${filteredTeamMembers.filter((m) => m.billable).length} billable in this view`}
+          icon={<Users className="h-5 w-5" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Active Clients"
+          value={activeClients}
+          hint={activeClients > 0 ? `${formatCurrency(totalRevenue / activeClients)} avg revenue` : '$0 avg revenue'}
+          icon={<Building2 className="h-5 w-5" />}
+          tone="violet"
+        />
+        <MetricTile
+          label="Active Services"
+          value={activeServices}
+          hint={`Across ${selectedClient === 'all' ? activeClients : 1} ${activeClients === 1 ? 'client' : 'clients'}`}
+          icon={<Briefcase className="h-5 w-5" />}
+          tone="amber"
+        />
       </div>
 
       {/* Tabs with Charts */}
@@ -526,10 +529,11 @@ export function ReportsPage() {
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <Activity className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                <p>No revenue data available for selected period</p>
-              </div>
+              <EmptyState
+                icon={<Activity className="h-6 w-6" />}
+                title="No revenue data"
+                description="There is no paid revenue available for the currently selected reporting window."
+              />
             )}
           </div>
 
@@ -548,10 +552,11 @@ export function ReportsPage() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Users className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                  <p>No team growth data available</p>
-                </div>
+                <EmptyState
+                  icon={<Users className="h-6 w-6" />}
+                  title="No team growth data"
+                  description="No team member growth records were found for this filter set."
+                />
               )}
             </div>
 
@@ -574,10 +579,11 @@ export function ReportsPage() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Building2 className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                  <p>No client data available</p>
-                </div>
+                <EmptyState
+                  icon={<Building2 className="h-6 w-6" />}
+                  title="No client growth data"
+                  description="Client acquisition history is not available for the current dataset."
+                />
               )}
             </div>
           </div>
@@ -613,10 +619,11 @@ export function ReportsPage() {
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <DollarSign className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                <p>No revenue data available</p>
-              </div>
+              <EmptyState
+                icon={<DollarSign className="h-6 w-6" />}
+                title="No revenue trend"
+                description="Revenue trend visualisation needs at least one paid invoice in the selected period."
+              />
             )}
           </div>
 

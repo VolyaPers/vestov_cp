@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useLocation, Route, Switch, Redirect } from 'wouter'
-import { LogOut, Menu, X } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { ClientDashboard } from '@/pages/client/ClientDashboard'
 import { ClientPortal } from '@/pages/client/ClientPortal'
 import { ClientTeamStatus } from '@/pages/client/ClientTeamStatus'
@@ -10,10 +11,11 @@ import { ClientInvoices } from '@/pages/client/ClientInvoices'
 import { ClientProfile } from '@/pages/client/ClientProfile'
 import { ClientFeedbackPage } from '@/pages/client/ClientFeedbackPage'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
+import { MobileBottomNav } from '@/components/MobileBottomNav'
+import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
-import vestovLogo from '@/assets/vestov-logo.png'
+import { getActiveNavigationLabel } from '@/lib/navigation'
 import type { User, Client } from '@/types/common'
 
 interface ClientLayoutProps {
@@ -26,6 +28,12 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   const [assignedClients, setAssignedClients] = useState<Client[]>([])
   const [currentClient, setCurrentClient] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const todayLabel = new Date().toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'long',
+    day: 'numeric',
+  })
+  const mobileTitle = getActiveNavigationLabel('client', location, currentClient) ?? 'Workspace'
 
   useEffect(() => {
     let isMounted = true
@@ -78,35 +86,22 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--stripe-background)' }}>
-      {/* Mobile sidebar */}
-      <div className={cn(
-        'fixed inset-0 flex z-50 lg:hidden',
-        isMobileMenuOpen ? 'block' : 'hidden'
-      )}>
-        <div className="fixed inset-0 bg-black/20" onClick={() => setIsMobileMenuOpen(false)} />
-        <div className="relative flex-1 flex flex-col max-w-xs w-full stripe-card shadow-lg">
-          <div className="absolute top-0 right-0 -mr-12 pt-4">
-            <button
-              type="button"
-              className="stripe-btn-primary ml-1 h-10 w-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20"
-              onClick={() => setIsMobileMenuOpen(false)}
-              data-testid="mobile-menu-close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <Sidebar
-            role="client"
-            user={user}
-            onLogout={handleLogout}
-            currentClient={currentClient}
-          />
-        </div>
-      </div>
+    <div className="app-shell min-h-screen">
+      <MobileSidebarSheet
+        open={isMobileMenuOpen}
+        onOpenChange={setIsMobileMenuOpen}
+        title={currentClient?.name || 'Client workspace'}
+        subtitle="Documents, billing and delivery views are always one tap away."
+      >
+        <Sidebar
+          role="client"
+          user={user}
+          onLogout={handleLogout}
+          currentClient={currentClient}
+        />
+      </MobileSidebarSheet>
 
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:w-72 lg:flex-col lg:fixed lg:inset-y-0">
+      <div className="fixed inset-y-4 left-4 z-30 hidden w-[288px] lg:flex">
         <Sidebar
           role="client"
           user={user}
@@ -115,73 +110,109 @@ export function ClientLayout({ user }: ClientLayoutProps) {
         />
       </div>
 
-      {/* Mobile header */}
-      <div className="sticky top-0 z-40 lg:hidden">
-        <div className="stripe-card stripe-border-bottom px-4 py-3">
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsMobileMenuOpen(true)}
-              data-testid="mobile-menu-button"
-            >
-              <Menu className="h-6 w-6" />
-            </Button>
-
-            <div className="flex-1 ml-4">
-              <h1 className="text-lg font-semibold stripe-text-primary">
-                {currentClient?.name || 'Client Portal'}
-              </h1>
+      <div className="flex min-h-screen flex-col lg:pl-[320px]">
+        <header className="sticky top-0 z-20">
+          <div className="mobile-top-chrome lg:hidden">
+            <div className="mobile-top-chrome-main">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.24em] text-primary/80">
+                  {currentClient?.name || 'Client Workspace'}
+                </p>
+                <h1 className="mt-1 truncate font-display text-[1.35rem] font-semibold text-foreground">
+                  {mobileTitle}
+                </h1>
+              </div>
+              <div className="mobile-top-chip">{todayLabel}</div>
             </div>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            <div className="px-4 pb-4">
+              <GlobalSearchLauncher className="w-full" />
+            </div>
           </div>
-        </div>
+
+          <div className="hidden border-b border-white/60 bg-background/70 backdrop-blur-xl lg:block">
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.7rem] font-extrabold uppercase tracking-[0.26em] text-primary/80">
+                  Client Workspace
+                </p>
+                <h1 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">
+                  {currentClient?.name || 'Client portal'}
+                </h1>
+                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
+                  Cleaner access to delivery visibility, documents and invoices across your assigned accounts.
+                </p>
+              </div>
+
+              <div className="hidden rounded-full border border-white/70 bg-white/75 px-4 py-2 text-sm font-semibold text-muted-foreground shadow-[0_16px_28px_-22px_rgba(15,23,42,0.7)] md:block">
+                {todayLabel}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="stripe-badge-success">
+                <div className="h-2 w-2 rounded-full animate-pulse bg-[var(--stripe-success)]"></div>
+                <span>{assignedClients.length || 0} active account{assignedClients.length === 1 ? '' : 's'}</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <GlobalSearchLauncher className="w-full max-w-[280px]" />
+                <Button variant="outline" size="icon" onClick={handleLogout} className="shrink-0">
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          </div>
+        </header>
+
+        <main className="flex-1">
+          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : assignedClients.length === 0 ? (
+              <div className="flex min-h-[60vh] items-center justify-center">
+                <Card className="max-w-lg text-center">
+                  <CardContent className="p-10 sm:p-12">
+                    <h2 className="font-display text-3xl font-semibold text-foreground">No client access yet</h2>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Your account is active, but there are no assigned client workspaces available to open.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <Switch>
+                <Route path="/client/dashboard" component={ClientDashboard} />
+                <Route path="/client/team-status" component={ClientTeamStatus} />
+                <Route path="/client/documents/:id" component={ClientDocuments} />
+                <Route path="/client/invoices/:id" component={ClientInvoices} />
+                <Route path="/client/feedback" component={ClientFeedbackPage} />
+                <Route path="/client/profile" component={ClientProfile} />
+                <Route path="/client/portal/:id" component={ClientPortal} />
+                <Route path="/client/*">
+                  {currentClient ? (
+                    <Redirect to={`/client/portal/${currentClient.id}`} />
+                  ) : (
+                    <div className="text-center py-12">
+                      <h2 className="text-2xl font-bold stripe-text-primary">Loading...</h2>
+                    </div>
+                  )}
+                </Route>
+              </Switch>
+            )}
+          </div>
+        </main>
       </div>
 
-      {/* Main content */}
-      <main className="lg:pl-72">
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mb-4 flex justify-end">
-            <GlobalSearchLauncher className="w-full sm:w-[220px]" />
-          </div>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : assignedClients.length === 0 ? (
-            <div className="text-center py-12">
-              <h2 className="text-2xl font-bold stripe-text-primary">No Access</h2>
-              <p className="mt-2 stripe-text-secondary">You don't have access to any clients yet.</p>
-            </div>
-          ) : (
-            <Switch>
-              <Route path="/client/dashboard" component={ClientDashboard} />
-              <Route path="/client/team-status" component={ClientTeamStatus} />
-              <Route path="/client/documents/:id" component={ClientDocuments} />
-              <Route path="/client/invoices/:id" component={ClientInvoices} />
-              <Route path="/client/feedback" component={ClientFeedbackPage} />
-              <Route path="/client/profile" component={ClientProfile} />
-              <Route path="/client/portal/:id" component={ClientPortal} />
-              <Route path="/client/*">
-                {currentClient ? (
-                  <Redirect to={`/client/portal/${currentClient.id}`} />
-                ) : (
-                  <div className="text-center py-12">
-                    <h2 className="text-2xl font-bold stripe-text-primary">Loading...</h2>
-                  </div>
-                )}
-              </Route>
-            </Switch>
-          )}
-        </div>
-      </main>
+      <MobileBottomNav
+        role="client"
+        currentClient={currentClient}
+        onOpenMenu={() => setIsMobileMenuOpen(true)}
+      />
     </div>
   )
 }

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Clock, Loader2, Play, SkipForward } from 'lucide-react'
 import { api } from '../lib/api'
 import { useCustomAlert } from './ui/custom-alert'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 
 const SESSION_KEY = 'shift-reminder-skipped'
 
@@ -98,39 +100,36 @@ export function ShiftReminderModal() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div
-        className="mx-4 w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden"
+        className="mx-4 w-full max-w-md overflow-hidden rounded-[1.8rem] border border-white/70 bg-white/92 shadow-[0_36px_80px_-36px_rgba(15,23,42,0.85)] backdrop-blur-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white">
+        <div className="bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.24),transparent_34%),linear-gradient(135deg,rgba(15,23,42,1),rgba(12,74,110,0.92))] px-6 py-5 text-white">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-[1rem] bg-white/15">
               <Clock className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Start Your Shift</h2>
-              <p className="text-sm text-blue-100">You don't have an active shift</p>
+              <h2 className="font-display text-lg font-semibold">Start your shift</h2>
+              <p className="text-sm text-slate-200">You do not have an active shift yet</p>
             </div>
           </div>
         </div>
 
-        {/* Body */}
         <div className="px-6 py-5 space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted-foreground">
             Please start your shift to begin tracking your work hours, or skip if you're just checking in.
           </p>
 
-          {/* Service selector */}
           {myServices.length > 0 && (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Service Context
               </label>
               <select
                 value={selectedServiceId || ''}
                 onChange={(e) => setSelectedServiceId(e.target.value ? Number(e.target.value) : null)}
                 disabled={starting}
-                className="w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-xl border border-input/80 bg-background/90 p-2.5 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">No specific service</option>
                 {myServices.map((service) => (
@@ -140,42 +139,41 @@ export function ShiftReminderModal() {
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-gray-400">
+              <p className="text-[10px] text-muted-foreground">
                 Optional — notifications go to default channel if not selected
               </p>
             </div>
           )}
 
-          {/* Shift note */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Note
             </label>
-            <textarea
+            <Textarea
               value={shiftNote}
               onChange={(e) => setShiftNote(e.target.value)}
               disabled={starting}
               placeholder="Optional note (e.g. started 40 mins ago)..."
               rows={2}
-              className="w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="min-h-[84px] resize-none"
             />
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex gap-3 px-6 pb-6">
-          <button
+          <Button
             onClick={dismiss}
             disabled={starting}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+            variant="outline"
+            className="flex-1"
           >
             <SkipForward className="h-4 w-4" />
             Skip
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleStartShift}
             disabled={starting}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-green-500 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-600 disabled:opacity-50"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
           >
             {starting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -183,7 +181,7 @@ export function ShiftReminderModal() {
               <Play className="h-4 w-4" fill="currentColor" />
             )}
             Start Shift
-          </button>
+          </Button>
         </div>
       </div>
     </div>
