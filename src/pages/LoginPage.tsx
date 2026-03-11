@@ -192,37 +192,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   }
 
   const handleGoogleAuth = () => {
-    const frontendOrigin = window.location.origin
-    const buildCallbackPath = (pathname: string) => {
-      const normalizedPath = pathname.replace(/\/+$/, '')
-
-      if (normalizedPath.endsWith('/auth/google')) {
-        return `${normalizedPath.slice(0, -'/auth/google'.length)}/google/callback`
-      }
-
-      if (normalizedPath.endsWith('/google')) {
-        return `${normalizedPath}/callback`
-      }
-
-      return '/api/google/callback'
-    }
-
-    const finalizeGoogleAuthUrl = (value: string) => {
-      const authUrl = new URL(value, frontendOrigin)
-      const callbackUrl = new URL(authUrl.toString())
-
-      callbackUrl.search = ''
-      callbackUrl.hash = ''
-      callbackUrl.pathname = buildCallbackPath(authUrl.pathname)
-
-      authUrl.searchParams.set('frontend_origin', frontendOrigin)
-      authUrl.searchParams.set('callback_url', callbackUrl.toString())
-
-      return authUrl.toString()
-    }
-
-    // Keep OAuth on the app origin so mobile browsers receive a first-party session cookie.
-    window.location.assign(finalizeGoogleAuthUrl('/api/google'))
+    const authUrl = new URL('/api/google', window.location.origin)
+    authUrl.searchParams.set('frontend_origin', window.location.origin)
+    window.location.assign(authUrl.toString())
   }
 
   return (

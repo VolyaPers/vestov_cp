@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import passport from 'passport'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
@@ -30,6 +31,16 @@ interface RegisterRequestBody {
   avatarUrl?: string
 }
 
+interface ExchangeTokenRequestBody {
+  token?: string
+}
+
+interface GoogleAuthHandoffPayload {
+  userId: number
+  exp: number
+  nonce: string
+}
+
 const router = Router()
 
 // Rate limiting for login attempts (disabled in development)
@@ -42,6 +53,87 @@ const loginLimiter = rateLimit({
 })
 
 const ALLOWED_ROLES = ['admin', 'client', 'team_member']
+const GOOGLE_AUTH_HANDOFF_TTL_MS = 5 * 60 * 1000
+const googleAuthHandoffTokenCache = new Map<string, number>()
+
+function getSessionSecret() {
+  return process.env.SESSION_SECRET || 'your-secret-key-change-in-production'
+}
+
+function cleanupGoogleAuthHandoffTokenCache() {
+  const now = Date.now()
+  for (const [tokenKey, expiresAt] of googleAuthHandoffTokenCache.entries()) {
+    if (expiresAt <= now) {
+      googleAuthHandoffTokenCache.delete(tokenKey)
+    }
+  }
+}
+
+function encodeGoogleOAuthState(frontendUrl: string): string {
+  return Buffer.from(JSON.stringify({ frontendUrl }), 'utf8').toString('base64url')
+}
+
+function decodeGoogleOAuthState(state?: string): string | null {
+  if (!state) {
+    return null
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(state, 'base64url').toString('utf8')) as { frontendUrl?: string }
+    return normalizeFrontendOrigin(payload.frontendUrl)
+  } catch {
+    return null
+  }
+}
+
+function createGoogleAuthHandoffToken(userId: number): string {
+  const payload: GoogleAuthHandoffPayload = {
+    userId,
+    exp: Date.now() + GOOGLE_AUTH_HANDOFF_TTL_MS,
+    nonce: randomUUID(),
+  }
+  const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+  const signature = createHmac('sha256', getSessionSecret()).update(encodedPayload).digest('base64url')
+  return `${encodedPayload}.${signature}`
+}
+
+function consumeGoogleAuthHandoffToken(token?: string): GoogleAuthHandoffPayload | null {
+  if (!token) {
+    return null
+  }
+
+  cleanupGoogleAuthHandoffTokenCache()
+
+  const [encodedPayload, signature, ...rest] = token.split('.')
+  if (!encodedPayload || !signature || rest.length > 0) {
+    return null
+  }
+
+  const expectedSignature = createHmac('sha256', getSessionSecret()).update(encodedPayload).digest()
+  const receivedSignature = Buffer.from(signature, 'base64url')
+
+  if (receivedSignature.length !== expectedSignature.length || !timingSafeEqual(receivedSignature, expectedSignature)) {
+    return null
+  }
+
+  let payload: GoogleAuthHandoffPayload
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as GoogleAuthHandoffPayload
+  } catch {
+    return null
+  }
+
+  if (!Number.isFinite(payload.userId) || !Number.isFinite(payload.exp) || payload.exp <= Date.now()) {
+    return null
+  }
+
+  if (googleAuthHandoffTokenCache.has(signature)) {
+    return null
+  }
+
+  googleAuthHandoffTokenCache.set(signature, payload.exp)
+  return payload
+}
 
 // Register route (self-service signup or claim existing admin-created user)
 router.post('/register', async (req, res) => {
@@ -411,6 +503,45 @@ router.get('/user', (req, res) => {
   }
 })
 
+router.post('/auth/exchange', async (req, res) => {
+  try {
+    const body = req.body as ExchangeTokenRequestBody
+    const payload = consumeGoogleAuthHandoffToken(body?.token)
+
+    if (!payload) {
+      return res.status(401).json({ error: 'Invalid or expired authentication token' })
+    }
+
+    const user = await loadAuthUserForSession(payload.userId)
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication token is no longer valid' })
+    }
+
+    req.logIn(user, (err) => {
+      if (err) {
+        console.error('[GOOGLE OAUTH] Session exchange login error:', err)
+        return res.status(500).json({ error: 'Failed to establish login session' })
+      }
+
+      return res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          position: user.position,
+          avatarUrl: user.avatarUrl,
+          isActive: user.isActive,
+        },
+      })
+    })
+  } catch (error) {
+    console.error('[GOOGLE OAUTH] Session exchange error:', error)
+    return res.status(500).json({ error: 'Failed to exchange authentication token' })
+  }
+})
+
 // Impersonate user (admin-level accounts)
 router.post('/impersonate/:userId', requireAuth, async (req, res) => {
   try {
@@ -572,20 +703,6 @@ function normalizeFrontendOrigin(value?: string | null): string | null {
   }
 }
 
-function normalizeGoogleCallbackUrl(value?: string | null): string | null {
-  const normalizedUrl = normalizeAbsoluteUrl(value)
-  if (!normalizedUrl) {
-    return null
-  }
-
-  try {
-    const url = new URL(normalizedUrl)
-    return url.pathname.endsWith('/google/callback') ? normalizedUrl : null
-  } catch {
-    return null
-  }
-}
-
 function getFrontendUrl(): string {
   const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || 'http://localhost:5173'
   const normalizedUrl = frontendUrl.endsWith('/') ? frontendUrl.slice(0, -1) : frontendUrl
@@ -600,22 +717,62 @@ function getFrontendUrl(): string {
 }
 
 function getRequestedFrontendUrl(req: Request): string {
-  const sessionFrontendUrl = normalizeFrontendOrigin((req.session as any)?.googleOAuthFrontendUrl)
+  const stateFrontendUrl = decodeGoogleOAuthState(
+    typeof req.query.state === 'string' ? req.query.state : undefined
+  )
   const queryFrontendUrl = normalizeFrontendOrigin(
     typeof req.query.frontend_origin === 'string' ? req.query.frontend_origin : undefined
   )
   const refererOrigin = normalizeFrontendOrigin(req.get('referer'))
 
-  return sessionFrontendUrl || queryFrontendUrl || refererOrigin || getFrontendUrl()
+  return stateFrontendUrl || queryFrontendUrl || refererOrigin || getFrontendUrl()
 }
 
-function getRequestedCallbackUrl(req: Request): string | undefined {
-  const sessionCallbackUrl = normalizeGoogleCallbackUrl((req.session as any)?.googleOAuthCallbackUrl)
-  const queryCallbackUrl = normalizeGoogleCallbackUrl(
-    typeof req.query.callback_url === 'string' ? req.query.callback_url : undefined
-  )
+async function loadAuthUserForSession(userId: number): Promise<UserWithoutPassword | null> {
+  const [user] = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      fullName: users.fullName,
+      email: users.email,
+      role: users.role,
+      position: users.position,
+      avatarUrl: users.avatarUrl,
+      teamMemberId: users.teamMemberId,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
 
-  return sessionCallbackUrl || queryCallbackUrl || undefined
+  if (!user || !user.isActive) {
+    return null
+  }
+
+  let avatarUrl = user.avatarUrl
+  if (user.role === 'team_member' && user.teamMemberId) {
+    const [teamMember] = await db
+      .select({ avatarUrl: teamMembers.avatarUrl })
+      .from(teamMembers)
+      .where(eq(teamMembers.id, user.teamMemberId))
+      .limit(1)
+
+    if (teamMember?.avatarUrl) {
+      avatarUrl = teamMember.avatarUrl
+    }
+  }
+
+  return {
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    position: user.position,
+    avatarUrl,
+    isActive: user.isActive,
+    teamMemberId: user.teamMemberId,
+  }
 }
 
 function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) {
@@ -627,24 +784,15 @@ function handleGoogleOAuthInit(req: Request, res: Response, next: NextFunction) 
   }
 
   const frontendUrl = getRequestedFrontendUrl(req)
-  const callbackUrl = getRequestedCallbackUrl(req)
-
-  ;(req.session as any).googleOAuthFrontendUrl = frontendUrl
-  if (callbackUrl) {
-    ;(req.session as any).googleOAuthCallbackUrl = callbackUrl
-  } else {
-    delete (req.session as any).googleOAuthCallbackUrl
-  }
 
   console.log('[GOOGLE OAUTH] Init request URLs:', {
     frontendUrl,
-    callbackUrl: callbackUrl || 'strategy_default',
     referer: req.get('referer'),
   })
 
   passport.authenticate('google', {
     scope: ['profile', 'email'],
-    ...(callbackUrl ? { callbackURL: callbackUrl } : {})
+    state: encodeGoogleOAuthState(frontendUrl),
   })(req, res, next)
 }
 
@@ -653,10 +801,6 @@ router.get('/auth/google', handleGoogleOAuthInit)
 
 router.get('/google/callback', (req, res, next) => {
   const frontendUrl = getRequestedFrontendUrl(req)
-  const callbackUrl = getRequestedCallbackUrl(req)
-
-  delete (req.session as any).googleOAuthFrontendUrl
-  delete (req.session as any).googleOAuthCallbackUrl
 
   if (!frontendUrl || frontendUrl === 'http://localhost:5173') {
     console.error('[GOOGLE OAUTH] WARNING: Frontend URL not properly configured! Using fallback.')
@@ -665,7 +809,6 @@ router.get('/google/callback', (req, res, next) => {
   passport.authenticate('google', {
     failureRedirect: `${frontendUrl}/?error=google_auth_failed`,
     session: true,
-    ...(callbackUrl ? { callbackURL: callbackUrl } : {})
   }, (err: unknown, user: Express.User | false, info?: GoogleAuthInfo) => {
     if (err) {
       const error = err as Error
@@ -715,29 +858,17 @@ router.get('/google/callback', (req, res, next) => {
       return res.redirect(errorUrl)
     }
 
-    // User exists - proceed with login
-    console.log('[GOOGLE OAUTH] User exists, proceeding with login for:', user.email)
-    req.logIn(user, (loginErr) => {
-      if (loginErr) {
-        console.error('[GOOGLE OAUTH] Session login error:', loginErr)
-        const errorUrl = `${frontendUrl}/?error=google_auth_session_failed`
-        console.log('[GOOGLE OAUTH] Redirecting to error URL:', errorUrl)
-        return res.redirect(errorUrl)
-      }
+    console.log('[GOOGLE OAUTH] User exists, creating frontend session handoff for:', user.email)
+    const handoffToken = createGoogleAuthHandoffToken(user.id)
+    const redirectUrl = new URL(frontendUrl)
+    redirectUrl.pathname = '/'
+    redirectUrl.search = ''
+    redirectUrl.hash = ''
+    redirectUrl.searchParams.set('auth_token', handoffToken)
 
-      // Redirect to home page (/) instead of /client for existing users
-      const redirectPath = user.role === 'admin'
-        ? '/admin/dashboard'
-        : user.role === 'team_member'
-          ? '/employee/dashboard'
-          : '/'
-
-      const fullRedirectUrl = `${frontendUrl}${redirectPath}`
-
-      console.log(`[GOOGLE OAUTH] Successful login for ${user.email} (role: ${user.role}), redirecting to ${fullRedirectUrl}`)
-      console.log('[GOOGLE OAUTH] User object:', JSON.stringify({ id: user.id, email: user.email, role: user.role }, null, 2))
-      res.redirect(fullRedirectUrl)
-    })
+    console.log(`[GOOGLE OAUTH] Successful login for ${user.email} (role: ${user.role}), redirecting to ${redirectUrl.toString()}`)
+    console.log('[GOOGLE OAUTH] User object:', JSON.stringify({ id: user.id, email: user.email, role: user.role }, null, 2))
+    return res.redirect(redirectUrl.toString())
   })(req, res, next)
 })
 

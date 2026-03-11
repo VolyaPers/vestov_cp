@@ -37,7 +37,24 @@ function App() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      const url = new URL(window.location.href)
+      const authToken = url.searchParams.get('auth_token')
+
       try {
+        if (authToken) {
+          const response = await api.request('/auth/exchange', {
+            method: 'POST',
+            body: JSON.stringify({ token: authToken }),
+          })
+
+          const nextUrl = new URL(window.location.href)
+          nextUrl.searchParams.delete('auth_token')
+          window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`)
+
+          setUser(response.user)
+          return
+        }
+
         const currentUser = await api.getCurrentUser()
         setUser(currentUser)
 
@@ -56,6 +73,12 @@ function App() {
           }
         }
       } catch (error) {
+        if (authToken) {
+          const nextUrl = new URL(window.location.href)
+          nextUrl.searchParams.delete('auth_token')
+          nextUrl.searchParams.set('error', 'google_auth_session_failed')
+          window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`)
+        }
         setUser(null)
       } finally {
         setIsLoading(false)
