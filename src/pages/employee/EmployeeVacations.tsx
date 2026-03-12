@@ -509,24 +509,24 @@ export function EmployeeVacations() {
 
       {/* Tabs for Vacation Balance, Calendar and Requests */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 h-14 bg-gradient-to-r from-gray-50 to-gray-100 p-1 gap-1">
+        <TabsList className="grid h-14 w-full grid-cols-3 gap-1 p-1">
           <TabsTrigger
             value="balance"
-            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all duration-200 hover:scale-105 hover:shadow-sm group"
+            className="group flex items-center gap-2"
           >
             <Wallet className="h-5 w-5 text-green-600 group-data-[state=active]:text-green-700 transition-colors" />
             <span className="font-medium">Vacation Balance</span>
           </TabsTrigger>
           <TabsTrigger
             value="calendar"
-            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all duration-200 hover:scale-105 hover:shadow-sm group"
+            className="group flex items-center gap-2"
           >
             <Calendar className="h-5 w-5 text-blue-600 group-data-[state=active]:text-blue-700 transition-colors" />
             <span className="font-medium">Calendar</span>
           </TabsTrigger>
           <TabsTrigger
             value="requests"
-            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-md transition-all duration-200 hover:scale-105 hover:shadow-sm group"
+            className="group flex items-center gap-2"
           >
             <FileText className="h-5 w-5 text-purple-600 group-data-[state=active]:text-purple-700 transition-colors" />
             <span className="font-medium flex items-center gap-2">
@@ -555,7 +555,7 @@ export function EmployeeVacations() {
           {/* Leave Balances Summary */}
           {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {vacationBalance && (
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <Card className="glass-tint-blue">
                 <CardHeader className="pb-3 flex flex-row items-center gap-3">
                   <Plane className="h-5 w-5 text-blue-600" />
                   <CardTitle className="text-lg text-blue-900">Vacation</CardTitle>
@@ -574,7 +574,7 @@ export function EmployeeVacations() {
             )}
 
             {sickLeaveBalance && (
-              <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+              <Card className="glass-tint-rose">
                 <CardHeader className="pb-3 flex flex-row items-center gap-3">
                   <Heart className="h-5 w-5 text-red-600" />
                   <CardTitle className="text-lg text-red-900">Sick Leave</CardTitle>
@@ -665,8 +665,8 @@ export function EmployeeVacations() {
                       className={cn(
                         'min-h-28 p-2 border rounded-lg',
                         holiday
-                          ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-400'
-                          : 'border-gray-200',
+                          ? 'border-green-300 bg-emerald-50/85'
+                          : 'border-gray-200 bg-white/72',
                         isCurrentDay && 'border-blue-500 border-2'
                       )}
                     >
@@ -675,7 +675,7 @@ export function EmployeeVacations() {
                           className={cn(
                             'text-sm font-medium',
                             isCurrentDay &&
-                              'bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center'
+                              'flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700'
                           )}
                         >
                           {format(day, 'd')}
@@ -691,7 +691,7 @@ export function EmployeeVacations() {
 
                       {/* Public Holiday Badge */}
                       {holiday && (
-                        <div className="mb-1 px-1.5 py-1 bg-green-600 text-white text-[10px] font-semibold rounded text-center" title={holiday.name}>
+                        <div className="mb-1 rounded bg-emerald-100 px-1.5 py-1 text-center text-[10px] font-semibold text-emerald-800" title={holiday.name}>
                           {holiday.name}
                         </div>
                       )}
@@ -834,7 +834,7 @@ export function EmployeeVacations() {
                 <Button
                   type="submit"
                   disabled={submitting}
-                  className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+                  className="w-full md:w-auto"
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   {submitting ? 'Submitting...' : 'Submit Request'}

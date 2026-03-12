@@ -89,7 +89,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
             </div>
           </div>
 
-          <div className="hidden border-b border-white/60 bg-background/70 backdrop-blur-xl lg:block">
+          <div className="hidden workspace-topbar lg:block">
             <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
@@ -104,7 +104,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 </p>
               </div>
 
-              <div className="hidden rounded-full border border-white/70 bg-white/75 px-4 py-2 text-sm font-semibold text-muted-foreground shadow-[0_16px_28px_-22px_rgba(15,23,42,0.7)] md:block">
+              <div className="workspace-date-chip hidden rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground md:block">
                 {todayLabel}
               </div>
             </div>

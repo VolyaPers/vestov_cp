@@ -200,28 +200,31 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="app-shell min-h-screen px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-7xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="relative hidden overflow-hidden rounded-[2rem] border border-white/70 bg-slate-950 p-8 text-white shadow-[0_36px_80px_-36px_rgba(2,6,23,0.85)] lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.24),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.18),transparent_26%),linear-gradient(135deg,rgba(15,23,42,1),rgba(15,118,110,0.92))]" />
+        <div className="relative hidden overflow-hidden rounded-[2rem] border border-white/70 bg-[rgba(255,255,255,0.78)] p-8 text-foreground shadow-[0_40px_90px_-46px_rgba(15,23,42,0.42)] lg:flex lg:flex-col lg:justify-between">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(15,23,42,0.06),transparent_24%)]" />
+          <div className="absolute right-8 top-8 h-40 w-40 rounded-full border border-white/70 bg-white/30 blur-3xl" />
           <div className="relative">
-            <Badge className="bg-white/10 text-white hover:bg-white/15">Vestov Hub</Badge>
-            <h1 className="mt-5 max-w-xl font-display text-5xl font-semibold leading-tight text-white">
+            <Badge variant="outline" className="border-white/85 bg-white/80 text-muted-foreground shadow-[0_18px_32px_-26px_rgba(15,23,42,0.32)]">
+              Vestov Hub
+            </Badge>
+            <h1 className="mt-5 max-w-xl font-display text-5xl font-semibold leading-tight text-foreground">
               One polished entry point for admin, client and employee workflows.
             </h1>
-            <p className="mt-4 max-w-lg text-base leading-7 text-slate-200">
+            <p className="mt-4 max-w-lg text-base leading-7 text-muted-foreground">
               The redesigned portal puts hierarchy, search and actionable status first, so people land inside the product already oriented.
             </p>
           </div>
 
           <div className="relative grid gap-4">
             {benefitCards.map(({ title, text, icon: Icon }) => (
-              <div key={title} className="rounded-[1.5rem] border border-white/12 bg-white/10 p-5 backdrop-blur-sm">
+              <div key={title} className="rounded-[1.45rem] border border-white/80 bg-white/72 p-5 shadow-[0_24px_44px_-32px_rgba(15,23,42,0.32)] backdrop-blur-xl">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-[1rem] bg-white/10 text-cyan-100">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-[1rem] border border-blue-200/70 bg-blue-50/90 text-blue-700 shadow-[0_18px_30px_-24px_rgba(37,99,235,0.26)]">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-white">{title}</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-200">{text}</p>
+                    <p className="text-sm font-semibold text-foreground">{title}</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{text}</p>
                   </div>
                 </div>
               </div>
@@ -230,7 +233,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </div>
 
         <div className="flex items-center justify-center">
-          <Card className="w-full max-w-xl border-white/80 bg-white/86">
+          <Card className="w-full max-w-xl">
             <CardHeader className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -416,7 +419,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 </Button>
               </div>
 
-              <div className="mt-6 rounded-[1.2rem] border border-border/60 bg-muted/55 p-4">
+              <div className="mt-6 rounded-[1.2rem] border border-white/75 bg-white/70 p-4 shadow-[0_18px_32px_-28px_rgba(15,23,42,0.24)]">
                 <div className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 text-primary" />
                   <p className="text-sm leading-6 text-muted-foreground">

@@ -57,7 +57,7 @@ const SelectTrigger = React.forwardRef<
       ref={ref}
       type="button"
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-12 w-full items-center justify-between rounded-[1rem] border border-input/75 bg-background/76 px-4 py-2 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_12px_24px_-24px_rgba(15,23,42,0.25)] ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       onClick={() => context.setOpen(!context.open)}
@@ -108,7 +108,7 @@ const SelectContent = ({ children }: { children: React.ReactNode }) => {
   return (
     <div
       className={cn(
-        "select-content absolute z-50 top-full left-0 w-full min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        "select-content absolute z-50 top-full left-0 mt-2 w-full min-w-[8rem] overflow-hidden rounded-[1.1rem] border border-white/80 bg-popover/95 p-1.5 text-popover-foreground shadow-[0_24px_48px_-28px_rgba(15,23,42,0.38)] backdrop-blur-2xl",
         !context.open && "invisible pointer-events-none h-0 overflow-hidden opacity-0"
       )}
       aria-hidden={!context.open}
@@ -155,7 +155,7 @@ const SelectItem = ({
   return (
     <div
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex w-full cursor-default select-none items-center rounded-[0.9rem] py-2 pl-4 pr-3 text-sm outline-none transition-colors hover:bg-accent/75 hover:text-accent-foreground focus:bg-accent/75 focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className
       )}
       onClick={() => {

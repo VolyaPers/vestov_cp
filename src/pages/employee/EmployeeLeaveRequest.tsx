@@ -189,7 +189,7 @@ export function EmployeeLeaveRequest() {
       {/* Leave Balances */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {leaveBalances.filter(lb => lb.leaveTypeName === 'Vacation' || lb.leaveTypeName === 'Sick Leave').map((balance) => (
-          <Card key={balance.leaveTypeName} className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <Card key={balance.leaveTypeName} className="glass-tint-blue">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg text-blue-900">{balance.leaveTypeName}</CardTitle>
             </CardHeader>
@@ -294,7 +294,7 @@ export function EmployeeLeaveRequest() {
             <Button
               type="submit"
               disabled={submitting}
-              className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+              className="w-full md:w-auto"
             >
               <FileText className="h-4 w-4 mr-2" />
               {submitting ? 'Submitting...' : 'Submit Request'}

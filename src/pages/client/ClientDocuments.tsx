@@ -457,10 +457,10 @@ export function ClientDocuments() {
         theme="ocean"
         meta={(
           <>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               Access: {accessLevel || 'read'}
             </span>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               {services.length} service{services.length !== 1 ? 's' : ''}
             </span>
           </>

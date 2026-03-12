@@ -193,10 +193,10 @@ export function ClientFeedbackPage() {
         theme="teal"
         meta={(
           <>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               {services.length} service{services.length !== 1 ? 's' : ''} available
             </span>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               {feedbacks.length} feedback thread{feedbacks.length !== 1 ? 's' : ''}
             </span>
           </>
@@ -326,9 +326,9 @@ export function ClientFeedbackPage() {
             />
 
             <div className="space-y-3">
-              <div className="rounded-[1.2rem] border border-border/70 bg-slate-950 p-5 text-white">
-                <p className="text-sm font-semibold text-white/90">Direct visibility</p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
+              <div className="rounded-[1.2rem] border border-white/80 bg-white/76 p-5 shadow-[0_22px_36px_-30px_rgba(15,23,42,0.22)]">
+                <p className="text-sm font-semibold text-foreground">Direct visibility</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   Vestov operations reviews incoming feedback and can respond directly inside the same thread.
                 </p>
               </div>

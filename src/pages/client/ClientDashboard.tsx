@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHero } from '@/components/page-primitives'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
@@ -96,69 +97,57 @@ export function ClientDashboard() {
 
   return (
     <div className="space-y-6">
-      <Card className="relative overflow-hidden border-slate-900/10 bg-slate-950 text-white shadow-[0_32px_70px_-34px_rgba(2,6,23,0.85)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.24),transparent_34%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.16),transparent_26%),linear-gradient(135deg,rgba(15,23,42,1),rgba(15,118,110,0.88))]" />
-        <CardContent className="relative p-7 sm:p-8 lg:p-10">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <Badge className="bg-white/10 text-white hover:bg-white/15">Client Overview</Badge>
-              <h1 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">
-                Welcome back, {client?.contactPerson || 'there'}.
-              </h1>
-              <p className="mt-3 text-sm leading-6 text-slate-200 sm:text-base">
-                Your workspace now highlights delivery status, billing context and the quickest paths to the documents and invoices you actually need.
+      <PageHero
+        eyebrow="Client Overview"
+        title={`Welcome back, ${client?.contactPerson || 'there'}.`}
+        description="Your workspace now highlights delivery status, billing context and the quickest paths to the documents and invoices you actually need."
+        theme="teal"
+        meta={(
+          <>
+            <span>{client?.name || 'Client account'}</span>
+            {client?.industry && (
+              <>
+                <span className="h-1 w-1 rounded-full bg-slate-300"></span>
+                <span>{client.industry}</span>
+              </>
+            )}
+            <span className="h-1 w-1 rounded-full bg-slate-300"></span>
+            <span>{stats?.pendingRequests || 0} pending request{stats?.pendingRequests === 1 ? '' : 's'}</span>
+          </>
+        )}
+        aside={(
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="hero-aside-card">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Contract</p>
+              <p className="mt-3 font-display text-2xl font-semibold text-foreground">Active</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {client?.contractEnd ? `Until ${formatDate(client.contractEnd)}` : 'No end date specified'}
               </p>
-              <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-300">
-                <span>{client?.name || 'Client account'}</span>
-                {client?.industry && (
-                  <>
-                    <span className="h-1 w-1 rounded-full bg-slate-400"></span>
-                    <span>{client.industry}</span>
-                  </>
-                )}
-                <span className="h-1 w-1 rounded-full bg-slate-400"></span>
-                <span>{stats?.pendingRequests || 0} pending request{stats?.pendingRequests === 1 ? '' : 's'}</span>
-              </div>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[1.4rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm">
-                <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Contract</p>
-                <p className="mt-3 font-display text-2xl font-semibold text-white">Active</p>
-                <p className="mt-1 text-sm text-slate-300">
-                  {client?.contractEnd ? `Until ${formatDate(client.contractEnd)}` : 'No end date specified'}
-                </p>
-              </div>
-              <div className="rounded-[1.4rem] border border-white/12 bg-white/10 p-4 backdrop-blur-sm">
-                <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Services running</p>
-                <p className="mt-3 font-display text-2xl font-semibold text-white">{stats?.activeServices || services.length || 0}</p>
-                <p className="mt-1 text-sm text-slate-300">Live delivery lanes across your account.</p>
-              </div>
+            <div className="hero-aside-card">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Services running</p>
+              <p className="mt-3 font-display text-2xl font-semibold text-foreground">{stats?.activeServices || services.length || 0}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Live delivery lanes across your account.</p>
             </div>
           </div>
-
-          {clientId && (
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link href={`/client/portal/${clientId}`}>
-                <Button className="bg-white text-slate-950 hover:bg-slate-100">
-                  Open portal
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href={`/client/documents/${clientId}`}>
-                <Button variant="outline" className="border-white/15 bg-white/10 text-white hover:bg-white/15 hover:text-white">
-                  Documents
-                </Button>
-              </Link>
-              <Link href={`/client/invoices/${clientId}`}>
-                <Button variant="outline" className="border-white/15 bg-white/10 text-white hover:bg-white/15 hover:text-white">
-                  Invoices
-                </Button>
-              </Link>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        )}
+        actions={clientId ? (
+          <>
+            <Link href={`/client/portal/${clientId}`}>
+              <Button>
+                Open portal
+                <ArrowUpRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href={`/client/documents/${clientId}`}>
+              <Button variant="outline">Documents</Button>
+            </Link>
+            <Link href={`/client/invoices/${clientId}`}>
+              <Button variant="outline">Invoices</Button>
+            </Link>
+          </>
+        ) : undefined}
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard

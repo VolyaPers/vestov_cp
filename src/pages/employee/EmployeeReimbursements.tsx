@@ -277,7 +277,7 @@ export function EmployeeReimbursements() {
       {!showForm && limits && limits.availableAmount > 0 && (
         <Button
           onClick={() => setShowForm(true)}
-          className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+          className="w-full md:w-auto"
         >
           <DollarSign className="w-4 h-4 mr-2" />
           New Reimbursement Request
@@ -368,7 +368,7 @@ export function EmployeeReimbursements() {
                 <Button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  className="flex-1"
                 >
                   {submitting ? 'Submitting...' : 'Submit Request'}
                 </Button>
@@ -462,7 +462,6 @@ export function EmployeeReimbursements() {
                             size="sm"
                             onClick={() => document.getElementById(`evidence-${request.id}`)?.click()}
                             disabled={uploading === request.id}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
                           >
                             <Upload className="w-4 h-4 mr-2" />
                             {uploading === request.id ? 'Uploading...' : 'Upload'}

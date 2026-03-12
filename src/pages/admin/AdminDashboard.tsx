@@ -208,11 +208,11 @@ function KpiCard({
   icon: React.ReactNode
 }) {
   return (
-    <Card className="h-full overflow-hidden border-white/80 bg-white/82">
+    <Card className="h-full">
       <CardContent className="flex h-full flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6">
         <div className="flex min-h-[2.9rem] items-start justify-between gap-3.5 sm:min-h-[3.25rem] sm:items-center sm:gap-4">
           <p className="text-[0.66rem] font-extrabold uppercase tracking-[0.2em] leading-4 text-muted-foreground sm:text-[0.7rem] sm:leading-5">{title}</p>
-          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.9rem] border border-white/80 bg-primary/10 text-primary shadow-[0_18px_30px_-20px_hsl(var(--primary)/0.9)] sm:mt-0 sm:h-11 sm:w-11 sm:rounded-[1rem]">
+          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-white/75 bg-white/76 text-primary shadow-[0_18px_32px_-24px_rgba(15,23,42,0.28)] sm:mt-0 sm:h-11 sm:w-11 sm:rounded-[1.05rem]">
             {icon}
           </div>
         </div>
@@ -225,8 +225,8 @@ function KpiCard({
               className={cn(
                 'mt-3 inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-semibold sm:mt-4',
                 trendPositive
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-rose-200 bg-rose-50 text-rose-700'
+                  ? 'border-emerald-200/80 bg-emerald-50/85 text-emerald-700'
+                  : 'border-rose-200/80 bg-rose-50/85 text-rose-700'
               )}
             >
               {trendPositive ? <ArrowUpRight className="mr-1 h-3.5 w-3.5" /> : <ArrowDownRight className="mr-1 h-3.5 w-3.5" />}
@@ -709,23 +709,25 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <Card className="relative overflow-hidden border-slate-900/10 bg-slate-950 text-white shadow-[0_32px_70px_-34px_rgba(2,6,23,0.85)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.22),transparent_34%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.18),transparent_28%),linear-gradient(135deg,rgba(15,23,42,1),rgba(12,74,110,0.92))]" />
+      <Card className="relative overflow-hidden border-white/70 bg-[rgba(255,255,255,0.82)] text-foreground shadow-[0_40px_90px_-52px_rgba(15,23,42,0.44)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_30%),radial-gradient(circle_at_88%_16%,rgba(15,23,42,0.05),transparent_20%)]" />
         <CardContent className="relative p-4 sm:p-5 lg:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-[52rem]">
-              <Badge className="bg-white/10 text-white hover:bg-white/15">Executive Console</Badge>
-              <h1 className="mt-2.5 max-w-3xl font-display text-[1.78rem] font-semibold leading-tight text-white sm:text-[2.2rem]">
+              <Badge variant="outline" className="border-white/85 bg-white/80 text-muted-foreground shadow-[0_16px_30px_-24px_rgba(15,23,42,0.3)]">
+                Executive Console
+              </Badge>
+              <h1 className="mt-2.5 max-w-3xl font-display text-[1.78rem] font-semibold leading-tight text-foreground sm:text-[2.2rem]">
                 Admin dashboard redesigned around signals and action.
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-5 text-slate-200">
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                 Real-time executive view of cashflow, collections, delivery risk and workforce capacity, rebuilt with clearer hierarchy and shadcn surfaces.
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-300 sm:text-sm">
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground sm:text-sm">
                 <span>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+                <span className="h-1 w-1 rounded-full bg-slate-300"></span>
                 <span>{activeShifts.length} people currently on shift</span>
-                <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+                <span className="h-1 w-1 rounded-full bg-slate-300"></span>
                 <span>{overdueInvoices.length} overdue invoices on watch</span>
               </div>
             </div>
@@ -734,7 +736,7 @@ export function AdminDashboard() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-9 w-full border-white/15 bg-white/10 px-3 text-white hover:bg-white/15 hover:text-white sm:w-auto"
+                className="h-9 w-full px-3 sm:w-auto"
                 onClick={handleRefreshAll}
                 disabled={isRefreshing}
               >
@@ -742,7 +744,7 @@ export function AdminDashboard() {
                 {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
               </Button>
               <Link href="/admin/reports" className="block sm:block">
-                <Button size="sm" className="h-9 w-full bg-white px-3 text-slate-950 shadow-[0_18px_34px_-16px_rgba(255,255,255,0.45)] hover:bg-slate-100 sm:w-auto">
+                <Button size="sm" className="h-9 w-full px-3 sm:w-auto">
                   <TrendingUp className="mr-2 h-4 w-4" />
                   Open Reports
                 </Button>
@@ -750,26 +752,30 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          <div className="-mx-1 mt-4 flex snap-x snap-mandatory gap-2.5 px-1 pb-1 touch-scroll-x sm:mx-0 sm:flex-wrap sm:overflow-visible">
-            <div className="inline-flex min-h-11 shrink-0 snap-start items-center gap-2.5 rounded-full border border-white/12 bg-white/10 px-3.5 py-2 text-sm backdrop-blur-sm">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-cyan-100">
+          <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1.8fr)_repeat(2,minmax(0,1fr))]">
+            <div className="inline-flex min-h-11 items-center gap-2.5 rounded-[1.2rem] border border-white/80 bg-white/74 px-4 py-3 text-sm shadow-[0_22px_36px_-30px_rgba(15,23,42,0.24)]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-[1rem] border border-blue-200/70 bg-blue-50/85 text-blue-700">
                 <Target className="h-4 w-4" />
               </div>
-              <span className="font-semibold text-white">Executive brief</span>
-              <span className="text-slate-200">{ceoSummary}</span>
+              <div className="min-w-0">
+                <span className="block text-[0.68rem] font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Executive brief</span>
+                <span className="mt-1 block text-sm text-foreground">{ceoSummary}</span>
+              </div>
             </div>
 
-            <div className="inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full border border-white/12 bg-white/10 px-3.5 py-2 text-sm backdrop-blur-sm">
-              <span className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-slate-300">Collection</span>
-              <span className="font-display text-xl font-semibold text-white">{collectionEfficiency.toFixed(0)}%</span>
+            <div className="inline-flex min-h-11 items-center justify-between gap-3 rounded-[1.2rem] border border-white/80 bg-white/74 px-4 py-3 text-sm shadow-[0_22px_36px_-30px_rgba(15,23,42,0.24)]">
+              <span className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-muted-foreground">Collection</span>
+              <span className="font-display text-xl font-semibold text-foreground">{collectionEfficiency.toFixed(0)}%</span>
             </div>
 
-            <div className="inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full border border-white/12 bg-white/10 px-3.5 py-2 text-sm backdrop-blur-sm">
-              <span className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-slate-300">Runway</span>
-              <span className="font-display text-xl font-semibold text-white">
-                {runwayMonths !== null && Number.isFinite(runwayMonths) ? runwayMonths.toFixed(1) : 'N/A'}
-              </span>
-              <span className="text-slate-300">
+            <div className="rounded-[1.2rem] border border-white/80 bg-white/74 px-4 py-3 shadow-[0_22px_36px_-30px_rgba(15,23,42,0.24)]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-muted-foreground">Runway</span>
+                <span className="font-display text-xl font-semibold text-foreground">
+                  {runwayMonths !== null && Number.isFinite(runwayMonths) ? runwayMonths.toFixed(1) : 'N/A'}
+                </span>
+              </div>
+              <span className="mt-1 block text-sm text-muted-foreground">
                 {cashAvailable > 0 ? `${formatShortCurrency(cashAvailable)} cash` : 'Cash unavailable'}
               </span>
             </div>
@@ -828,7 +834,7 @@ export function AdminDashboard() {
 
       <div className="grid gap-4 sm:gap-6 xl:grid-cols-3">
         <div className="space-y-4 sm:space-y-6 xl:col-span-2">
-          <Card className="border-white/80 bg-white/82">
+          <Card>
             <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
             <div className="mb-5 flex items-start justify-between">
               <div>
@@ -878,7 +884,7 @@ export function AdminDashboard() {
             </div>
           </Card>
 
-          <Card className="border-white/80 bg-white/82 content-auto">
+          <Card className="content-auto">
             <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -915,7 +921,7 @@ export function AdminDashboard() {
         </div>
 
         <div className="space-y-4 sm:space-y-6">
-          <Card className="border-white/80 bg-white/82 content-auto">
+          <Card className="content-auto">
             <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
             <div className="mb-4 flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-amber-600" />
@@ -948,7 +954,7 @@ export function AdminDashboard() {
             </div>
           </Card>
 
-          <Card className="border-white/80 bg-white/82 content-auto">
+          <Card className="content-auto">
             <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
             <div className="mb-4 flex items-center gap-2">
               <Zap className="h-5 w-5 text-indigo-600" />
@@ -984,7 +990,7 @@ export function AdminDashboard() {
             </div>
           </Card>
 
-          <Card className="border-white/80 bg-white/82 content-auto">
+          <Card className="content-auto">
             <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
             <div className="mb-4 flex items-center gap-2">
               <Settings className="h-5 w-5 text-muted-foreground" />
@@ -1006,7 +1012,7 @@ export function AdminDashboard() {
       </div>
 
       <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
-        <Card className="border-white/80 bg-white/82 content-auto">
+        <Card className="content-auto">
           <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -1028,11 +1034,8 @@ export function AdminDashboard() {
                   </div>
                   <div className="h-2 w-full rounded-full bg-slate-100">
                     <div
-                      className="h-2 rounded-full"
-                      style={{
-                        width: `${Math.min(100, row.share)}%`,
-                        background: 'linear-gradient(90deg, #0f8da1 0%, #19b3c5 100%)',
-                      }}
+                      className="h-2 rounded-full bg-slate-900 shadow-[0_8px_18px_-12px_rgba(15,23,42,0.55)]"
+                      style={{ width: `${Math.min(100, row.share)}%` }}
                     ></div>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{row.share.toFixed(1)}% of paid revenue</p>
@@ -1043,7 +1046,7 @@ export function AdminDashboard() {
           </div>
         </Card>
 
-        <Card className="border-white/80 bg-white/82 content-auto">
+        <Card className="content-auto">
           <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -1108,7 +1111,7 @@ export function AdminDashboard() {
       </div>
 
       {isLoadingCore && (
-        <Card className="border-white/80 bg-white/82">
+        <Card>
           <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
             <Clock3 className="h-4 w-4" />
             Loading latest executive metrics...

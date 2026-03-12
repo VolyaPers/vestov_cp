@@ -273,25 +273,25 @@ export function EmployeeDashboard() {
         meta={
           <>
             <span>{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
-            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span className="h-1 w-1 rounded-full bg-slate-300"></span>
             <span>{formatTime(currentTime)}</span>
-            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span className="h-1 w-1 rounded-full bg-slate-300"></span>
             <span>{data.vacations.pending} pending vacation requests</span>
           </>
         }
         aside={
           <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-            <div className="rounded-[1.2rem] border border-white/12 bg-white/10 p-3 backdrop-blur-sm sm:rounded-[1.3rem] sm:p-4">
-              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Career year</p>
-              <p className="mt-2.5 font-display text-xl font-semibold text-white sm:mt-3 sm:text-2xl">{yearLabel}</p>
-              <p className="mt-1 text-sm text-slate-300">Started {formatDate(data.profile.startDate)}</p>
+            <div className="hero-aside-card sm:rounded-[1.3rem] sm:p-4">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Career year</p>
+              <p className="mt-2.5 font-display text-xl font-semibold text-foreground sm:mt-3 sm:text-2xl">{yearLabel}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Started {formatDate(data.profile.startDate)}</p>
             </div>
-            <div className="rounded-[1.2rem] border border-white/12 bg-white/10 p-3 backdrop-blur-sm sm:rounded-[1.3rem] sm:p-4">
-              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-slate-300">Next milestone</p>
-              <p className="mt-2.5 font-display text-xl font-semibold text-white sm:mt-3 sm:text-2xl">
+            <div className="hero-aside-card sm:rounded-[1.3rem] sm:p-4">
+              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Next milestone</p>
+              <p className="mt-2.5 font-display text-xl font-semibold text-foreground sm:mt-3 sm:text-2xl">
                 {data.roadmap.yearsAtCompany < 5 ? `Year ${data.roadmap.nextMilestoneYear}` : 'Max level'}
               </p>
-              <p className="mt-1 text-sm text-slate-300">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {data.roadmap.yearsAtCompany < 5 ? `In ${data.roadmap.daysUntilNextMilestone} days` : 'Maximum benefits unlocked'}
               </p>
             </div>
@@ -356,7 +356,7 @@ export function EmployeeDashboard() {
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <Link href="/employee/vacations">
               <a className="block">
-                <Button className="flex h-20 w-full flex-col items-center justify-center gap-1.5 bg-sky-600 px-3 text-white hover:bg-sky-700 sm:h-24 sm:gap-2">
+                <Button className="glass-action-button glass-action-button-blue flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
                   <Calendar className="h-6 w-6 sm:h-8 sm:w-8" />
                   <span className="text-xs font-semibold sm:text-sm">Request Vacation</span>
                 </Button>
@@ -364,7 +364,7 @@ export function EmployeeDashboard() {
             </Link>
             <Link href="/employee/reimbursements">
               <a className="block">
-                <Button className="flex h-20 w-full flex-col items-center justify-center gap-1.5 bg-emerald-600 px-3 text-white hover:bg-emerald-700 sm:h-24 sm:gap-2">
+                <Button className="glass-action-button glass-action-button-emerald flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
                   <DollarSign className="h-6 w-6 sm:h-8 sm:w-8" />
                   <span className="text-xs font-semibold sm:text-sm">Submit Reimbursement</span>
                 </Button>
@@ -372,7 +372,7 @@ export function EmployeeDashboard() {
             </Link>
             <Link href="/employee/roadmap">
               <a className="block">
-                <Button className="flex h-20 w-full flex-col items-center justify-center gap-1.5 bg-violet-600 px-3 text-white hover:bg-violet-700 sm:h-24 sm:gap-2">
+                <Button className="glass-action-button glass-action-button-violet flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
                   <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8" />
                   <span className="text-xs font-semibold sm:text-sm">View Roadmap</span>
                 </Button>
@@ -380,7 +380,7 @@ export function EmployeeDashboard() {
             </Link>
             <Link href="/employee/profile">
               <a className="block">
-                <Button className="flex h-20 w-full flex-col items-center justify-center gap-1.5 bg-slate-700 px-3 text-white hover:bg-slate-800 sm:h-24 sm:gap-2">
+                <Button className="glass-action-button glass-action-button-slate flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
                   <User className="h-6 w-6 sm:h-8 sm:w-8" />
                   <span className="text-xs font-semibold sm:text-sm">Update Profile</span>
                 </Button>
@@ -540,27 +540,27 @@ export function EmployeeDashboard() {
         </Card>
       </div>
 
-      <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 content-auto">
+      <Card className="glass-tint-emerald content-auto">
         <CardHeader>
           <SectionHeading title="Your Benefits at a Glance" description="Everything you have access to at Vestov" icon={<Gift className="w-5 h-5" />} />
         </CardHeader>
         <CardContent>
           <div className="mb-5 grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
-            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-green-100">
+            <div className="flex items-center gap-3 rounded-lg border border-white/80 bg-white/78 p-3">
               <BookOpen className="w-5 h-5 text-blue-600" />
               <div>
                 <p className="text-sm font-medium text-gray-900">English Classes</p>
                 <p className="text-xs text-gray-600">100% Covered</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-green-100">
+            <div className="flex items-center gap-3 rounded-lg border border-white/80 bg-white/78 p-3">
               <Laptop className="w-5 h-5 text-purple-600" />
               <div>
                 <p className="text-sm font-medium text-gray-900">Work Tools</p>
                 <p className="text-xs text-gray-600">100% Covered</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-green-100">
+            <div className="flex items-center gap-3 rounded-lg border border-white/80 bg-white/78 p-3">
               <GraduationCap className="w-5 h-5 text-orange-600" />
               <div>
                 <p className="text-sm font-medium text-gray-900">Professional Education</p>
@@ -568,7 +568,7 @@ export function EmployeeDashboard() {
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-start gap-4 rounded-lg border border-green-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col items-start gap-4 rounded-lg border border-white/80 bg-white/82 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-900">
                 Current Year Benefits: <span className="text-blue-600">{data.roadmap.currentVacationDays} vacation days</span> • <span className="text-green-600">${data.roadmap.currentReimbursementLimit} reimbursement</span>

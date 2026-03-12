@@ -315,10 +315,10 @@ export function ClientTeamStatus() {
         theme="teal"
         meta={(
           <>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               {getUniqueTeamSize()} team members
             </span>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               Viewer TZ: {viewerTimezone}
             </span>
           </>
@@ -641,14 +641,14 @@ export function ClientTeamStatus() {
                       isSelected ? 'ring-2 ring-blue-500' : ''
                     } ${
                       holiday
-                        ? 'bg-gradient-to-br from-green-50 to-green-100 border-green-400'
+                        ? 'border-green-300 bg-emerald-50/85'
                         : dayVacations.length > 0
                           ? hasVacation && hasSickLeave
-                            ? 'bg-gradient-to-br from-blue-50 to-red-50 border-purple-300'
+                            ? 'border-purple-300 bg-violet-50/75'
                             : hasVacation
-                              ? 'bg-blue-50 border-blue-300'
+                              ? 'bg-blue-50/80 border-blue-300'
                               : hasSickLeave
-                                ? 'bg-red-50 border-red-300'
+                                ? 'bg-red-50/80 border-red-300'
                                 : 'bg-purple-50 border-purple-300'
                           : ''
                     }`}
@@ -657,7 +657,7 @@ export function ClientTeamStatus() {
                       {day}
                     </div>
                     {holiday && (
-                      <div className="mt-1 px-1 py-0.5 bg-green-600 text-white text-[10px] font-semibold rounded text-center truncate" title={holiday.name}>
+                      <div className="mt-1 truncate rounded bg-emerald-100 px-1 py-0.5 text-center text-[10px] font-semibold text-emerald-800" title={holiday.name}>
                         {holiday.name}
                       </div>
                     )}

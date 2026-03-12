@@ -189,13 +189,13 @@ export function EmployeeCalendar() {
                   key={day.toISOString()}
                   className={`min-h-24 p-2 border border-gray-200 rounded-lg ${
                     isCurrentDay ? 'border-blue-500 border-2' : ''
-                  } ${hasLeave ? 'bg-gradient-to-br from-green-50 to-green-100' : ''}`}
+                  } ${hasLeave ? 'bg-emerald-50/80' : 'bg-white/70'}`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span
                       className={`text-sm font-medium ${
                         isCurrentDay
-                          ? 'bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center'
+                          ? 'flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700'
                           : hasLeave
                           ? 'text-green-900'
                           : 'text-gray-700'
@@ -210,8 +210,10 @@ export function EmployeeCalendar() {
                       {dayLeave.map(leave => (
                         <div
                           key={leave.id}
-                          className={`text-xs px-2 py-1 rounded truncate text-white ${
-                            leave.leaveTypeName === 'Vacation' ? 'bg-green-500' : 'bg-red-500'
+                          className={`text-xs px-2 py-1 rounded truncate ${
+                            leave.leaveTypeName === 'Vacation'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
                           }`}
                           title={leave.leaveTypeName}
                         >

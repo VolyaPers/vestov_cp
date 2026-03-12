@@ -110,7 +110,7 @@ export function EmployeeRoadmap() {
       </div>
 
       {/* Current Status Card */}
-      <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+      <Card className="glass-tint-blue">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Award className="w-6 h-6 text-blue-600" />
@@ -157,7 +157,7 @@ export function EmployeeRoadmap() {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-3 rounded-full transition-all duration-500"
+                className="h-3 rounded-full bg-primary transition-all duration-500"
                 style={{ width: `${calculateProgress()}%` }}
               ></div>
             </div>
@@ -166,7 +166,7 @@ export function EmployeeRoadmap() {
       </Card>
 
       {/* Permanent Benefits - Available from Day 1 */}
-      <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
+      <Card className="glass-tint-emerald">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gift className="w-6 h-6 text-green-600" />
@@ -274,11 +274,11 @@ export function EmployeeRoadmap() {
                     {milestone.isUnlocked ? (
                       <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
                         milestone.isCurrent
-                          ? 'bg-gradient-to-br from-blue-500 to-indigo-600 ring-4 ring-blue-100'
+                          ? 'border border-blue-200 bg-blue-100 ring-4 ring-blue-50'
                           : 'bg-green-500'
                       }`}>
                         {milestone.isCurrent ? (
-                          <Award className="w-8 h-8 text-white" />
+                          <Award className="w-8 h-8 text-blue-700" />
                         ) : (
                           <CheckCircle className="w-8 h-8 text-white" />
                         )}
@@ -304,12 +304,12 @@ export function EmployeeRoadmap() {
                   }`}>
                     <div className={`p-6 rounded-lg border-2 ${
                       milestone.isCurrent
-                        ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-300'
+                        ? 'border-blue-200 bg-blue-50/80'
                         : milestone.isNext
-                        ? 'bg-blue-50 border-blue-200'
+                        ? 'border-blue-200 bg-blue-50/70'
                         : milestone.isUnlocked
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-gray-50 border-gray-200'
+                        ? 'border-green-200 bg-emerald-50/70'
+                        : 'border-gray-200 bg-gray-50/80'
                     }`}>
                       <div className="flex items-center justify-between mb-4">
                         <h3 className={`text-xl font-bold ${
@@ -317,17 +317,17 @@ export function EmployeeRoadmap() {
                         }`}>
                           {milestone.year === 5 && data.yearsAtCompany >= 5 ? 'Year 5+' : `Year ${milestone.year}`}
                           {milestone.isCurrent && (
-                            <span className="ml-3 text-sm font-normal px-3 py-1 bg-blue-600 text-white rounded-full">
+                            <span className="ml-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-sm font-normal text-blue-700">
                               You are here
                             </span>
                           )}
                           {milestone.isNext && (
-                            <span className="ml-3 text-sm font-normal px-3 py-1 bg-blue-200 text-blue-900 rounded-full">
+                            <span className="ml-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-sm font-normal text-blue-800">
                               Coming up!
                             </span>
                           )}
                           {milestone.isUnlocked && !milestone.isCurrent && (
-                            <span className="ml-3 text-sm font-normal px-3 py-1 bg-green-600 text-white rounded-full">
+                            <span className="ml-3 rounded-full border border-emerald-200 bg-white px-3 py-1 text-sm font-normal text-emerald-700">
                               Unlocked
                             </span>
                           )}

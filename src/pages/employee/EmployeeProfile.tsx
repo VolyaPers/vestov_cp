@@ -142,10 +142,10 @@ export function EmployeeProfile() {
         )}
         meta={(
           <>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               {teamMember.role}
             </span>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               Started {startedAt}
             </span>
           </>
@@ -185,21 +185,21 @@ export function EmployeeProfile() {
               icon={<User className="h-5 w-5" />}
             />
 
-            <div className="rounded-[1.5rem] border border-border/70 bg-slate-950 p-6 text-white shadow-[0_30px_70px_-34px_rgba(15,23,42,0.92)]">
+            <div className="rounded-[1.5rem] border border-white/80 bg-white/76 p-6 text-foreground shadow-[0_28px_60px_-36px_rgba(15,23,42,0.26)] backdrop-blur-xl">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <Avatar className="h-24 w-24 border-4 border-white/10 shadow-[0_24px_40px_-24px_rgba(255,255,255,0.45)]">
+                <Avatar className="h-24 w-24 border-4 border-white/80 shadow-[0_24px_40px_-24px_rgba(15,23,42,0.22)]">
                   <AvatarImage src={teamMember.avatarUrl} alt={teamMember.name} />
-                  <AvatarFallback className="bg-white/10 font-display text-2xl text-white">
+                  <AvatarFallback className="bg-primary/10 font-display text-2xl text-primary">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
 
                 <div className="space-y-2">
                   <h2 className="font-display text-3xl font-semibold">{teamMember.name}</h2>
-                  <p className="text-sm text-slate-300">{teamMember.role}</p>
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-200">
-                    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">{teamMember.email}</span>
-                    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">Started {startedAt}</span>
+                  <p className="text-sm text-muted-foreground">{teamMember.role}</p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span className="hero-meta-pill">{teamMember.email}</span>
+                    <span className="hero-meta-pill">Started {startedAt}</span>
                   </div>
                 </div>
               </div>

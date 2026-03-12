@@ -13,10 +13,10 @@ const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
         className={cn(
           "inline-flex items-center rounded-full border px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.18em] transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
           {
-            "border-transparent bg-primary/12 text-primary hover:bg-primary/18": variant === 'default',
-            "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80": variant === 'secondary',
-            "border-transparent bg-destructive/12 text-destructive hover:bg-destructive/18": variant === 'destructive',
-            "border-border/60 bg-background/70 text-foreground": variant === 'outline',
+            "border-primary/10 bg-primary/10 text-primary hover:bg-primary/15": variant === 'default',
+            "border-white/70 bg-secondary/85 text-secondary-foreground hover:bg-secondary/95": variant === 'secondary',
+            "border-destructive/10 bg-destructive/10 text-destructive hover:bg-destructive/15": variant === 'destructive',
+            "border-border/60 bg-background/72 text-foreground": variant === 'outline',
           },
           className
         )}

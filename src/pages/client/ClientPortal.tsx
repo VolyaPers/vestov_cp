@@ -268,13 +268,13 @@ export function ClientPortal() {
               {client.status}
             </Badge>
             {client.contractType && (
-              <Badge variant="outline" className="border-white/20 bg-white/10 capitalize text-white">
+              <Badge variant="outline" className="hero-meta-pill capitalize">
                 {client.contractType}
               </Badge>
             )}
-            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span className="h-1 w-1 rounded-full bg-slate-300"></span>
             <span>{documents.length} shared documents</span>
-            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
+            <span className="h-1 w-1 rounded-full bg-slate-300"></span>
             <span>{invoices.length} invoices</span>
           </>
         }

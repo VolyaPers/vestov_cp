@@ -38,17 +38,23 @@ const roleThemes = {
   admin: {
     badge: 'Admin HQ',
     icon: ShieldCheck,
-    glow: 'from-cyan-500/8 via-sky-400/4 to-transparent',
+    badgeClass: 'border-sky-200/80 bg-sky-50/88 text-sky-700',
+    iconSurface: 'border-sky-200/80 bg-sky-50/88 text-sky-700',
+    halo: 'bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.16),transparent_42%)]',
   },
   team_member: {
     badge: 'Employee Space',
     icon: BriefcaseBusiness,
-    glow: 'from-emerald-400/9 via-teal-400/5 to-transparent',
+    badgeClass: 'border-emerald-200/80 bg-emerald-50/88 text-emerald-700',
+    iconSurface: 'border-emerald-200/80 bg-emerald-50/88 text-emerald-700',
+    halo: 'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_42%)]',
   },
   client: {
     badge: 'Client Portal',
     icon: Building2,
-    glow: 'from-amber-400/8 via-cyan-400/4 to-transparent',
+    badgeClass: 'border-amber-200/80 bg-amber-50/88 text-amber-700',
+    iconSurface: 'border-amber-200/80 bg-amber-50/88 text-amber-700',
+    halo: 'bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.14),transparent_42%)]',
   },
 } as const
 
@@ -75,17 +81,17 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
   const showImpersonation = role === 'admin' || user?.isImpersonating
 
   return (
-    <div className="flex min-h-full flex-col overflow-visible rounded-[1.75rem] border border-white/70 bg-white/78 shadow-[0_28px_56px_-28px_rgba(15,23,42,0.32)] backdrop-blur-2xl lg:h-full lg:min-h-0 lg:overflow-hidden">
-      <div className="relative overflow-hidden border-b border-border/60 px-5 pb-4 pt-5">
-        <div className={cn('absolute inset-0 bg-gradient-to-br opacity-80', theme.glow)} />
-        <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-primary/6 blur-3xl" />
+    <div className="relative flex min-h-full flex-col overflow-visible rounded-[1.9rem] border border-white/65 bg-[rgba(255,255,255,0.72)] shadow-[0_34px_70px_-38px_rgba(15,23,42,0.34)] backdrop-blur-2xl before:pointer-events-none before:absolute before:inset-x-6 before:top-0 before:h-px before:bg-white/95 lg:h-full lg:min-h-0 lg:overflow-hidden">
+      <div className="relative overflow-hidden border-b border-slate-200/70 px-5 pb-5 pt-5">
+        <div className={cn('absolute inset-0 opacity-95', theme.halo)} />
+        <div className="absolute right-6 top-4 h-24 w-24 rounded-full bg-slate-900/[0.035] blur-3xl" />
         <div className="relative">
-          <Badge variant="outline" className="border-white/70 bg-white/72 text-[0.6rem] text-muted-foreground">
+          <Badge variant="outline" className={cn('text-[0.6rem] shadow-[0_14px_28px_-24px_rgba(15,23,42,0.3)]', theme.badgeClass)}>
             {theme.badge}
           </Badge>
 
           <div className="mt-4 flex items-start gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/80 bg-white/90 shadow-[0_14px_26px_-22px_rgba(15,23,42,0.7)]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/80 bg-white/92 shadow-[0_18px_34px_-24px_rgba(15,23,42,0.38)]">
               <img src={vestovLogo} alt="Vestov Logo" className="h-9 w-auto" />
             </div>
             <div className="min-w-0 pt-1">
@@ -96,16 +102,16 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
           </div>
 
           <div className="mt-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-primary/10 text-primary">
+            <div className={cn('flex h-8 w-8 items-center justify-center rounded-[0.95rem] border shadow-[0_14px_28px_-24px_rgba(15,23,42,0.26)]', theme.iconSurface)}>
               <ThemeIcon className="h-4 w-4" />
             </div>
-            <Badge variant="outline" className="border-white/70 bg-white/72 text-muted-foreground">
+            <Badge variant="outline" className="border-white/75 bg-white/76 text-muted-foreground">
               {roleSubtitles[role]}
             </Badge>
           </div>
 
           {role === 'client' && currentClient && (
-            <div className="mt-3 rounded-[1.15rem] border border-white/75 bg-white/72 p-3 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.7)]">
+            <div className="mt-4 rounded-[1.2rem] border border-white/75 bg-white/78 p-3 shadow-[0_20px_36px_-28px_rgba(15,23,42,0.32)]">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Current account</p>
@@ -121,7 +127,7 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
       </div>
 
       <div className="px-3 py-3 lg:flex-1 lg:overflow-y-auto">
-        <div className="mb-2 px-2 text-[0.66rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">
+        <div className="mb-3 px-2 text-[0.64rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">
           Workspace
         </div>
         <nav className="space-y-1">
@@ -222,9 +228,9 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
         </nav>
       </div>
 
-      <div className="space-y-4 border-t border-border/60 bg-white/50 p-4 backdrop-blur-sm">
+      <div className="space-y-4 border-t border-slate-200/70 bg-white/48 p-4 backdrop-blur-sm">
         {role === 'team_member' && (
-          <div className="rounded-[1.15rem] border border-white/75 bg-white/72 p-3 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.7)]">
+          <div className="rounded-[1.2rem] border border-white/75 bg-white/76 p-3 shadow-[0_18px_34px_-28px_rgba(15,23,42,0.3)]">
             <ShiftWidget />
           </div>
         )}
@@ -242,14 +248,14 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
         )}
 
         {user && (
-          <div className="rounded-[1.2rem] border border-white/75 bg-white/80 p-4 shadow-[0_16px_28px_-24px_rgba(15,23,42,0.65)]">
+          <div className="rounded-[1.25rem] border border-white/80 bg-white/82 p-4 shadow-[0_22px_38px_-30px_rgba(15,23,42,0.34)]">
             <div className="flex items-start gap-3.5">
               {role === 'admin' ? (
-                <div className="flex h-10 w-10 items-center justify-center rounded-[0.95rem] bg-primary text-sm font-bold text-primary-foreground shadow-[0_16px_30px_-18px_hsl(var(--primary)/0.8)]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[0.95rem] bg-slate-950 text-sm font-bold text-white shadow-[0_18px_30px_-20px_rgba(15,23,42,0.55)]">
                   {user.fullName?.split(' ').map((n: string) => n[0]).join('') || 'AD'}
                 </div>
               ) : (
-                <Avatar className="h-10 w-10 border border-white/70 shadow-[0_12px_24px_-18px_rgba(15,23,42,0.7)]">
+                <Avatar className="h-10 w-10 border border-white/75 shadow-[0_16px_28px_-22px_rgba(15,23,42,0.34)]">
                   <AvatarImage src={(user as any).avatarUrl} alt={user.fullName || user.username} />
                   <AvatarFallback className="bg-primary/12 text-primary text-sm font-semibold">
                     {(user.fullName || user.username)
@@ -277,7 +283,7 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                     variant="outline"
                     size="icon"
                     onClick={onLogout}
-                    className="h-9 w-9 rounded-xl border-border/60 bg-white/75"
+                    className="h-9 w-9 rounded-[0.95rem] border-border/65 bg-white/82"
                     title="Sign out"
                   >
                     <LogOut className="h-4 w-4" />

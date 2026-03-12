@@ -84,13 +84,13 @@ export function ClientProfile() {
         theme="amber"
         meta={(
           <>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               @{user.username}
             </span>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90 capitalize">
+            <span className="hero-meta-pill capitalize">
               {roleLabel}
             </span>
-            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/90">
+            <span className="hero-meta-pill">
               {assignedClients.length} client{assignedClients.length !== 1 ? 's' : ''} assigned
             </span>
           </>
