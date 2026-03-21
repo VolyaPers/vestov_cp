@@ -77,7 +77,7 @@ async function seed() {
     const teamMembersData = [
       {
         name: 'Alice Johnson',
-        role: 'Senior Full-Stack Developer',
+        position: 'Senior Full-Stack Developer',
         email: 'alice.johnson@vestov.com',
         phone: '+1-555-0124',
         skills: ['React', 'Node.js', 'TypeScript', 'PostgreSQL'],
@@ -91,7 +91,7 @@ async function seed() {
       },
       {
         name: 'Bob Wilson',
-        role: 'UI/UX Designer',
+        position: 'UI/UX Designer',
         email: 'bob.wilson@vestov.com',
         phone: '+1-555-0125',
         skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping'],
@@ -105,7 +105,7 @@ async function seed() {
       },
       {
         name: 'Carol Davis',
-        role: 'DevOps Engineer',
+        position: 'DevOps Engineer',
         email: 'carol.davis@vestov.com',
         phone: '+1-555-0126',
         skills: ['AWS', 'Docker', 'Kubernetes', 'CI/CD'],
@@ -119,7 +119,7 @@ async function seed() {
       },
       {
         name: 'David Brown',
-        role: 'QA Engineer',
+        position: 'QA Engineer',
         email: 'david.brown@vestov.com',
         phone: '+1-555-0127',
         skills: ['Selenium', 'Jest', 'Cypress', 'Test Automation'],

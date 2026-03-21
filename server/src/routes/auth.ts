@@ -3,6 +3,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import passport from 'passport'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
+import { createClerkClient, verifyToken } from '@clerk/backend'
 import { requireAuth } from '../middleware/auth.js'
 import { db } from '../db/index.js'
 import { users, teamMembers } from '../db/schema.js'
@@ -41,6 +42,27 @@ interface GoogleAuthHandoffPayload {
   nonce: string
 }
 
+interface ClerkUserSummary {
+  id: string
+  fullName: string | null
+  imageUrl: string
+  primaryEmailAddressId: string | null
+  emailAddresses: Array<{
+    id: string
+    emailAddress: string
+  }>
+}
+
+class AuthRouteError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'AuthRouteError'
+  }
+}
+
 const router = Router()
 
 // Rate limiting for login attempts (disabled in development)
@@ -58,6 +80,119 @@ const googleAuthHandoffTokenCache = new Map<string, number>()
 
 function getSessionSecret() {
   return process.env.SESSION_SECRET || 'your-secret-key-change-in-production'
+}
+
+function getClerkSecretKey(): string {
+  const secretKey = process.env.CLERK_SECRET_KEY
+
+  if (!secretKey) {
+    throw new AuthRouteError(500, 'CLERK_SECRET_KEY is not configured on the API server.')
+  }
+
+  return secretKey
+}
+
+function getClerkClient() {
+  return createClerkClient({
+    secretKey: getClerkSecretKey(),
+  })
+}
+
+function getClerkAuthorizedParties(): string[] | undefined {
+  const parties = [
+    process.env.PUBLIC_APP_URL,
+    process.env.FRONTEND_URL,
+    process.env.CORS_ORIGIN,
+  ]
+    .map((value) => normalizeFrontendOrigin(value))
+    .filter((value): value is string => Boolean(value))
+
+  return parties.length > 0 ? Array.from(new Set(parties)) : undefined
+}
+
+function extractBearerToken(req: Request): string | null {
+  const authorizationHeader = req.get('authorization')
+  if (!authorizationHeader) {
+    return null
+  }
+
+  const [scheme, token] = authorizationHeader.split(/\s+/, 2)
+  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) {
+    return null
+  }
+
+  return token
+}
+
+function getPrimaryClerkEmail(clerkUser: ClerkUserSummary): string | null {
+  if (!clerkUser.emailAddresses.length) {
+    return null
+  }
+
+  const primaryEmail =
+    clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId) ||
+    clerkUser.emailAddresses[0]
+
+  return primaryEmail?.emailAddress?.trim().toLowerCase() || null
+}
+
+async function syncLocalUserWithClerk(clerkUser: ClerkUserSummary): Promise<number> {
+  const clerkEmail = getPrimaryClerkEmail(clerkUser)
+
+  if (!clerkEmail) {
+    throw new AuthRouteError(400, 'Your Clerk account does not have a primary email address.')
+  }
+
+  const [existingLinkedUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.clerkUserId, clerkUser.id))
+    .limit(1)
+
+  const matchedUser = existingLinkedUser
+    ? existingLinkedUser
+    : await db
+        .select()
+        .from(users)
+        .where(eq(users.email, clerkEmail))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+
+  if (!matchedUser) {
+    throw new AuthRouteError(
+      403,
+      'No Vestov Hub account is linked to this Clerk email yet. Ask an administrator to create or connect your account first.',
+    )
+  }
+
+  if (!matchedUser.isActive) {
+    throw new AuthRouteError(
+      403,
+      'Your account is inactive. Please contact an administrator as only administrators can reactivate inactive users.',
+    )
+  }
+
+  if (matchedUser.clerkUserId && matchedUser.clerkUserId !== clerkUser.id) {
+    throw new AuthRouteError(
+      409,
+      'This Vestov Hub account is already linked to a different Clerk identity.',
+    )
+  }
+
+  const [updatedUser] = await db
+    .update(users)
+    .set({
+      clerkUserId: clerkUser.id,
+      authProvider: 'clerk',
+      avatarUrl: matchedUser.avatarUrl || clerkUser.imageUrl || null,
+      fullName: matchedUser.fullName || clerkUser.fullName || clerkEmail,
+      lastLoginAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, matchedUser.id))
+    .returning({ id: users.id })
+
+  return updatedUser.id
 }
 
 function cleanupGoogleAuthHandoffTokenCache() {
@@ -500,6 +635,66 @@ router.get('/user', (req, res) => {
     })
   } else {
     res.status(401).json({ error: 'Not authenticated' })
+  }
+})
+
+router.post('/auth/clerk/sync', async (req, res) => {
+  try {
+    const token = extractBearerToken(req)
+    if (!token) {
+      throw new AuthRouteError(401, 'Missing Clerk session token.')
+    }
+
+    let tokenPayload: Awaited<ReturnType<typeof verifyToken>>
+
+    try {
+      tokenPayload = await verifyToken(token, {
+        secretKey: getClerkSecretKey(),
+        authorizedParties: getClerkAuthorizedParties(),
+      })
+    } catch (error) {
+      console.error('[CLERK SYNC] Token verification failed:', error)
+      throw new AuthRouteError(401, 'Invalid or expired Clerk session token.')
+    }
+
+    if (!tokenPayload.sub) {
+      throw new AuthRouteError(401, 'Clerk token did not include a user identifier.')
+    }
+
+    const clerkUser = await getClerkClient().users.getUser(tokenPayload.sub) as ClerkUserSummary
+    const localUserId = await syncLocalUserWithClerk(clerkUser)
+    const user = await loadAuthUserForSession(localUserId)
+
+    if (!user) {
+      throw new AuthRouteError(403, 'No active Vestov Hub account could be loaded for this Clerk user.')
+    }
+
+    req.logIn(user, (err) => {
+      if (err) {
+        console.error('[CLERK SYNC] Session login error:', err)
+        return res.status(500).json({ error: 'Failed to establish a Vestov Hub session.' })
+      }
+
+      return res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          position: user.position,
+          avatarUrl: user.avatarUrl,
+          isActive: user.isActive,
+        },
+      })
+    })
+  } catch (error) {
+    if (error instanceof AuthRouteError) {
+      return res.status(error.statusCode).json({ error: error.message })
+    }
+
+    console.error('[CLERK SYNC] Unexpected error:', error)
+    return res.status(500).json({ error: 'Failed to synchronize the Clerk session.' })
   }
 })
 

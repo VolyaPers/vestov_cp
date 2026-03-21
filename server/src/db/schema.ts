@@ -26,6 +26,7 @@ export const users = pgTable('users', {
   isActive: boolean('is_active').default(true),
   lastLoginAt: timestamp('last_login_at'),
   googleId: varchar('google_id', { length: 255 }).unique(),
+  clerkUserId: varchar('clerk_user_id', { length: 255 }).unique(),
   authProvider: varchar('auth_provider', { length: 50 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

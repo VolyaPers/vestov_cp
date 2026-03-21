@@ -466,7 +466,7 @@ async function runOrphanedTeamMembersFix() {
             fullName: member.name,
             email: normalizedEmail,
             role: 'team_member',
-            position: member.role || 'Team Member',
+            position: member.position || 'Team Member',
             teamMemberId: member.id,
             source: 'orphaned_fix',
             isActive: true

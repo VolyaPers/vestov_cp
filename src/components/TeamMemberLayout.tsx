@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { api } from '@/lib/api'
+import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { EmployeeDashboard } from '@/pages/employee/EmployeeDashboard'
 import { EmployeeProfile } from '@/pages/employee/EmployeeProfile'
 import { EmployeeVacations } from '@/pages/employee/EmployeeVacations'
@@ -24,6 +24,7 @@ interface TeamMemberLayoutProps {
 
 export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const signOut = useAppSignOut()
   const [location] = useLocation()
   const todayLabel = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
@@ -33,13 +34,7 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   const mobileTitle = getActiveNavigationLabel('team_member', location) ?? 'Workspace'
 
   const handleLogout = async () => {
-    try {
-      await api.logout()
-      window.location.href = '/'
-    } catch (error) {
-      console.error('Logout failed:', error)
-      window.location.href = '/'
-    }
+    await signOut()
   }
 
   return (

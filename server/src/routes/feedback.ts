@@ -201,7 +201,7 @@ router.get('/service/:clientServiceId/developers', requireAuth, async (req, res)
     const formattedDevelopers = developers.map(d => ({
       id: d.teamMember.id,
       fullName: d.teamMember.name,
-      role: d.teamMember.role,
+      role: d.teamMember.position,
       avatarUrl: d.teamMember.avatarUrl,
     }))
 

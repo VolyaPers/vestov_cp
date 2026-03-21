@@ -25,7 +25,7 @@ import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
 import { Sidebar } from '@/components/Sidebar'
-import { api } from '@/lib/api'
+import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { getActiveNavigationLabel } from '@/lib/navigation'
 
 import type { User } from '@/types/common'
@@ -36,6 +36,7 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ user }: AdminLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const signOut = useAppSignOut()
   const [location] = useLocation()
   const todayLabel = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
@@ -45,13 +46,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
   const mobileTitle = getActiveNavigationLabel('admin', location) ?? 'Workspace'
 
   const handleLogout = async () => {
-    try {
-      await api.logout()
-      window.location.href = '/'
-    } catch (error) {
-      console.error('Logout failed:', error)
-      window.location.href = '/'
-    }
+    await signOut()
   }
 
   return (

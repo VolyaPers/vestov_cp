@@ -67,6 +67,14 @@ export async function ensureUserColumns(pool: Pool): Promise<void> {
     await pool.query('CREATE INDEX IF NOT EXISTS "idx_users_google_id" ON "users" ("google_id");')
   }
 
+  // clerk_user_id (Clerk support)
+  const hasClerkUserId = await checkColumnExists(pool, 'users', 'clerk_user_id')
+  if (!hasClerkUserId) {
+    console.log('[MIGRATIONS] Adding missing column: clerk_user_id (Clerk support)')
+    await pool.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "clerk_user_id" VARCHAR(255) UNIQUE;')
+    await pool.query('CREATE INDEX IF NOT EXISTS "idx_users_clerk_user_id" ON "users" ("clerk_user_id");')
+  }
+
   // auth_provider (OAuth support)
   const hasAuthProvider = await checkColumnExists(pool, 'users', 'auth_provider')
   if (!hasAuthProvider) {

@@ -256,6 +256,15 @@ class ApiClient {
     return this.request('/logout', { method: 'POST' })
   }
 
+  syncClerkSession = async (token: string): Promise<{ user: User }> => {
+    return this.request('/auth/clerk/sync', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }) as Promise<{ user: User }>
+  }
+
   getCurrentUser = async (): Promise<User | null> => {
     try {
       return await this.request('/user') as User

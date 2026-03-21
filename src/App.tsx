@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Router, Route, Switch, useLocation } from 'wouter'
-import { LoginPage } from './pages/LoginPage'
+import { useEffect, useState } from 'react'
+import { useAuth, useUser } from '@clerk/react'
 import { AdminLayout } from './components/AdminLayout'
 import { ClientLayout } from './components/ClientLayout'
 import { TeamMemberLayout } from './components/TeamMemberLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { GlobalSearch } from './components/GlobalSearch'
+import { ClerkAuthBar } from './components/ClerkAuthBar'
+import { AuthPage } from './pages/AuthPage'
 import { api } from './lib/api'
 import type { User } from './types/common'
 
@@ -32,30 +33,70 @@ function DefaultRedirect({ user }: { user: User }) {
 }
 
 function App() {
+  const { getToken, isLoaded: isClerkLoaded, isSignedIn } = useAuth()
+  const { user: clerkUser } = useUser()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const url = new URL(window.location.href)
-      const authToken = url.searchParams.get('auth_token')
+    let isActive = true
+
+    const syncAuthenticatedUser = async () => {
+      if (!isClerkLoaded) {
+        return
+      }
+
+      if (!isSignedIn) {
+        setUser(null)
+        setAuthError(null)
+        setIsLoading(false)
+
+        api.logout().catch(() => {
+          // If the legacy session is already gone, there is nothing left to clear.
+        })
+        return
+      }
+
+      setIsLoading(true)
+      setAuthError(null)
+
+      const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress?.toLowerCase()
 
       try {
-        if (authToken) {
-          const response = await api.request('/auth/exchange', {
-            method: 'POST',
-            body: JSON.stringify({ token: authToken }),
-          })
+        let currentUser = await api.getCurrentUser()
+        const sessionBelongsToSignedInClerkUser = currentUser
+          ? [currentUser.email, currentUser.originalUser?.email]
+              .filter((value): value is string => Boolean(value))
+              .some((value) => !clerkEmail || value.toLowerCase() === clerkEmail)
+          : false
 
-          const nextUrl = new URL(window.location.href)
-          nextUrl.searchParams.delete('auth_token')
-          window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`)
+        const needsSessionSync = !currentUser || !sessionBelongsToSignedInClerkUser
 
-          setUser(response.user)
+        if (needsSessionSync) {
+          if (currentUser) {
+            await api.logout().catch(() => {
+              // A stale backend session should not block Clerk from re-establishing access.
+            })
+          }
+
+          const token = await getToken()
+          if (!token) {
+            throw new Error('Clerk did not return a usable session token.')
+          }
+
+          const response = await api.syncClerkSession(token)
+          currentUser = response.user
+        }
+
+        if (!currentUser) {
+          throw new Error('Unable to establish a Vestov Hub session for this Clerk account.')
+        }
+
+        if (!isActive) {
           return
         }
 
-        const currentUser = await api.getCurrentUser()
         setUser(currentUser)
 
         // Redirect to appropriate dashboard based on role if on wrong route
@@ -73,33 +114,27 @@ function App() {
           }
         }
       } catch (error) {
-        if (authToken) {
-          const nextUrl = new URL(window.location.href)
-          nextUrl.searchParams.delete('auth_token')
-          nextUrl.searchParams.set('error', 'google_auth_session_failed')
-          window.history.replaceState({}, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`)
+        if (!isActive) {
+          return
         }
+
         setUser(null)
+        setAuthError(error instanceof Error ? error.message : 'Unable to connect this Clerk account to Vestov Hub.')
       } finally {
-        setIsLoading(false)
+        if (isActive) {
+          setIsLoading(false)
+        }
       }
     }
 
-    checkAuth()
-  }, [])
+    syncAuthenticatedUser()
 
-  // Listen for login events
-  useEffect(() => {
-    const handleLogin = (event: Event) => {
-      const customEvent = event as CustomEvent<User>
-      setUser(customEvent.detail)
+    return () => {
+      isActive = false
     }
-    
-    window.addEventListener('user-login', handleLogin)
-    return () => window.removeEventListener('user-login', handleLogin)
-  }, [])
+  }, [clerkUser?.id, clerkUser?.primaryEmailAddress?.emailAddress, getToken, isClerkLoaded, isSignedIn])
 
-  if (isLoading) {
+  if (!isClerkLoaded || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -107,12 +142,13 @@ function App() {
     )
   }
 
-  if (!user) {
-    return <LoginPage onLogin={(u: User) => setUser(u)} />
+  if (!isSignedIn || !user) {
+    return <AuthPage errorMessage={authError} />
   }
 
   const withSearch = (content: JSX.Element) => (
     <>
+      <ClerkAuthBar />
       {content}
       <GlobalSearch user={user} />
     </>

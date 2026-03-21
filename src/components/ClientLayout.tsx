@@ -14,6 +14,7 @@ import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
 import { Sidebar } from '@/components/Sidebar'
+import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { api } from '@/lib/api'
 import { getActiveNavigationLabel } from '@/lib/navigation'
 import type { User, Client } from '@/types/common'
@@ -25,6 +26,7 @@ interface ClientLayoutProps {
 export function ClientLayout({ user }: ClientLayoutProps) {
   const [location, setLocation] = useLocation()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const signOut = useAppSignOut()
   const [assignedClients, setAssignedClients] = useState<Client[]>([])
   const [currentClient, setCurrentClient] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -74,15 +76,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   }, [])
 
   const handleLogout = async () => {
-    try {
-      // Try to logout - don't check current user first since that might fail if session expired
-      await api.logout()
-    } catch (error) {
-      // This is fine - session might already be expired
-    }
-
-    // Always navigate to login and force page reload to clear all state
-    window.location.href = '/login'
+    await signOut()
   }
 
   return (

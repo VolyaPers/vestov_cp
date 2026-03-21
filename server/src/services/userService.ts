@@ -278,7 +278,7 @@ export async function linkOrCreateUserAccount(
           .insert(teamMembers)
           .values({
             name: fullName,
-            role: 'team_member',
+            position: 'Team Member',
             email: normalizedEmail,
             startDate: today,
             status: 'active',
@@ -319,5 +319,4 @@ export async function linkOrCreateUserAccount(
     return { user: newUser, wasLinked: false }
   })
 }
-
 
