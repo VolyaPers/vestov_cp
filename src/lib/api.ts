@@ -78,6 +78,16 @@ export interface FinanceCategoriesResponse {
   expense: FinanceCategory[]
 }
 
+class ApiError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 class ApiClient {
   request = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${API_BASE}${endpoint}`
@@ -142,7 +152,7 @@ class ApiClient {
         }
       }
       console.error('[API REQUEST] Error response:', { url, status: response.status, errorMessage, text: text.slice(0, 200) })
-      throw new Error(errorMessage)
+      throw new ApiError(response.status, errorMessage)
     }
 
     // Check if response has content
@@ -269,10 +279,15 @@ class ApiClient {
     try {
       return await this.request('/user') as User
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      if (err.message.includes('401')) {
+      if (error instanceof ApiError && error.status === 401) {
         return null
       }
+
+      const err = error instanceof Error ? error : new Error(String(error))
+      if (err.message.toLowerCase().includes('not authenticated')) {
+        return null
+      }
+
       throw error
     }
   }
