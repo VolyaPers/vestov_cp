@@ -28,8 +28,8 @@ const benefitCards = [
 
 export function AuthPage({ errorMessage }: AuthPageProps) {
   return (
-    <div className="app-shell min-h-screen px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-      <div className="mx-auto grid w-full max-w-6xl items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] lg:gap-8">
+    <div className="app-shell flex min-h-screen items-center px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+      <div className="mx-auto grid w-full max-w-6xl items-center gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] lg:gap-8">
         <section className="relative overflow-hidden rounded-[2.25rem] border border-white/75 bg-[rgba(255,255,255,0.8)] p-6 shadow-[0_38px_90px_-52px_rgba(15,23,42,0.38)] sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_32%),radial-gradient(circle_at_85%_18%,rgba(15,23,42,0.06),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0.56))]" />
           <div className="absolute -right-10 top-8 h-36 w-36 rounded-full bg-blue-200/30 blur-3xl" />
@@ -67,7 +67,7 @@ export function AuthPage({ errorMessage }: AuthPageProps) {
           </div>
         </section>
 
-        <aside className="flex h-full flex-col lg:pt-8">
+        <aside className="flex h-full flex-col">
           <Card className="h-full min-h-[34rem] w-full border-white/85 bg-[rgba(255,255,255,0.84)] shadow-[0_34px_80px_-52px_rgba(15,23,42,0.42)] backdrop-blur-xl">
             <CardHeader className="space-y-4 pb-4">
               <Badge variant="outline" className="w-fit border-primary/20 bg-primary/10 text-primary">
@@ -92,8 +92,8 @@ export function AuthPage({ errorMessage }: AuthPageProps) {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-foreground">Clerk sign-in</p>
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        Use your invited or existing Clerk account. Vestov Hub will match it to your internal role automatically.
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Use your invited or existing Clerk account. Vestov Hub will match it to your internal role automatically.
                     </p>
                   </div>
 
