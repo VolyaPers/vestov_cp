@@ -1189,10 +1189,12 @@ export function FinancesPage() {
   }, [selectedMember, salaryForm.salaryMonth, editingSalaryPayment?.id, parsedSalaryPayments])
 
   const remainingSalaryByMember = useMemo(() => {
-    if (!salariesData?.members?.length) return new Map<number, number>()
+    if (!salariesData?.members?.length) return new Map<number, { total: number; byMonth: Array<{ month: string; amount: number }> }>()
 
     if (salariesYear > currentYear) {
-      return new Map(salariesData.members.map((member) => [member.id, 0]))
+      return new Map(
+        salariesData.members.map((member) => [member.id, { total: 0, byMonth: [] as Array<{ month: string; amount: number }> }])
+      )
     }
 
     const rangeEndMonth = salariesYear === currentYear ? toInputMonth() : `${salariesYear}-12`
@@ -1214,6 +1216,7 @@ export function FinancesPage() {
           : `${salariesYear}-01`
         const months = getMonthRange(rangeStartMonth, rangeEndMonth)
         const defaultExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
+        const byMonth: Array<{ month: string; amount: number }> = []
 
         const remainingTotal = months.reduce((sum, month) => {
           const monthPayments = paymentsByMemberAndMonth.get(member.id)?.get(month) ?? []
@@ -1223,11 +1226,16 @@ export function FinancesPage() {
           const remainingBase = Math.max(plannedBase - paidBase, 0)
           const remainingExtras = getRemainingDefaultExtras(defaultExtras, monthPayments)
             .reduce((extrasSum, extra) => extrasSum + parseMoney(extra.amount), 0)
+          const remainingTotalForMonth = remainingBase + remainingExtras
 
-          return sum + remainingBase + remainingExtras
+          if (remainingTotalForMonth > 0) {
+            byMonth.push({ month, amount: remainingTotalForMonth })
+          }
+
+          return sum + remainingTotalForMonth
         }, 0)
 
-        return [member.id, remainingTotal]
+        return [member.id, { total: remainingTotal, byMonth }]
       })
     )
   }, [currentYear, parsedSalaryPayments, salariesData, salariesYear])
@@ -2317,7 +2325,8 @@ export function FinancesPage() {
                   const monthlyExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
                   const monthlyExtrasTotal = monthlyExtras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
                   const monthlyTotalWithExtras = parseMoney(member.monthlyRate) + monthlyExtrasTotal
-                  const remainingToPay = remainingSalaryByMember.get(member.id) ?? 0
+                  const remainingBalance = remainingSalaryByMember.get(member.id) ?? { total: 0, byMonth: [] }
+                  const remainingToPay = remainingBalance.total
 
                   return (
                     <div key={member.id} className="stripe-card p-6">
@@ -2407,15 +2416,39 @@ export function FinancesPage() {
                             {formatCurrency(monthlyTotalWithExtras)}
                           </span>
                         </div>
-                        <div className="flex justify-between items-start gap-3 text-sm">
-                          <div className="flex flex-col">
-                            <span className="stripe-text-secondary">Remaining to Pay</span>
-                            <span className="text-xs stripe-text-muted">Includes unpaid previous months</span>
+                        <details className="group rounded-lg border stripe-border bg-gray-50/50">
+                          <summary className="list-none cursor-pointer px-3 py-2">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="stripe-text-secondary">Remaining to Pay</span>
+                                <span className="text-xs stripe-text-muted whitespace-nowrap">
+                                  {remainingBalance.byMonth.length} month{remainingBalance.byMonth.length === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className={`font-semibold ${remainingToPay > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                  {formatCurrency(remainingToPay)}
+                                </span>
+                                <ChevronDown className="w-4 h-4 stripe-text-muted transition-transform group-open:rotate-180" />
+                              </div>
+                            </div>
+                          </summary>
+                          <div className="px-3 pb-3 pt-0 space-y-1 border-t stripe-border">
+                            {remainingBalance.byMonth.length > 0 ? (
+                              remainingBalance.byMonth.map((entry) => (
+                                <div
+                                  key={`${member.id}-${entry.month}`}
+                                  className="flex justify-between gap-3 text-xs stripe-text-muted pt-2"
+                                >
+                                  <span className="truncate">{formatMonthLabel(entry.month)}</span>
+                                  <span className="whitespace-nowrap">{formatCurrency(entry.amount)}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="pt-2 text-xs stripe-text-muted">No outstanding salary balance.</p>
+                            )}
                           </div>
-                          <span className={`font-semibold ${remainingToPay > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {formatCurrency(remainingToPay)}
-                          </span>
-                        </div>
+                        </details>
                         <div className="flex justify-between text-sm">
                           <span className="stripe-text-secondary">Paid This Year</span>
                           <span className="font-medium stripe-text-primary">

@@ -311,7 +311,7 @@ export interface ClickUpComplianceRow {
   status: ClickUpComplianceStatus
 }
 
-export type ClickUpComplianceRangePreset = 'today' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'last_quarter' | 'last_year' | 'custom'
+export type ClickUpComplianceRangePreset = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'last_quarter' | 'last_year' | 'custom'
 
 export interface ClickUpComplianceReport {
   rangePreset: ClickUpComplianceRangePreset

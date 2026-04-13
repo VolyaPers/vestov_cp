@@ -39,6 +39,7 @@ router.get('/compliance', async (req, res) => {
   try {
     const rangePreset = req.query.rangePreset === 'last_week'
       || req.query.rangePreset === 'today'
+      || req.query.rangePreset === 'yesterday'
       || req.query.rangePreset === 'this_week'
       || req.query.rangePreset === 'this_month'
       || req.query.rangePreset === 'last_month'

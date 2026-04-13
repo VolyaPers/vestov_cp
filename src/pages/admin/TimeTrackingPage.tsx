@@ -1,24 +1,49 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ChevronDown,
   AlertTriangle,
   CheckCircle2,
-  Clock3,
-  ExternalLink,
   Link2,
   RefreshCw,
   Users,
 } from 'lucide-react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { api } from '@/lib/api'
-import { format, parseISO } from 'date-fns'
+import {
+  endOfMonth,
+  endOfQuarter,
+  endOfWeek,
+  endOfYear,
+  format,
+  parseISO,
+  startOfMonth,
+  startOfQuarter,
+  startOfWeek,
+  startOfYear,
+  subMonths,
+  subQuarters,
+  subWeeks,
+  subYears,
+  subDays,
+} from 'date-fns'
 import type {
   ClickUpComplianceRangePreset,
   ClickUpComplianceRow,
+  ClickUpComplianceStatus,
   ClickUpMember,
   ClickUpTimeEntry,
-  ClickUpTimeReportRow,
   TeamMember,
 } from '@/types/common'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,6 +54,19 @@ type MappingSelection = Record<string, string>
 
 function formatHours(value: number) {
   return `${value.toFixed(2)}h`
+}
+
+function getInitials(value?: string | null) {
+  if (!value) {
+    return '—'
+  }
+
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
 }
 
 function formatSignedPercent(value: number | null) {
@@ -43,6 +81,8 @@ function formatPresetLabel(preset: ClickUpComplianceRangePreset) {
   switch (preset) {
     case 'today':
       return 'Today'
+    case 'yesterday':
+      return 'Yesterday'
     case 'this_week':
       return 'This week'
     case 'this_month':
@@ -90,6 +130,108 @@ function formatTaskLink(taskId?: string | null) {
   return `https://app.clickup.com/t/${taskId}`
 }
 
+function formatComplianceStatusLabel(status: ClickUpComplianceStatus) {
+  switch (status) {
+    case 'missing':
+      return 'Below target'
+    case 'unmapped':
+      return 'Needs mapping'
+    case 'no_expected_hours':
+      return 'No workdays'
+    case 'on_track':
+      return 'On track'
+    default:
+      return status
+  }
+}
+
+function formatComplianceStatusClass(status: ClickUpComplianceStatus) {
+  switch (status) {
+    case 'missing':
+      return 'border-red-200 bg-red-50 text-red-700'
+    case 'unmapped':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
+    case 'no_expected_hours':
+      return 'border-slate-200 bg-slate-50 text-slate-700'
+    case 'on_track':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    default:
+      return 'border-border bg-background text-foreground'
+  }
+}
+
+function formatDateOnly(date: Date) {
+  return format(date, 'yyyy-MM-dd')
+}
+
+function resolveReportRange(
+  preset: ClickUpComplianceRangePreset,
+  customStartDate: string,
+  customEndDate: string,
+) {
+  const now = new Date()
+
+  if (preset === 'custom') {
+    const start = customStartDate || formatDateOnly(startOfMonth(subMonths(now, 1)))
+    const end = customEndDate || formatDateOnly(new Date())
+    return start <= end ? { startDate: start, endDate: end } : { startDate: end, endDate: start }
+  }
+
+  if (preset === 'today') {
+    const today = formatDateOnly(new Date())
+    return { startDate: today, endDate: today }
+  }
+
+  if (preset === 'yesterday') {
+    const yesterday = formatDateOnly(subDays(new Date(), 1))
+    return { startDate: yesterday, endDate: yesterday }
+  }
+
+  if (preset === 'this_week') {
+    return {
+      startDate: formatDateOnly(startOfWeek(now, { weekStartsOn: 1 })),
+      endDate: formatDateOnly(endOfWeek(now, { weekStartsOn: 1 })),
+    }
+  }
+
+  if (preset === 'this_month') {
+    return {
+      startDate: formatDateOnly(startOfMonth(now)),
+      endDate: formatDateOnly(endOfMonth(now)),
+    }
+  }
+
+  if (preset === 'last_week') {
+    const date = subWeeks(now, 1)
+    return {
+      startDate: formatDateOnly(startOfWeek(date, { weekStartsOn: 1 })),
+      endDate: formatDateOnly(endOfWeek(date, { weekStartsOn: 1 })),
+    }
+  }
+
+  if (preset === 'last_month') {
+    const date = subMonths(now, 1)
+    return {
+      startDate: formatDateOnly(startOfMonth(date)),
+      endDate: formatDateOnly(endOfMonth(date)),
+    }
+  }
+
+  if (preset === 'last_quarter') {
+    const date = subQuarters(now, 1)
+    return {
+      startDate: formatDateOnly(startOfQuarter(date)),
+      endDate: formatDateOnly(endOfQuarter(date)),
+    }
+  }
+
+  const date = subYears(now, 1)
+  return {
+    startDate: formatDateOnly(startOfYear(date)),
+    endDate: formatDateOnly(endOfYear(date)),
+  }
+}
+
 function MetricCard({
   label,
   value,
@@ -101,8 +243,8 @@ function MetricCard({
 }) {
   return (
     <Card className="border-white/80 bg-white/80">
-      <CardContent className="p-5">
-        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <CardContent className="p-6">
+        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
         <p className="mt-3 text-2xl font-semibold text-foreground">{value}</p>
         <p className="mt-2 text-sm text-muted-foreground">{hint}</p>
       </CardContent>
@@ -120,14 +262,15 @@ export function TimeTrackingPage() {
   const [customStartDate, setCustomStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0])
   const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split('T')[0])
   const [filters, setFilters] = useState({
-    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
     teamMemberId: '',
     clientId: '',
     clientServiceId: '',
     attributionStatus: '',
-    page: 1,
   })
+  const reportRange = useMemo(
+    () => resolveReportRange(complianceRangePreset, customStartDate, customEndDate),
+    [complianceRangePreset, customStartDate, customEndDate],
+  )
 
   const statusQuery = useQuery({
     queryKey: ['clickup-status'],
@@ -152,10 +295,10 @@ export function TimeTrackingPage() {
   })
 
   const complianceQuery = useQuery({
-    queryKey: ['clickup-compliance', complianceRangePreset, customStartDate, customEndDate],
+    queryKey: ['clickup-compliance', complianceRangePreset, reportRange.startDate, reportRange.endDate],
     queryFn: () => api.getClickUpCompliance(
       complianceRangePreset === 'custom'
-        ? { rangePreset: complianceRangePreset, startDate: customStartDate, endDate: customEndDate }
+        ? { rangePreset: complianceRangePreset, startDate: reportRange.startDate, endDate: reportRange.endDate }
         : { rangePreset: complianceRangePreset },
     ),
     enabled: Boolean(statusQuery.data?.isConnected),
@@ -174,10 +317,10 @@ export function TimeTrackingPage() {
   })
 
   const reportQuery = useQuery({
-    queryKey: ['clickup-time-report', filters.startDate, filters.endDate, filters.teamMemberId, filters.clientId, filters.clientServiceId, filters.attributionStatus],
+    queryKey: ['clickup-time-report', reportRange.startDate, reportRange.endDate, filters.teamMemberId, filters.clientId, filters.clientServiceId, filters.attributionStatus],
     queryFn: () => api.getClickUpTimeReport({
-      startDate: filters.startDate,
-      endDate: filters.endDate,
+      startDate: reportRange.startDate,
+      endDate: reportRange.endDate,
       teamMemberId: filters.teamMemberId ? Number(filters.teamMemberId) : undefined,
       clientId: filters.clientId ? Number(filters.clientId) : undefined,
       clientServiceId: filters.clientServiceId ? Number(filters.clientServiceId) : undefined,
@@ -189,47 +332,64 @@ export function TimeTrackingPage() {
   })
 
   const entriesQuery = useQuery({
-    queryKey: ['clickup-time-entries', filters.startDate, filters.endDate, filters.teamMemberId, filters.clientId, filters.clientServiceId, filters.attributionStatus, filters.page],
+    queryKey: ['clickup-time-entries', reportRange.startDate, reportRange.endDate, filters.teamMemberId, filters.clientId, filters.clientServiceId, filters.attributionStatus],
     queryFn: () => api.getClickUpTimeEntries({
-      startDate: filters.startDate,
-      endDate: filters.endDate,
+      startDate: reportRange.startDate,
+      endDate: reportRange.endDate,
       teamMemberId: filters.teamMemberId ? Number(filters.teamMemberId) : undefined,
       clientId: filters.clientId ? Number(filters.clientId) : undefined,
       clientServiceId: filters.clientServiceId ? Number(filters.clientServiceId) : undefined,
       attributionStatus: filters.attributionStatus === 'assigned' || filters.attributionStatus === 'unassigned'
         ? filters.attributionStatus
         : undefined,
-      page: filters.page,
-      pageSize: 20,
+      page: 1,
+      pageSize: 100,
     }),
     enabled: Boolean(statusQuery.data?.isConnected),
   })
 
   const entriesByMember = useMemo(() => {
-    const grouped = new Map<string, ClickUpTimeEntry[]>()
+    const grouped = new Map<string, {
+      key: string
+      clickupUserId: string
+      teamMemberId: number | null
+      teamMemberName: string
+      clickupUserName: string
+      totalHours: number
+      totalEntries: number
+      clientName: string | null
+      clientServiceName: string | null
+      entries: ClickUpTimeEntry[]
+    }>()
     const entries = entriesQuery.data?.entries ?? []
 
     for (const entry of entries) {
       const key = String(entry.teamMemberId ?? entry.clickupUserId)
-      const current = grouped.get(key) ?? []
-      current.push(entry)
-      grouped.set(key, current)
+      const current = grouped.get(key)
+
+      if (current) {
+        current.entries.push(entry)
+        current.totalHours += entry.durationHours
+        current.totalEntries += 1
+        grouped.set(key, current)
+        continue
+      }
+
+      grouped.set(key, {
+        key,
+        clickupUserId: entry.clickupUserId,
+        teamMemberId: entry.teamMemberId ?? null,
+        teamMemberName: entry.teamMemberName || entry.clickupUserName,
+        clickupUserName: entry.clickupUserName,
+        totalHours: entry.durationHours,
+        totalEntries: 1,
+        clientName: entry.clientName ?? null,
+        clientServiceName: entry.clientServiceName ?? null,
+        entries: [entry],
+      })
     }
 
-    return Array.from(grouped.entries()).map(([key, memberEntries]) => {
-      const first = memberEntries[0]
-      return {
-        key,
-        teamMemberId: first.teamMemberId ?? null,
-        teamMemberName: first.teamMemberName || first.clickupUserName,
-        clickupUserName: first.clickupUserName,
-        totalHours: memberEntries.reduce((sum, entry) => sum + entry.durationHours, 0),
-        totalEntries: memberEntries.length,
-        clientName: first.clientName,
-        clientServiceName: first.clientServiceName,
-        entries: memberEntries,
-      }
-    })
+    return grouped
   }, [entriesQuery.data?.entries])
 
   useEffect(() => {
@@ -337,7 +497,82 @@ export function TimeTrackingPage() {
   const teamMembers = teamMembersQuery.data ?? []
   const clients = clientsQuery.data ?? []
   const clickupMembers = clickupMembersQuery.data ?? []
+  const teamMembersById = useMemo(
+    () => new Map(teamMembers.map((member) => [member.id, member])),
+    [teamMembers],
+  )
+  const clickupMembersById = useMemo(
+    () => new Map(clickupMembers.map((member) => [member.clickupUserId, member])),
+    [clickupMembers],
+  )
   const compliance = complianceQuery.data?.report
+  const complianceRows = compliance?.rows ?? []
+  const selectedTeamMemberId = filters.teamMemberId ? Number(filters.teamMemberId) : null
+  const memberPerformanceRows = useMemo(() => {
+    const rows = complianceRows
+      .filter((row) => !selectedTeamMemberId || row.teamMemberId === selectedTeamMemberId)
+      .map((row) => {
+        const entries = entriesByMember.get(String(row.teamMemberId))
+        const teamMember = row.teamMemberId ? teamMembersById.get(row.teamMemberId) : null
+        return {
+          key: String(row.teamMemberId),
+          row,
+          entries: entries?.entries ?? [],
+          isOrphan: false,
+          title: row.teamMemberName,
+          avatarUrl: teamMember?.avatarUrl ?? null,
+          initials: getInitials(teamMember?.name ?? row.teamMemberName),
+        }
+      })
+      .sort((left, right) => {
+        const statusOrder: Record<ClickUpComplianceStatus, number> = {
+          missing: 0,
+          unmapped: 1,
+          on_track: 2,
+          no_expected_hours: 3,
+        }
+
+        const rankDelta = statusOrder[left.row.status] - statusOrder[right.row.status]
+        if (rankDelta !== 0) {
+          return rankDelta
+        }
+
+        return left.row.teamMemberName.localeCompare(right.row.teamMemberName)
+      })
+
+    if (selectedTeamMemberId) {
+      return rows
+    }
+
+    const mappedTeamMemberIds = new Set(complianceRows.map((row) => String(row.teamMemberId)))
+    const orphanRows = Array.from(entriesByMember.values())
+      .filter((group) => !group.teamMemberId || !mappedTeamMemberIds.has(String(group.teamMemberId)))
+      .map((group) => ({
+        key: `orphan-${group.key}`,
+        row: null as ClickUpComplianceRow | null,
+        entries: group.entries,
+        isOrphan: true,
+        title: group.teamMemberName || group.clickupUserName || 'Unmapped ClickUp user',
+        avatarUrl: clickupMembersById.get(group.clickupUserId)?.avatarUrl ?? null,
+        initials: getInitials(group.teamMemberName || group.clickupUserName),
+      }))
+
+    return [
+      ...rows,
+      ...orphanRows,
+    ]
+  }, [clickupMembersById, complianceRows, entriesByMember, selectedTeamMemberId, teamMembersById])
+  const memberChartRows = useMemo(() => {
+    return memberPerformanceRows
+      .filter((group) => !group.isOrphan && group.row && group.entries.length > 0)
+      .map((group) => ({
+        name: group.row.teamMemberName,
+        trackedHours: group.row.trackedHours,
+        minimumHours: group.row.minimumHours,
+        differencePercent: group.row.differencePercent,
+      }))
+      .sort((left, right) => right.trackedHours - left.trackedHours)
+  }, [memberPerformanceRows])
   const mappedTeamMemberIds = new Set(Object.keys(mappingSelection).filter((key) => mappingSelection[key]))
   const unmappedTeamMembers = teamMembers.filter((member) => member.status !== 'unavailable' && !mappedTeamMemberIds.has(String(member.id)))
   const pendingMappings = useMemo(() => {
@@ -361,12 +596,12 @@ export function TimeTrackingPage() {
   })
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 px-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-extrabold uppercase tracking-[0.24em] text-primary/80">Admin Workspace</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary/80">Admin Workspace</p>
           <h1 className="mt-2 text-3xl font-semibold text-foreground">Time Tracking</h1>
-          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             Connect ClickUp once, map your people, then see exactly who tracked how much time without touching invoice data.
           </p>
         </div>
@@ -391,24 +626,24 @@ export function TimeTrackingPage() {
 
       {statusQuery.data?.isConnected ? (
         <Card className="border-blue-200/70 bg-blue-50/65">
-          <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <CardContent className="flex flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="mt-0.5 h-5 w-5 text-blue-700" />
               <div>
                 <p className="font-semibold text-blue-950">
                   Connected to {statusQuery.data.workspaceName || 'ClickUp'}
                 </p>
-                <p className="mt-1 text-sm text-blue-900/80">
+                <p className="mt-1 text-sm leading-6 text-blue-900/80">
                   Last sync: {formatDateTime(statusQuery.data.lastSyncAt)}. Mapped members: {statusQuery.data.mappedCount}. Synced entries: {statusQuery.data.syncedEntryCount}.
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-blue-200 bg-white/90 text-blue-800">
+              <Badge variant="outline" className="border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-blue-800">
                 Workspace ID: {statusQuery.data.workspaceId}
               </Badge>
               {statusQuery.data.authorizedUserName ? (
-                <Badge variant="outline" className="border-blue-200 bg-white/90 text-blue-800">
+                <Badge variant="outline" className="border-blue-200 bg-white/90 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-blue-800">
                   Token owner: {statusQuery.data.authorizedUserName}
                 </Badge>
               ) : null}
@@ -451,7 +686,7 @@ export function TimeTrackingPage() {
                   value={selectedWorkspaceId}
                   onChange={(event) => setSelectedWorkspaceId(event.target.value)}
                   disabled={validatedWorkspaces.length === 0}
-                  className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm"
+                className="h-11 min-w-0 w-full flex-1 rounded-xl border border-border bg-background px-3 text-sm"
                 >
                   <option value="">Select a workspace</option>
                   {validatedWorkspaces.map((workspace) => (
@@ -486,20 +721,23 @@ export function TimeTrackingPage() {
         </Card>
       )}
 
-      <Card className="border-white/80 bg-white/82">
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+      <Card className="border-white/80 bg-white/88">
+        <CardHeader className="flex flex-col gap-5 border-b border-border/60 px-6 pb-5 pt-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              Minimum Hours Compliance
+              Performance overview
             </CardTitle>
-            <CardDescription>
-              Each active billable team member is expected to track 6.5h per working day, excluding approved leave.
+            <CardDescription className="mt-1 leading-6">
+              Review the selected period once, then expand any member to see the tasks behind their tracked hours.
             </CardDescription>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Compliance and time reporting now live in one place. The period picker drives both views, while the filters below narrow the task list.
+            </p>
           </div>
-          <div className="grid gap-3 sm:min-w-[360px]">
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-              <div className="space-y-2">
+          <div className="grid gap-4 sm:min-w-[360px]">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div className="space-y-2.5">
                 <Label htmlFor="compliance-range">Period</Label>
                 <select
                   id="compliance-range"
@@ -508,6 +746,7 @@ export function TimeTrackingPage() {
                   className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
                 >
                   <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
                   <option value="this_week">This week</option>
                   <option value="this_month">This month</option>
                   <option value="last_week">Last week</option>
@@ -522,8 +761,8 @@ export function TimeTrackingPage() {
               </div>
             </div>
             {complianceRangePreset === 'custom' ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2.5">
                   <Label htmlFor="compliance-start">Start date</Label>
                   <Input
                     id="compliance-start"
@@ -532,7 +771,7 @@ export function TimeTrackingPage() {
                     onChange={(event) => setCustomStartDate(event.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <Label htmlFor="compliance-end">End date</Label>
                   <Input
                     id="compliance-end"
@@ -545,39 +784,39 @@ export function TimeTrackingPage() {
             ) : null}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-7 px-6 pb-6 pt-6">
           {!statusQuery.data?.isConnected ? (
             <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-              Connect ClickUp to see the compliance overview.
+              Connect ClickUp to see minimum hours and member-level time reporting.
             </div>
           ) : complianceQuery.isLoading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Loading compliance overview…</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">Loading performance overview…</div>
           ) : compliance ? (
             <>
               <div className="grid gap-4 md:grid-cols-4">
                 <MetricCard
                   label="Minimum Hours"
                   value={formatHours(compliance.totalExpectedHours)}
-                  hint={`${compliance.label} target across ${compliance.totalTeamMembers} team members.`}
+                  hint={`${compliance.label} target across ${compliance.totalTeamMembers} active members.`}
                 />
                 <MetricCard
                   label="Tracked Hours"
                   value={formatHours(compliance.totalTrackedHours)}
-                  hint="Actual ClickUp time tracked in the selected period."
+                  hint="Actual ClickUp time captured in the selected period."
                 />
                 <MetricCard
                   label="Missing Hours"
                   value={formatHours(compliance.totalMissingHours)}
-                  hint="The shortfall vs. the 6.5h minimum after approved leave."
+                  hint="The shortfall after approved leave is removed."
                 />
                 <MetricCard
                   label="Needs Attention"
                   value={String(compliance.missingMembers)}
-                  hint="People who are below target or still need a ClickUp mapping."
+                  hint="Members below target or still waiting for a mapping."
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-sm leading-6 text-muted-foreground">
                 <span>{compliance.label}</span>
                 <span>•</span>
                 <span>{formatDate(compliance.startDate)} to {formatDate(compliance.endDate)}</span>
@@ -585,122 +824,362 @@ export function TimeTrackingPage() {
                 <span>Approved leave is excluded from the target.</span>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-border/70">
-                <table className="w-full min-w-[1100px]">
-                  <thead className="bg-muted/60">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Team member</th>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">ClickUp mapping</th>
-                      <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Minimum</th>
-                      <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Tracked</th>
-                      <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Missing</th>
-                      <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">% diff</th>
-                      <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Leave days</th>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60 bg-white/80">
-                    {compliance.rows.map((row: ClickUpComplianceRow) => {
-                      const rowClass = row.status === 'missing'
-                        ? 'bg-red-50/70'
-                        : row.status === 'unmapped'
-                          ? 'bg-amber-50/70'
-                          : 'bg-white/80'
-
-                      return (
-                        <tr key={row.teamMemberId} className={rowClass}>
-                          <td className="px-4 py-3 text-sm font-medium text-foreground">
-                            <div>{row.teamMemberName}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{row.teamMemberPosition}</div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            {row.clickupUserName ? (
-                              <div>
-                                <div className="font-medium text-foreground">{row.clickupUserName}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">Mapped to ClickUp</div>
-                              </div>
-                            ) : (
-                              <span className="text-amber-700">Needs mapping</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatHours(row.minimumHours)}</td>
-                          <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatHours(row.trackedHours)}</td>
-                          <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">
-                            {row.missingHours > 0 ? formatHours(row.missingHours) : '0.00h'}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatSignedPercent(row.differencePercent)}</td>
-                          <td className="px-4 py-3 text-right text-sm text-muted-foreground">{row.leaveDays.toFixed(1)}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <Badge
-                              variant="outline"
-                              className={
-                                row.status === 'missing'
-                                  ? 'border-red-200 bg-red-50 text-red-700'
-                                  : row.status === 'unmapped'
-                                    ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                    : row.status === 'no_expected_hours'
-                                      ? 'border-slate-200 bg-slate-50 text-slate-700'
-                                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              }
-                            >
-                              {row.status === 'missing'
-                                ? 'Below target'
-                                : row.status === 'unmapped'
-                                  ? 'Needs mapping'
-                                  : row.status === 'no_expected_hours'
-                                    ? 'No workdays'
-                                    : 'On track'}
-                            </Badge>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                    {formatHours(reportQuery.data?.summary.totalHours ?? 0)} tracked
+                  </Badge>
+                  <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                    {reportQuery.data?.summary.totalEntries ?? 0} entries
+                  </Badge>
+                  <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                    {statusQuery.data?.mappedCount ?? 0} mapped members
+                  </Badge>
+                  <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                    {unmappedTeamMembers.length} need mapping
+                  </Badge>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Filters below narrow the task list. The compliance totals stay anchored to the selected period so the minimum-hours target stays honest.
+                </p>
               </div>
+
+              <div className="rounded-2xl border border-border/70 bg-white/80 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Tracked hours by member</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      A quick read on who is carrying the tracked time in the selected period.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                    {memberChartRows.length} members
+                  </Badge>
+                </div>
+                {memberChartRows.length > 0 ? (
+                  <div className="mt-4 h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={memberChartRows} layout="vertical" margin={{ top: 8, right: 18, bottom: 8, left: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.24)" />
+                        <XAxis type="number" tickFormatter={(value) => `${Number(value).toFixed(0)}h`} />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={150}
+                          tick={{ fill: '#475569', fontSize: 12 }}
+                        />
+                        <Tooltip
+                          formatter={(value: number, name: string) => [
+                            formatHours(value),
+                            name === 'trackedHours' ? 'Tracked' : 'Minimum',
+                          ]}
+                        />
+                        <Bar dataKey="minimumHours" fill="rgba(148,163,184,0.34)" radius={[0, 10, 10, 0]} />
+                        <Bar dataKey="trackedHours" fill="rgba(37,99,235,0.82)" radius={[0, 10, 10, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                    No tracked hours to chart yet.
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-2.5">
+                  <Label>Team member</Label>
+                  <select
+                    value={filters.teamMemberId}
+                    onChange={(event) => setFilters((current) => ({ ...current, teamMemberId: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                  >
+                    <option value="">All mapped members</option>
+                    {teamMembers.map((member: TeamMember) => (
+                      <option key={member.id} value={member.id}>{member.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2.5">
+                  <Label>Client</Label>
+                  <select
+                    value={filters.clientId}
+                    onChange={(event) => setFilters((current) => ({
+                      ...current,
+                      clientId: event.target.value,
+                      clientServiceId: '',
+                    }))}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                  >
+                    <option value="">All clients</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>{client.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2.5">
+                  <Label>Service</Label>
+                  <select
+                    value={filters.clientServiceId}
+                    onChange={(event) => setFilters((current) => ({ ...current, clientServiceId: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                    disabled={!filters.clientId}
+                  >
+                    <option value="">All services</option>
+                    {(clientServicesQuery.data ?? []).map((service: { id: number; serviceTitle?: string; serviceTypeName?: string }) => (
+                      <option key={service.id} value={service.id}>
+                        {service.serviceTitle || service.serviceTypeName || `Service ${service.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2.5">
+                  <Label>Attribution</Label>
+                  <select
+                    value={filters.attributionStatus}
+                    onChange={(event) => setFilters((current) => ({ ...current, attributionStatus: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                  >
+                    <option value="">All entries</option>
+                    <option value="assigned">Assigned only</option>
+                    <option value="unassigned">Unassigned only</option>
+                  </select>
+                </div>
+              </div>
+
+              {reportQuery.isLoading || entriesQuery.isLoading ? (
+                <div className="py-10 text-center text-sm text-muted-foreground">Loading member breakdown…</div>
+              ) : memberPerformanceRows.length > 0 ? (
+                <div className="space-y-3">
+                  {memberPerformanceRows.map((group) => {
+                    if (group.isOrphan) {
+                      return (
+                        <details key={group.key} className="group rounded-2xl border border-dashed border-amber-200 bg-amber-50/55">
+                          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <Avatar className="h-10 w-10 ring-1 ring-amber-200">
+                                <AvatarImage src={group.avatarUrl ?? undefined} alt={group.title} />
+                                <AvatarFallback className="bg-amber-100 text-amber-900">{group.initials}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="text-base font-semibold text-amber-950">{group.title}</p>
+                                <p className="mt-1 text-sm leading-6 text-amber-900/80">
+                                  {group.entries.length} task{group.entries.length === 1 ? '' : 's'} · {formatHours(group.entries.reduce((sum, entry) => sum + entry.durationHours, 0))}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className="border-amber-200 bg-white/85 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-amber-800">
+                                Needs mapping
+                              </Badge>
+                              <ChevronDown className="h-4 w-4 text-amber-700" />
+                            </div>
+                          </summary>
+                          <div className="border-t border-amber-200/80 px-4 py-4">
+                            <div className="rounded-2xl border border-amber-200 bg-white/85 p-4 text-sm text-amber-900">
+                              These entries are being tracked in ClickUp, but they are not yet linked to a Vestov team member.
+                            </div>
+                            <div className="mt-4 overflow-x-auto rounded-2xl border border-border/70">
+                              <table className="w-full min-w-[900px]">
+                                <thead className="bg-muted/60">
+                                  <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Date</th>
+                                    <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Task</th>
+                                    <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Client / service</th>
+                                    <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Hours</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/60 bg-white/85">
+                                  {group.entries.map((entry) => {
+                                    const taskUrl = formatTaskLink(entry.taskId)
+                                    return (
+                                      <tr key={entry.id}>
+                                        <td className="px-4 py-3 text-sm text-muted-foreground">{formatDate(entry.entryDate)}</td>
+                                        <td className="px-4 py-3 text-sm">
+                                          {taskUrl ? (
+                                            <a
+                                              href={taskUrl}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="font-medium text-primary hover:underline"
+                                            >
+                                              {entry.taskName || 'Untitled time entry'}
+                                            </a>
+                                          ) : (
+                                            <div className="font-medium text-foreground">{entry.taskName || 'Untitled time entry'}</div>
+                                          )}
+                                          <div className="mt-1 text-xs text-muted-foreground">{entry.taskStatus || 'No task status'}</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-muted-foreground">
+                                          {entry.clientName || 'Unassigned'}
+                                          {entry.clientServiceName ? ` · ${entry.clientServiceName}` : ''}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatHours(entry.durationHours)}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </details>
+                      )
+                    }
+
+                    const row = group.row
+                    if (!row) {
+                      return null
+                    }
+
+                    const trackedCount = group.entries.length
+                    const taskUrlCount = group.entries.filter((entry) => Boolean(entry.taskId)).length
+
+                    return (
+                      <details key={group.key} className="group rounded-2xl border border-border/70 bg-white/85">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar className="h-10 w-10 ring-1 ring-border/70">
+                              <AvatarImage src={group.avatarUrl ?? undefined} alt={row.teamMemberName} />
+                              <AvatarFallback>{group.initials}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-base font-semibold text-foreground">{row.teamMemberName}</p>
+                              <p className="mt-1 text-sm leading-6 text-muted-foreground">{row.teamMemberPosition} · {row.clickupUserName || 'No ClickUp mapping yet'}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                              {formatHours(row.minimumHours)} minimum
+                            </Badge>
+                            <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                              {formatHours(row.trackedHours)} tracked
+                            </Badge>
+                            <Badge variant="outline" className="border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold tracking-[0.05em] text-slate-700">
+                              {formatSignedPercent(row.differencePercent)} diff
+                            </Badge>
+                            <Badge variant="outline" className={`px-3 py-1 text-[11px] font-semibold tracking-[0.05em] ${formatComplianceStatusClass(row.status)}`}>
+                              {formatComplianceStatusLabel(row.status)}
+                            </Badge>
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </summary>
+                        <div className="border-t border-border/60 px-4 py-4">
+                          <div className="grid gap-3 md:grid-cols-4">
+                            <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Minimum</p>
+                              <p className="mt-2 text-xl font-semibold text-foreground">{formatHours(row.minimumHours)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Tracked</p>
+                              <p className="mt-2 text-xl font-semibold text-foreground">{formatHours(row.trackedHours)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Missing</p>
+                              <p className="mt-2 text-xl font-semibold text-foreground">
+                                {row.missingHours > 0 ? formatHours(row.missingHours) : '0.00h'}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">% diff</p>
+                              <p className="mt-2 text-xl font-semibold text-foreground">{formatSignedPercent(row.differencePercent)}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm leading-6 text-muted-foreground">
+                            <span>{trackedCount} tracked task{trackedCount === 1 ? '' : 's'} · {formatHours(group.entries.reduce((sum, entry) => sum + entry.durationHours, 0))}</span>
+                            <span>•</span>
+                            <span>{taskUrlCount} task{taskUrlCount === 1 ? '' : 's'} have direct ClickUp links</span>
+                            <span>•</span>
+                            <span>{row.leaveDays.toFixed(1)} leave days excluded</span>
+                          </div>
+
+                          {group.entries.length > 0 ? (
+                            <div className="mt-4 overflow-x-auto rounded-2xl border border-border/70">
+                              <table className="w-full min-w-[900px]">
+                                <thead className="bg-muted/60">
+                                  <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Date</th>
+                                    <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Task</th>
+                                    <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Client / service</th>
+                                    <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Hours</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/60 bg-white/85">
+                                  {group.entries
+                                    .slice()
+                                    .sort((left, right) => right.entryDate.localeCompare(left.entryDate))
+                                    .map((entry) => {
+                                      const taskUrl = formatTaskLink(entry.taskId)
+                                      return (
+                                        <tr key={entry.id}>
+                                          <td className="px-4 py-3 text-sm text-muted-foreground">{formatDate(entry.entryDate)}</td>
+                                          <td className="px-4 py-3 text-sm">
+                                            {taskUrl ? (
+                                              <a
+                                                href={taskUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="font-medium text-primary hover:underline"
+                                              >
+                                                {entry.taskName || 'Untitled time entry'}
+                                              </a>
+                                            ) : (
+                                              <div className="font-medium text-foreground">{entry.taskName || 'Untitled time entry'}</div>
+                                            )}
+                                            <div className="mt-1 text-xs text-muted-foreground">{entry.taskStatus || 'No task status'}</div>
+                                          </td>
+                                          <td className="px-4 py-3 text-sm text-muted-foreground">
+                                            {entry.clientName || 'Unassigned'}
+                                            {entry.clientServiceName ? ` · ${entry.clientServiceName}` : ''}
+                                          </td>
+                                          <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatHours(entry.durationHours)}</td>
+                                        </tr>
+                                      )
+                                    })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="mt-4 rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                              No tracked tasks in this period yet.
+                            </div>
+                          )}
+                        </div>
+                      </details>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                  No tracked hours match the current filters yet.
+                </div>
+              )}
             </>
           ) : (
             <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-              No compliance data is available yet.
+              No performance data is available yet.
             </div>
           )}
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard
-          label="Tracked Hours"
-          value={formatHours(reportQuery.data?.summary.totalHours ?? 0)}
-          hint="Total hours in the current filter window."
-        />
-        <MetricCard
-          label="Tracked Entries"
-          value={String(reportQuery.data?.summary.totalEntries ?? 0)}
-          hint="Raw synced ClickUp time entries in the current filter."
-        />
-        <MetricCard
-          label="Mapped Members"
-          value={String(statusQuery.data?.mappedCount ?? 0)}
-          hint="Vestov team members currently linked to ClickUp users."
-        />
-        <MetricCard
-          label="Needs Mapping"
-          value={String(unmappedTeamMembers.length)}
-          hint="Team members not linked yet, so their ClickUp hours stay outside reporting."
-        />
-      </div>
-
-      <Card className="border-white/80 bg-white/82">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            Member Mapping
-          </CardTitle>
-          <CardDescription>
-            Link each Vestov team member to one ClickUp user. Only mapped people appear in the admin time report.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <details className="group rounded-2xl border border-border/70 bg-white/80">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+          <div>
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <p className="text-base font-semibold text-foreground">Member mapping</p>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Hidden by default so the main report stays focused. Open it when you need to link people or resolve missing names.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{statusQuery.data?.mappedCount ?? 0} mapped</span>
+            <ChevronDown className="h-4 w-4" />
+          </div>
+        </summary>
+        <div className="border-t border-border/60 p-5">
           {!statusQuery.data?.isConnected ? (
             <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
               Connect ClickUp first, then Vestov Hub will show the available ClickUp users here.
@@ -712,12 +1191,12 @@ export function TimeTrackingPage() {
           ) : (
             <>
               {unmappedTeamMembers.length > 0 ? (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <div>
                     <p className="font-medium">Some Vestov team members still need a ClickUp link.</p>
                     <p className="mt-1">
-                      They will stay out of the report until they are mapped. This keeps the numbers trustworthy instead of guessing.
+                      They stay out of the report until they are mapped, which keeps the numbers trustworthy instead of guessed.
                     </p>
                   </div>
                 </div>
@@ -728,11 +1207,17 @@ export function TimeTrackingPage() {
                   .filter((member) => member.status !== 'unavailable')
                   .map((member) => (
                     <div key={member.id} className="grid gap-3 rounded-2xl border border-border/70 bg-white/80 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-center">
-                      <div>
-                        <p className="font-semibold text-foreground">{member.name}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {member.position} · {member.email}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10 ring-1 ring-border/70">
+                          <AvatarImage src={member.avatarUrl ?? undefined} alt={member.name} />
+                          <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-semibold text-foreground">{member.name}</p>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {member.position} · {member.email}
+                          </p>
+                        </div>
                       </div>
                       <select
                         value={mappingSelection[String(member.id)] ?? ''}
@@ -742,7 +1227,7 @@ export function TimeTrackingPage() {
                             [String(member.id)]: event.target.value,
                           }))
                         }}
-                        className="h-11 rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+                        className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
                       >
                         <option value="">No ClickUp user selected</option>
                         {clickupMembers.map((clickupMember: ClickUpMember) => (
@@ -756,7 +1241,7 @@ export function TimeTrackingPage() {
                   ))}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
                 <Button onClick={() => saveMappingsMutation.mutate()} disabled={!pendingMappings || saveMappingsMutation.isPending}>
                   {saveMappingsMutation.isPending ? 'Saving…' : 'Save Mappings'}
                 </Button>
@@ -770,260 +1255,8 @@ export function TimeTrackingPage() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-white/80 bg-white/82">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock3 className="h-5 w-5 text-primary" />
-            Time Report
-          </CardTitle>
-          <CardDescription>
-            Filter by people, client, and service to answer who tracked how much time and where it can be attributed confidently.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-            <div className="space-y-2">
-              <Label>Start date</Label>
-              <Input
-                type="date"
-                value={filters.startDate}
-                onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value, page: 1 }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>End date</Label>
-              <Input
-                type="date"
-                value={filters.endDate}
-                onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value, page: 1 }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Team member</Label>
-              <select
-                value={filters.teamMemberId}
-                onChange={(event) => setFilters((current) => ({ ...current, teamMemberId: event.target.value, page: 1 }))}
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              >
-                <option value="">All mapped members</option>
-                {teamMembers.map((member: TeamMember) => (
-                  <option key={member.id} value={member.id}>{member.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Client</Label>
-              <select
-                value={filters.clientId}
-                onChange={(event) => setFilters((current) => ({
-                  ...current,
-                  clientId: event.target.value,
-                  clientServiceId: '',
-                  page: 1,
-                }))}
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              >
-                <option value="">All clients</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Service</Label>
-              <select
-                value={filters.clientServiceId}
-                onChange={(event) => setFilters((current) => ({ ...current, clientServiceId: event.target.value, page: 1 }))}
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-                disabled={!filters.clientId}
-              >
-                <option value="">All services</option>
-                {(clientServicesQuery.data ?? []).map((service: { id: number; serviceTitle?: string; serviceTypeName?: string }) => (
-                  <option key={service.id} value={service.id}>
-                    {service.serviceTitle || service.serviceTypeName || `Service ${service.id}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Attribution</Label>
-              <select
-                value={filters.attributionStatus}
-                onChange={(event) => setFilters((current) => ({ ...current, attributionStatus: event.target.value, page: 1 }))}
-                className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
-              >
-                <option value="">All entries</option>
-                <option value="assigned">Assigned only</option>
-                <option value="unassigned">Unassigned only</option>
-              </select>
-            </div>
-          </div>
-
-          {reportQuery.isLoading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Loading time report…</div>
-          ) : !statusQuery.data?.isConnected ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Connect ClickUp to unlock reporting.</div>
-          ) : entriesByMember.length > 0 ? (
-            <div className="space-y-3">
-              {entriesByMember.map((group) => (
-                <details key={group.key} className="rounded-2xl border border-border/70 bg-white/80">
-                  <summary className="cursor-pointer list-none px-4 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-base font-semibold text-foreground">{group.teamMemberName || group.clickupUserName}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {group.totalEntries} task{group.totalEntries === 1 ? '' : 's'} · {formatHours(group.totalHours)}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
-                          {formatHours(group.totalHours)}
-                        </Badge>
-                        <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-                          {group.totalEntries} entries
-                        </Badge>
-                      </div>
-                    </div>
-                  </summary>
-                  <div className="border-t border-border/60 px-4 py-4">
-                    <div className="overflow-x-auto rounded-2xl border border-border/70">
-                      <table className="w-full min-w-[900px]">
-                        <thead className="bg-muted/60">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Task</th>
-                            <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">ClickUp link</th>
-                            <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Client / service</th>
-                            <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Hours</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/60 bg-white/80">
-                          {group.entries.map((entry) => {
-                            const taskUrl = formatTaskLink(entry.taskId)
-                            return (
-                              <tr key={entry.id}>
-                                <td className="px-4 py-3 text-sm text-muted-foreground">{formatDate(entry.entryDate)}</td>
-                                <td className="px-4 py-3 text-sm">
-                                  <div className="font-medium text-foreground">{entry.taskName || 'Untitled time entry'}</div>
-                                  <div className="mt-1 text-xs text-muted-foreground">{entry.taskStatus || 'No task status'}</div>
-                                </td>
-                                <td className="px-4 py-3 text-sm">
-                                  {taskUrl ? (
-                                    <a
-                                      href={taskUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-                                    >
-                                      Open task
-                                      <ExternalLink className="h-3.5 w-3.5" />
-                                    </a>
-                                  ) : (
-                                    <span className="text-muted-foreground">No task link</span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 text-sm text-muted-foreground">
-                                  {entry.clientName || 'Unassigned'}
-                                  {entry.clientServiceName ? ` · ${entry.clientServiceName}` : ''}
-                                </td>
-                                <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatHours(entry.durationHours)}</td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </details>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-              No tracked hours match the current filter yet.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-white/80 bg-white/82">
-        <CardHeader>
-          <CardTitle>Time Entry Drill-down</CardTitle>
-          <CardDescription>
-            Inspect the underlying ClickUp entries when a total looks off or hours stayed unassigned.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {entriesQuery.isLoading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Loading entries…</div>
-          ) : entriesQuery.data && entriesQuery.data.entries.length > 0 ? (
-            <>
-              <div className="overflow-x-auto rounded-2xl border border-border/70">
-                <table className="w-full min-w-[1080px]">
-                  <thead className="bg-muted/60">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Team member</th>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Task</th>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Location</th>
-                      <th className="px-4 py-3 text-left text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Attribution</th>
-                      <th className="px-4 py-3 text-right text-xs font-extrabold uppercase tracking-[0.16em] text-muted-foreground">Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60 bg-white/80">
-                    {entriesQuery.data.entries.map((entry) => (
-                      <tr key={entry.id}>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">{formatDate(entry.entryDate)}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-foreground">{entry.teamMemberName || entry.clickupUserName}</td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          <div className="font-medium text-foreground">{entry.taskName || 'Untitled time entry'}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">{entry.taskStatus || 'No task status'}</div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {[entry.spaceName, entry.folderName, entry.listName].filter(Boolean).join(' / ') || 'No location details'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">
-                          {entry.clientName || 'Unassigned'}
-                          {entry.clientServiceName ? ` · ${entry.clientServiceName}` : ''}
-                        </td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-foreground">{formatHours(entry.durationHours)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Showing page {entriesQuery.data.pagination.page} of {Math.max(entriesQuery.data.pagination.totalPages, 1)}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setFilters((current) => ({ ...current, page: Math.max(current.page - 1, 1) }))}
-                    disabled={filters.page <= 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}
-                    disabled={filters.page >= (entriesQuery.data.pagination.totalPages || 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-              No ClickUp time entries are available for the current filter.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      </details>
     </div>
   )
 }

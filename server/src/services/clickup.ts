@@ -85,6 +85,7 @@ type SyncTrigger = 'manual' | 'scheduled'
 
 type ComplianceRangePreset =
   | 'today'
+  | 'yesterday'
   | 'this_week'
   | 'this_month'
   | 'last_week'
@@ -338,6 +339,14 @@ function resolveComplianceRange(
       label: 'Today',
       startDate: today,
       endDate: today,
+    }
+  }
+  if (rangePreset === 'yesterday') {
+    const yesterday = toDateOnlyUTC(addDaysUTC(startOfUtcDay(referenceDate), -1))
+    return {
+      label: 'Yesterday',
+      startDate: yesterday,
+      endDate: yesterday,
     }
   }
   if (rangePreset === 'this_week') {

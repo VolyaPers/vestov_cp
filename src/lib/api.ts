@@ -717,7 +717,7 @@ class ApiClient {
   }
 
   async getClickUpCompliance(params?: {
-    rangePreset?: 'today' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'last_quarter' | 'last_year' | 'custom'
+    rangePreset?: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'last_quarter' | 'last_year' | 'custom'
     startDate?: string
     endDate?: string
   }): Promise<ClickUpComplianceResponse> {
