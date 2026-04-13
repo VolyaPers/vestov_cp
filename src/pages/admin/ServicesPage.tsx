@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Building2, Users, DollarSign, TrendingUp } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Plus, Edit, Trash2, Building2, Users, DollarSign, TrendingUp, Layers3, ArrowUpRight } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface ServiceType {
   id: number
@@ -197,156 +198,193 @@ export function ServicesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header Section - Stripe style */}
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Services
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Manage service types, billing models, and service analytics
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="stripe-badge-neutral">
-              <Building2 className="h-4 w-4 mr-2" />
-              {services.length} Service Types
-            </div>
-            <button
-              onClick={() => setIsDialogOpen(true)}
-              className="stripe-btn-primary"
-              title="Create a new service type"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Service Type
-            </button>
-          </div>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="Admin / Services"
+        title="Service catalog"
+        description="Manage the offerings that drive client staffing, outsourcing, and billing structure across the business."
+        theme="ocean"
+        meta={
+          <>
+            <span>{services.length} service types</span>
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span>{analytics?.activeServicesCount || 0} active in delivery</span>
+          </>
+        }
+        actions={
+          <Button onClick={() => setIsDialogOpen(true)} className="gap-2" title="Create a new service type">
+            <Plus className="h-4 w-4" />
+            Add service
+          </Button>
+        }
+        aside={
+          <Card className="border border-border/80 shadow-none">
+            <CardContent className="space-y-3 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Catalog mix</p>
+                <Layers3 className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="grid gap-2">
+                {analytics?.serviceDistribution?.slice(0, 3).map((entry) => (
+                  <div key={entry.category} className="flex items-center justify-between rounded-xl border border-border/70 bg-slate-50/70 px-3 py-2.5">
+                    <span className="text-sm font-medium capitalize text-foreground">{entry.category}</span>
+                    <span className="text-sm text-muted-foreground">{entry.count}</span>
+                  </div>
+                )) || (
+                  <p className="text-sm text-muted-foreground">No distribution data available yet.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        }
+      />
 
-      {/* Analytics Cards - Stripe style */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-              <Building2 className="h-5 w-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-2xl font-bold text-gray-900">{analytics?.activeServicesCount || 0}</div>
-              <div className="text-sm text-gray-500">Active Services</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-              <Users className="h-5 w-5 text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-2xl font-bold text-gray-900">
-                {analytics?.serviceDistribution.find(s => s.category === 'outstaffing')?.count || 0}
-              </div>
-              <div className="text-sm text-gray-500">Outstaffing</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
-              <TrendingUp className="h-5 w-5 text-purple-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-2xl font-bold text-gray-900">
-                {analytics?.serviceDistribution.find(s => s.category === 'outsourcing')?.count || 0}
-              </div>
-              <div className="text-sm text-gray-500">Outsourcing</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="stripe-stat-card p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
-              <DollarSign className="h-5 w-5 text-orange-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-2xl font-bold text-gray-900">
-                ${analytics?.serviceDistribution.reduce((sum, s) => sum + (s.totalRevenue || 0), 0).toLocaleString() || 0}
-              </div>
-              <div className="text-sm text-gray-500">Total Revenue</div>
-            </div>
-          </div>
-        </div>
+        <MetricTile
+          label="Active services"
+          value={analytics?.activeServicesCount || 0}
+          hint="Service types currently represented in delivery."
+          icon={<Building2 className="h-4 w-4" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Outstaffing"
+          value={analytics?.serviceDistribution.find((s) => s.category === 'outstaffing')?.count || 0}
+          hint="Catalog entries used for dedicated staffing work."
+          icon={<Users className="h-4 w-4" />}
+          tone="emerald"
+        />
+        <MetricTile
+          label="Outsourcing"
+          value={analytics?.serviceDistribution.find((s) => s.category === 'outsourcing')?.count || 0}
+          hint="Packaged delivery and project-based offers."
+          icon={<TrendingUp className="h-4 w-4" />}
+          tone="violet"
+        />
+        <MetricTile
+          label="Revenue coverage"
+          value={`$${(analytics?.serviceDistribution.reduce((sum, s) => sum + (s.totalRevenue || 0), 0) || 0).toLocaleString()}`}
+          hint="Estimated revenue attached to catalog distribution."
+          icon={<DollarSign className="h-4 w-4" />}
+          tone="amber"
+        />
       </div>
 
-      {/* Service Types */}
-      <div className="stripe-card">
-        <div className="p-6 border-b stripe-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold stripe-text-primary">Service Types</h3>
-              <p className="text-sm stripe-text-secondary mt-1">Manage your service offerings and billing models</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6">
-          <div className="space-y-3">
-            {services.map((service) => (
-              <div key={service.id} className="group flex items-center justify-between p-4 stripe-surface rounded-lg stripe-border hover:bg-gray-50 transition-colors duration-150">
-                <div className="flex items-center gap-4 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                    <Building2 className="h-5 w-5 text-indigo-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-medium text-gray-900">{service.name}</h4>
-                      <Badge className={`${getCategoryColor(service.category)} text-xs`}>
-                        {service.category}
-                      </Badge>
-                      <Badge className={`${getBillingModelColor(service.billingModel)} text-xs`}>
-                        {service.billingModel}
-                      </Badge>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.8fr)]">
+        <Card className="border border-border/80 shadow-none">
+          <CardContent className="px-5 py-5 sm:px-6 sm:py-6">
+            <SectionHeading
+              title="Service types"
+              description="Keep the service catalog tight, clearly categorized, and ready for quoting."
+              icon={<Building2 className="h-4 w-4" />}
+            />
+            <div className="space-y-3">
+              {services.map((service) => (
+                <div key={service.id} className="group flex items-start justify-between gap-4 rounded-2xl border border-border/70 bg-white px-4 py-4 transition-colors hover:bg-slate-50/80">
+                  <div className="flex min-w-0 flex-1 items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-slate-50 text-slate-700">
+                      <Building2 className="h-4 w-4" />
                     </div>
-                    {service.description && (
-                      <p className="text-sm text-gray-500 mt-1 truncate">{service.description}</p>
-                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-semibold text-foreground sm:text-base">{service.name}</h4>
+                        <Badge variant="outline" className={getCategoryColor(service.category)}>
+                          {service.category}
+                        </Badge>
+                        <Badge variant="outline" className={getBillingModelColor(service.billingModel)}>
+                          {service.billingModel}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {service.description || 'No description added yet.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(service)} title="Edit service type">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteService(service.id)}
+                      className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                      title="Delete service type"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 ml-4 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openEditDialog(service)}
-                    title="Edit service type"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteService(service.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    title="Delete service type"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+              ))}
+              {services.length === 0 && (
+                <EmptyState
+                  icon={<Building2 className="h-5 w-5" />}
+                  title="No service types yet"
+                  description="Create the first service type to define how the team sells, staffs, and bills work."
+                  action={
+                    <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add service
+                    </Button>
+                  }
+                />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="border border-border/80 shadow-none">
+            <CardContent className="px-5 py-5 sm:px-6 sm:py-6">
+              <SectionHeading
+                title="Top services"
+                description="See which offers carry the most active delivery weight."
+                icon={<ArrowUpRight className="h-4 w-4" />}
+              />
+              <div className="space-y-3">
+                {analytics?.topServices?.length ? (
+                  analytics.topServices.map((service) => (
+                    <div key={service.serviceTypeName} className="rounded-2xl border border-border/70 bg-slate-50/70 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{service.serviceTypeName}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">{service.category}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-foreground">{service.activeAssignments} active</p>
+                          <p className="text-xs text-muted-foreground">
+                            ${(service.totalRevenue || 0).toLocaleString()} revenue
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Top services will appear as soon as assignments generate enough data.</p>
+                )}
               </div>
-            ))}
-            {services.length === 0 && (
-              <div className="stripe-surface rounded-lg p-12 text-center stripe-border">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-gray-100 flex items-center justify-center">
-                  <Building2 className="h-6 w-6 text-gray-400" />
-                </div>
-                <h3 className="text-base font-medium text-gray-900 mb-1">No Service Types</h3>
-                <p className="text-sm text-gray-500">Get started by creating your first service type</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border/80 shadow-none">
+            <CardContent className="px-5 py-5 sm:px-6 sm:py-6">
+              <SectionHeading
+                title="Billing models"
+                description="Keep pricing logic legible across the catalog."
+                icon={<DollarSign className="h-4 w-4" />}
+              />
+              <div className="space-y-2.5">
+                {['hourly', 'monthly', 'fixed'].map((model) => {
+                  const count = services.filter((service) => service.billingModel === model).length
+                  return (
+                    <div key={model} className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2.5">
+                      <span className="text-sm font-medium capitalize text-foreground">{model === 'fixed' ? 'Fixed price' : model}</span>
+                      <span className="text-sm text-muted-foreground">{count}</span>
+                    </div>
+                  )
+                })}
               </div>
-            )}
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 

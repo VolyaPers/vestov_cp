@@ -223,6 +223,143 @@ export interface ServiceDeveloper {
   workSchedule?: Record<string, string>
 }
 
+export interface ClickUpIntegrationStatus {
+  isConnected: boolean
+  isActive: boolean
+  workspaceId: string | null
+  workspaceName: string | null
+  workspaceColor?: string | null
+  authorizedUserName?: string | null
+  lastSyncAt: string | null
+  mappedCount: number
+  syncedEntryCount: number
+  lastEntryDate: string | null
+  runningSync: boolean
+  latestSync: null | {
+    id: number
+    status: string
+    triggerType: string
+    startedAt: string
+    completedAt: string | null
+    entriesFetched: number
+    entriesUpserted: number
+    entriesSkipped: number
+    errorMessage: string | null
+  }
+}
+
+export interface ClickUpMember {
+  clickupUserId: string
+  clickupUserName: string
+  clickupUserEmail?: string | null
+  initials?: string | null
+  avatarUrl?: string | null
+  teamMemberId?: number | null
+  teamMemberName?: string | null
+  teamMemberEmail?: string | null
+  lastSeenAt?: string | null
+}
+
+export interface ClickUpMemberMapping {
+  id: number
+  workspaceId: string
+  teamMemberId: number
+  clickupUserId: string
+  clickupUserName: string
+  clickupUserEmail?: string | null
+  lastSeenAt?: string | null
+  updatedAt: string
+  teamMemberName: string
+  teamMemberEmail: string
+  teamMemberPosition: string
+}
+
+export interface ClickUpTimeReportRow {
+  clickupUserId: string
+  clickupUserName: string
+  teamMemberId?: number | null
+  teamMemberName?: string | null
+  teamMemberPosition?: string | null
+  clientId?: number | null
+  clientName?: string | null
+  clientServiceId?: number | null
+  clientServiceName?: string | null
+  attributionStatus: 'assigned' | 'unassigned'
+  totalDurationMs: number
+  totalHours: number
+  totalEntries: number
+}
+
+export type ClickUpCompliancePeriod = 'daily' | 'weekly' | 'monthly'
+export type ClickUpComplianceStatus = 'missing' | 'on_track' | 'no_expected_hours' | 'unmapped'
+
+export interface ClickUpComplianceRow {
+  teamMemberId: number
+  teamMemberName: string
+  teamMemberPosition: string
+  teamMemberStatus: string
+  isBillable: boolean
+  clickupUserId: string | null
+  clickupUserName: string | null
+  minimumDays: number
+  leaveDays: number
+  minimumHours: number
+  trackedHours: number
+  missingHours: number
+  differenceHours: number
+  differencePercent: number | null
+  status: ClickUpComplianceStatus
+}
+
+export type ClickUpComplianceRangePreset = 'today' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'last_quarter' | 'last_year' | 'custom'
+
+export interface ClickUpComplianceReport {
+  rangePreset: ClickUpComplianceRangePreset
+  label: string
+  startDate: string
+  endDate: string
+  totalTeamMembers: number
+  totalExpectedHours: number
+  totalTrackedHours: number
+  totalMissingHours: number
+  missingMembers: number
+  rows: ClickUpComplianceRow[]
+}
+
+export interface ClickUpComplianceResponse {
+  generatedAt: string
+  report: ClickUpComplianceReport
+}
+
+export interface ClickUpTimeEntry {
+  id: number
+  externalId: string
+  clickupUserId: string
+  clickupUserName: string
+  clickupUserEmail?: string | null
+  teamMemberId?: number | null
+  teamMemberName?: string | null
+  clientId?: number | null
+  clientName?: string | null
+  clientServiceId?: number | null
+  clientServiceName?: string | null
+  attributionStatus: 'assigned' | 'unassigned'
+  taskId?: string | null
+  taskName?: string | null
+  taskStatus?: string | null
+  listName?: string | null
+  folderName?: string | null
+  spaceName?: string | null
+  durationMs: number
+  durationHours: number
+  isBillable?: boolean | null
+  startAt?: string | null
+  endAt?: string | null
+  entryDate: string
+  tags?: unknown
+  sourceUpdatedAt?: string | null
+}
+
 export interface CreateClientData {
   name: string
   industry?: string

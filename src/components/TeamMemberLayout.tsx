@@ -27,9 +27,9 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   const signOut = useAppSignOut()
   const [location] = useLocation()
   const todayLabel = new Date().toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'long',
     day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   })
   const mobileTitle = getActiveNavigationLabel('team_member', location) ?? 'Workspace'
 

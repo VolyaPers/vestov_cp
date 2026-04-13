@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'wouter'
 import {
   Activity,
@@ -7,27 +7,20 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Briefcase,
-  Building2,
   CalendarClock,
   CheckCircle2,
   Clock3,
   DollarSign,
   Receipt,
   RefreshCw,
-  Settings,
-  ShieldAlert,
-  Target,
   TrendingDown,
   TrendingUp,
-  Users2,
   Wallet,
-  Zap,
 } from 'lucide-react'
 import {
-  AreaChart,
   Area,
+  AreaChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -35,9 +28,9 @@ import {
 } from 'recharts'
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { useCustomAlert } from '@/components/ui/custom-alert'
+import { EmptyState, MetricTile, SectionHeading } from '@/components/page-primitives'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -192,50 +185,41 @@ function endOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999)
 }
 
-function KpiCard({
+function QueueLink({
+  href,
   title,
+  detail,
   value,
-  hint,
-  trend,
-  trendPositive,
-  icon,
 }: {
+  href: string
   title: string
+  detail: string
   value: string
-  hint: string
-  trend?: string
-  trendPositive?: boolean
-  icon: React.ReactNode
 }) {
   return (
-    <Card className="h-full">
-      <CardContent className="flex h-full flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6">
-        <div className="flex min-h-[2.9rem] items-start justify-between gap-3.5 sm:min-h-[3.25rem] sm:items-center sm:gap-4">
-          <p className="text-[0.66rem] font-extrabold uppercase tracking-[0.2em] leading-4 text-muted-foreground sm:text-[0.7rem] sm:leading-5">{title}</p>
-          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-white/75 bg-white/76 text-primary shadow-[0_18px_32px_-24px_rgba(15,23,42,0.28)] sm:mt-0 sm:h-11 sm:w-11 sm:rounded-[1.05rem]">
-            {icon}
-          </div>
+    <Link href={href} className="block">
+      <div className="flex items-start justify-between gap-4 rounded-[1.15rem] border border-border/70 bg-white/72 px-4 py-3 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white/94">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
         </div>
+        <div className="shrink-0 text-sm font-semibold text-foreground">{value}</div>
+      </div>
+    </Link>
+  )
+}
 
-        <div className="flex flex-1 flex-col justify-end">
-          <p className="font-display text-[1.8rem] font-semibold leading-none text-foreground sm:text-[2rem]">{value}</p>
-          <p className="mt-2.5 text-sm text-muted-foreground sm:mt-3">{hint}</p>
-          {trend && (
-            <div
-              className={cn(
-                'mt-3 inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-semibold sm:mt-4',
-                trendPositive
-                  ? 'border-emerald-200/80 bg-emerald-50/85 text-emerald-700'
-                  : 'border-rose-200/80 bg-rose-50/85 text-rose-700'
-              )}
-            >
-              {trendPositive ? <ArrowUpRight className="mr-1 h-3.5 w-3.5" /> : <ArrowDownRight className="mr-1 h-3.5 w-3.5" />}
-              {trend}
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+function RiskBadge({ level }: { level: AlertItem['level'] }) {
+  const className = level === 'high'
+    ? 'bg-rose-100 text-rose-700'
+    : level === 'medium'
+      ? 'bg-amber-100 text-amber-700'
+      : 'bg-sky-100 text-sky-700'
+
+  return (
+    <span className={cn('rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]', className)}>
+      {level}
+    </span>
   )
 }
 
@@ -244,7 +228,6 @@ export function AdminDashboard() {
   const [isSyncingAvatars, setIsSyncingAvatars] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Real-time shift events
   useShiftEvents()
 
   const {
@@ -342,8 +325,6 @@ export function AdminDashboard() {
   })
 
   const activeShifts = activeShiftsData?.shifts ?? []
-
-  // Keep shift refetchers fresh for websocket callback
   const shiftRefetchRef = useRef({
     refetchActiveShifts,
     refetchLateShifts,
@@ -382,7 +363,6 @@ export function AdminDashboard() {
         type: 'success',
       })
     } catch (error: any) {
-      console.error('Failed to sync Slack avatars:', error)
       await showAlert({ message: error.message || 'Failed to sync Slack avatars', type: 'error' })
     } finally {
       setIsSyncingAvatars(false)
@@ -417,26 +397,23 @@ export function AdminDashboard() {
   const previousMonthEnd = endOfMonth(previousMonthDate)
 
   const normalizedInvoices = useMemo(() => {
-    return allInvoices.map((invoice) => {
-      const amount = toNumber(invoice.total ?? invoice.amount)
-      return {
-        id: invoice.id,
-        clientId: invoice.clientId,
-        clientName: invoice.clientName || `Client #${invoice.clientId}`,
-        invoiceNumber: invoice.invoiceNumber || `INV-${invoice.id}`,
-        amount,
-        status: (invoice.status || 'draft').toLowerCase(),
-        invoiceDate: toDate(invoice.invoiceDate),
-        dueDate: toDate(invoice.dueDate),
-        paidAt: toDate(invoice.paidAt),
-      }
-    })
+    return allInvoices.map((invoice) => ({
+      id: invoice.id,
+      clientId: invoice.clientId,
+      clientName: invoice.clientName || `Client #${invoice.clientId}`,
+      invoiceNumber: invoice.invoiceNumber || `INV-${invoice.id}`,
+      amount: toNumber(invoice.total ?? invoice.amount),
+      status: (invoice.status || 'draft').toLowerCase(),
+      invoiceDate: toDate(invoice.invoiceDate),
+      dueDate: toDate(invoice.dueDate),
+      paidAt: toDate(invoice.paidAt),
+    }))
   }, [allInvoices])
 
   const monthlyBreakdown = financesOverview?.monthlyBreakdown ?? []
 
   const financeSeries = useMemo(() => {
-    const rows = [] as Array<{ label: string; revenue: number; burn: number; net: number; month: number; year: number }>
+    const rows = [] as Array<{ label: string; revenue: number; burn: number; net: number }>
 
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
@@ -445,13 +422,12 @@ export function AdminDashboard() {
       const entry = monthlyBreakdown.find((row) => row.month === month && row.year === year)
       const revenue = entry ? toNumber(entry.client_payments) + toNumber(entry.income) : 0
       const burn = entry ? toNumber(entry.salary) + toNumber(entry.expense) : 0
+
       rows.push({
         label: d.toLocaleDateString('en-US', { month: 'short' }),
         revenue,
         burn,
         net: revenue - burn,
-        month,
-        year,
       })
     }
 
@@ -461,51 +437,45 @@ export function AdminDashboard() {
   const currentMonthFinance = financeSeries[financeSeries.length - 1]
   const previousMonthFinance = financeSeries[financeSeries.length - 2]
 
-  const paidThisMonth = normalizedInvoices.filter((invoice) => {
-    if (invoice.status !== 'paid' || !invoice.paidAt) return false
-    return invoice.paidAt >= monthStart && invoice.paidAt <= monthEnd
-  })
+  const paidThisMonth = normalizedInvoices.filter((invoice) => (
+    invoice.status === 'paid' &&
+    invoice.paidAt &&
+    invoice.paidAt >= monthStart &&
+    invoice.paidAt <= monthEnd
+  ))
 
-  const paidPreviousMonth = normalizedInvoices.filter((invoice) => {
-    if (invoice.status !== 'paid' || !invoice.paidAt) return false
-    return invoice.paidAt >= previousMonthStart && invoice.paidAt <= previousMonthEnd
-  })
+  const paidPreviousMonth = normalizedInvoices.filter((invoice) => (
+    invoice.status === 'paid' &&
+    invoice.paidAt &&
+    invoice.paidAt >= previousMonthStart &&
+    invoice.paidAt <= previousMonthEnd
+  ))
 
-  const invoicedThisMonth = normalizedInvoices.filter((invoice) => {
-    if (!invoice.invoiceDate) return false
-    return invoice.invoiceDate >= monthStart && invoice.invoiceDate <= monthEnd
-  })
+  const invoicedThisMonth = normalizedInvoices.filter((invoice) => (
+    invoice.invoiceDate &&
+    invoice.invoiceDate >= monthStart &&
+    invoice.invoiceDate <= monthEnd
+  ))
 
   const paidThisMonthTotal = paidThisMonth.reduce((sum, invoice) => sum + invoice.amount, 0)
   const paidPreviousMonthTotal = paidPreviousMonth.reduce((sum, invoice) => sum + invoice.amount, 0)
   const invoicedThisMonthTotal = invoicedThisMonth.reduce((sum, invoice) => sum + invoice.amount, 0)
-
   const revenueGrowthPct = paidPreviousMonthTotal > 0
     ? ((paidThisMonthTotal - paidPreviousMonthTotal) / paidPreviousMonthTotal) * 100
     : paidThisMonthTotal > 0
       ? 100
       : 0
+  const collectionEfficiency = invoicedThisMonthTotal > 0 ? (paidThisMonthTotal / invoicedThisMonthTotal) * 100 : 0
 
-  const collectionEfficiency = invoicedThisMonthTotal > 0
-    ? (paidThisMonthTotal / invoicedThisMonthTotal) * 100
-    : 0
-
-  const outstandingInvoices = normalizedInvoices.filter((invoice) =>
-    invoice.status === 'sent' || invoice.status === 'overdue'
-  )
+  const outstandingInvoices = normalizedInvoices.filter((invoice) => invoice.status === 'sent' || invoice.status === 'overdue')
   const outstandingReceivables = outstandingInvoices.reduce((sum, invoice) => sum + invoice.amount, 0)
 
   const overdueInvoices = normalizedInvoices.filter((invoice) => {
-    if (invoice.status === 'paid' || invoice.status === 'cancelled' || invoice.status === 'draft') {
-      return false
-    }
-
+    if (invoice.status === 'paid' || invoice.status === 'cancelled' || invoice.status === 'draft') return false
     if (invoice.status === 'overdue') return true
-
     if (!invoice.dueDate) return false
     return invoice.dueDate < now
   })
-
   const overdueTotal = overdueInvoices.reduce((sum, invoice) => sum + invoice.amount, 0)
 
   const avgCollectionDays = (() => {
@@ -518,9 +488,7 @@ export function AdminDashboard() {
   })()
 
   const activeClients = clients.filter((client) => {
-    if (typeof client.isActive === 'boolean') {
-      return client.isActive
-    }
+    if (typeof client.isActive === 'boolean') return client.isActive
     return (client.status || '').toLowerCase() !== 'inactive'
   }).length
 
@@ -531,46 +499,28 @@ export function AdminDashboard() {
   }).length
 
   const totalTeamMembers = toNumber(dashboardData?.stats?.totalTeamMembers ?? teamMembers.length)
-  const activeTeamMembers = toNumber(
-    dashboardData?.stats?.activeTeamMembers ?? teamMembers.filter((member) => member.status === 'active').length
-  )
-
+  const activeTeamMembers = toNumber(dashboardData?.stats?.activeTeamMembers ?? teamMembers.filter((member) => member.status === 'active').length)
   const benchMembers = teamMembers.filter((member) => member.status === 'bench').length
   const unavailableMembers = teamMembers.filter((member) => member.status === 'unavailable').length
   const billableMembers = teamMembers.filter((member) => member.isBillable === true).length
-
-  const utilizationRate = totalTeamMembers > 0
-    ? (activeTeamMembers / totalTeamMembers) * 100
-    : 0
-
-  const billableRate = totalTeamMembers > 0
-    ? (billableMembers / totalTeamMembers) * 100
-    : 0
+  const utilizationRate = totalTeamMembers > 0 ? (activeTeamMembers / totalTeamMembers) * 100 : 0
+  const billableRate = totalTeamMembers > 0 ? (billableMembers / totalTeamMembers) * 100 : 0
 
   const pendingLeaveRequests = leaveRequests.filter((request) => {
     const status = request?.request?.status || request?.status
     return status === 'pending'
   }).length
-
   const pendingReimbursements = reimbursements.filter((request) => request.status === 'pending').length
-  const awaitingEvidence = reimbursements.filter(
-    (request) => request.status === 'approved' && !request.evidenceUrl
-  ).length
+  const awaitingEvidence = reimbursements.filter((request) => request.status === 'approved' && !request.evidenceUrl).length
 
   const lateToday = lateShiftData?.lateShifts?.length ?? 0
   const missedToday = lateShiftData?.missedShifts?.length ?? 0
 
   const cashAvailable = (balances?.stripe?.available || 0) + (balances?.payoneer?.available || 0)
-
-  const recentBurns = financeSeries
-    .map((row) => row.burn)
-    .filter((burn) => burn > 0)
-    .slice(-3)
-
+  const recentBurns = financeSeries.map((row) => row.burn).filter((burn) => burn > 0).slice(-3)
   const avgMonthlyBurn = recentBurns.length > 0
     ? recentBurns.reduce((sum, value) => sum + value, 0) / recentBurns.length
     : 0
-
   const runwayMonths = avgMonthlyBurn > 0 ? cashAvailable / avgMonthlyBurn : null
 
   const topClients = useMemo<TopClientRow[]>(() => {
@@ -582,10 +532,10 @@ export function AdminDashboard() {
     for (const invoice of normalizedInvoices) {
       if (invoice.status !== 'paid' || !invoice.paidAt || invoice.paidAt < last90Days) continue
 
-      const prev = aggregated.get(invoice.clientId)
+      const previous = aggregated.get(invoice.clientId)
       aggregated.set(invoice.clientId, {
         name: invoice.clientName,
-        revenue: (prev?.revenue || 0) + invoice.amount,
+        revenue: (previous?.revenue || 0) + invoice.amount,
       })
     }
 
@@ -604,15 +554,15 @@ export function AdminDashboard() {
 
   const topClientShare = topClients[0]?.share || 0
 
-  const overdueWatchlist = useMemo(() => {
-    return overdueInvoices
+  const overdueWatchlist = useMemo(() => (
+    overdueInvoices
       .map((invoice) => ({
         ...invoice,
         overdueDays: invoice.dueDate ? daysDiff(invoice.dueDate, now) : 0,
       }))
       .sort((a, b) => b.overdueDays - a.overdueDays)
       .slice(0, 5)
-  }, [overdueInvoices, now])
+  ), [overdueInvoices, now])
 
   const alerts = useMemo<AlertItem[]>(() => {
     const items: AlertItem[] = []
@@ -622,7 +572,7 @@ export function AdminDashboard() {
         id: 'overdue-invoices',
         level: 'high',
         title: 'Overdue invoices need escalation',
-        detail: `${overdueInvoices.length} overdue invoices totaling ${formatCurrency(overdueTotal)}.`,
+        detail: `${overdueInvoices.length} invoices totaling ${formatCurrency(overdueTotal)} are now beyond due date.`,
         href: '/admin/invoices',
       })
     }
@@ -642,7 +592,7 @@ export function AdminDashboard() {
         id: 'leave-approvals',
         level: 'medium',
         title: 'Pending leave approvals',
-        detail: `${pendingLeaveRequests} leave requests are waiting for decision.`,
+        detail: `${pendingLeaveRequests} requests still need a decision.`,
         href: '/admin/vacation',
       })
     }
@@ -652,7 +602,7 @@ export function AdminDashboard() {
         id: 'pending-reimbursements',
         level: 'medium',
         title: 'Pending reimbursements',
-        detail: `${pendingReimbursements} reimbursement requests await approval.`,
+        detail: `${pendingReimbursements} reimbursements are waiting for approval.`,
         href: '/admin/reimbursements',
       })
     }
@@ -662,8 +612,8 @@ export function AdminDashboard() {
       items.push({
         id: 'bench-capacity',
         level: 'low',
-        title: 'High bench capacity',
-        detail: `${benchMembers} members are on bench (${formatPercent(benchRate)} of team).`,
+        title: 'Bench capacity is rising',
+        detail: `${benchMembers} team members are on bench, or ${formatPercent(benchRate)} of the team.`,
         href: '/admin/team',
       })
     }
@@ -679,495 +629,476 @@ export function AdminDashboard() {
     benchMembers,
   ])
 
-  const ceoSummary = useMemo(() => {
-    const burn = currentMonthFinance?.burn || 0
+  const executiveSummary = useMemo(() => {
     const net = currentMonthFinance?.net || 0
-    const summaryParts: string[] = []
-
-    if (net >= 0) {
-      summaryParts.push(`Net positive ${formatShortCurrency(net)} this month`)
-    } else {
-      summaryParts.push(`Net negative ${formatShortCurrency(Math.abs(net))} this month`)
-    }
-
-    summaryParts.push(`burn at ${formatShortCurrency(burn)}`)
-
-    if (topClientShare >= 40) {
-      summaryParts.push(`high concentration risk (${formatPercent(topClientShare)} from top client)`)
-    } else {
-      summaryParts.push(`client concentration in acceptable range`)
-    }
+    const burn = currentMonthFinance?.burn || 0
+    const summaryParts = [
+      net >= 0 ? `Net positive ${formatShortCurrency(net)} this month` : `Net negative ${formatShortCurrency(Math.abs(net))} this month`,
+      `burn at ${formatShortCurrency(burn)}`,
+      topClientShare >= 40 ? `${formatPercent(topClientShare)} revenue from top client` : 'client concentration stable',
+    ]
 
     if (overdueInvoices.length > 0) {
-      summaryParts.push(`${overdueInvoices.length} overdue invoices require follow-up`)
+      summaryParts.push(`${overdueInvoices.length} overdue invoices in collections`)
     }
 
     return summaryParts.join(' • ')
-  }, [currentMonthFinance, topClientShare, overdueInvoices.length])
+  }, [currentMonthFinance, overdueInvoices.length, topClientShare])
 
   const isLoadingCore = isLoadingDashboard || isLoadingClients || isLoadingInvoices || isLoadingFinances || isLoadingTeamMembers
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <Card className="relative overflow-hidden border-white/70 bg-[rgba(255,255,255,0.82)] text-foreground shadow-[0_40px_90px_-52px_rgba(15,23,42,0.44)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_30%),radial-gradient(circle_at_88%_16%,rgba(15,23,42,0.05),transparent_20%)]" />
-        <CardContent className="relative p-4 sm:p-5 lg:p-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="max-w-[52rem]">
-              <Badge variant="outline" className="border-white/85 bg-white/80 text-muted-foreground shadow-[0_16px_30px_-24px_rgba(15,23,42,0.3)]">
-                Executive Console
-              </Badge>
-              <h1 className="mt-2.5 max-w-3xl font-display text-[1.78rem] font-semibold leading-tight text-foreground sm:text-[2.2rem]">
-                Admin dashboard redesigned around signals and action.
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                Real-time executive view of cashflow, collections, delivery risk and workforce capacity, rebuilt with clearer hierarchy and shadcn surfaces.
+    <div className="space-y-5">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <h1 className="text-[2rem] font-semibold tracking-[-0.04em] text-foreground">Today</h1>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Revenue, delivery, and staffing signals for the current operating day.
               </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground sm:text-sm">
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-                <span>{activeShifts.length} people currently on shift</span>
-                <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-                <span>{overdueInvoices.length} overdue invoices on watch</span>
+                <span className="h-1 w-1 rounded-full bg-slate-300" />
+                <span>{activeShifts.length} live shifts</span>
+                <span className="h-1 w-1 rounded-full bg-slate-300" />
+                <span>{overdueInvoices.length} overdue invoices</span>
               </div>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 w-full px-3 sm:w-auto"
-                onClick={handleRefreshAll}
-                disabled={isRefreshing}
-              >
-                <RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} />
-                {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleRefreshAll} disabled={isRefreshing}>
+                <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+                {isRefreshing ? 'Refreshing' : 'Refresh'}
               </Button>
-              <Link href="/admin/reports" className="block sm:block">
-                <Button size="sm" className="h-9 w-full px-3 sm:w-auto">
-                  <TrendingUp className="mr-2 h-4 w-4" />
-                  Open Reports
-                </Button>
+              <Link href="/admin/reports" className="block">
+                <div className="inline-flex">
+                  <Button variant="outline" size="sm">
+                    <TrendingUp className="h-4 w-4" />
+                    Open reports
+                  </Button>
+                </div>
               </Link>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1.8fr)_repeat(2,minmax(0,1fr))]">
-            <div className="inline-flex min-h-11 items-center gap-2.5 rounded-[1.2rem] border border-white/80 bg-white/74 px-4 py-3 text-sm shadow-[0_22px_36px_-30px_rgba(15,23,42,0.24)]">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[1rem] border border-blue-200/70 bg-blue-50/85 text-blue-700">
-                <Target className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <span className="block text-[0.68rem] font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Executive brief</span>
-                <span className="mt-1 block text-sm text-foreground">{ceoSummary}</span>
-              </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Paid this month</p>
+              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">{formatCurrency(paidThisMonthTotal)}</p>
             </div>
-
-            <div className="inline-flex min-h-11 items-center justify-between gap-3 rounded-[1.2rem] border border-white/80 bg-white/74 px-4 py-3 text-sm shadow-[0_22px_36px_-30px_rgba(15,23,42,0.24)]">
-              <span className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-muted-foreground">Collection</span>
-              <span className="font-display text-xl font-semibold text-foreground">{collectionEfficiency.toFixed(0)}%</span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Collections rate</p>
+              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">{collectionEfficiency.toFixed(0)}%</p>
             </div>
-
-            <div className="rounded-[1.2rem] border border-white/80 bg-white/74 px-4 py-3 shadow-[0_22px_36px_-30px_rgba(15,23,42,0.24)]">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-muted-foreground">Runway</span>
-                <span className="font-display text-xl font-semibold text-foreground">
-                  {runwayMonths !== null && Number.isFinite(runwayMonths) ? runwayMonths.toFixed(1) : 'N/A'}
-                </span>
-              </div>
-              <span className="mt-1 block text-sm text-muted-foreground">
-                {cashAvailable > 0 ? `${formatShortCurrency(cashAvailable)} cash` : 'Cash unavailable'}
-              </span>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Runway</p>
+              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">
+                {runwayMonths !== null && Number.isFinite(runwayMonths) ? runwayMonths.toFixed(1) : 'N/A'}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Top-client share</p>
+              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">{topClientShare.toFixed(0)}%</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible xl:grid-cols-4">
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <KpiCard
-            title="Cash In (MTD)"
-            value={formatCurrency(paidThisMonthTotal)}
-            hint={`${paidThisMonth.length} paid invoices this month`}
-            trend={`${revenueGrowthPct >= 0 ? '+' : ''}${revenueGrowthPct.toFixed(1)}% vs last month`}
-            trendPositive={revenueGrowthPct >= 0}
-            icon={<DollarSign className="h-5 w-5 text-emerald-600" />}
-          />
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Executive note</p>
+            <p className="mt-1.5 text-sm leading-6 text-foreground">{executiveSummary}</p>
+          </div>
         </div>
 
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <KpiCard
-            title="Burn (MTD)"
-            value={formatCurrency(currentMonthFinance?.burn || 0)}
-            hint="Salaries + expenses"
-            trend={previousMonthFinance
-              ? `${(currentMonthFinance?.burn || 0) >= (previousMonthFinance.burn || 0) ? '+' : ''}${(((currentMonthFinance?.burn || 0) - (previousMonthFinance.burn || 0)) / Math.max(1, previousMonthFinance.burn || 1) * 100).toFixed(1)}% vs last month`
-              : undefined
-            }
-            trendPositive={(currentMonthFinance?.burn || 0) <= (previousMonthFinance?.burn || 0)}
-            icon={<TrendingDown className="h-5 w-5 text-rose-600" />}
-          />
-        </div>
+        <Card>
+          <CardContent className="space-y-5">
+            <SectionHeading
+              title="Critical queue"
+              description="Start with the work that changes cashflow or delivery risk today."
+            />
 
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <KpiCard
-            title="Net (MTD)"
-            value={formatCurrency(currentMonthFinance?.net || 0)}
-            hint="Revenue minus burn"
-            trend={collectionEfficiency > 0 ? `Collections efficiency ${collectionEfficiency.toFixed(0)}%` : 'No billed invoices yet this month'}
-            trendPositive={(currentMonthFinance?.net || 0) >= 0}
-            icon={<Wallet className="h-5 w-5 text-indigo-600" />}
-          />
-        </div>
-
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <KpiCard
-            title="Outstanding A/R"
-            value={formatCurrency(outstandingReceivables)}
-            hint={`${outstandingInvoices.length} sent/overdue invoices`}
-            trend={overdueInvoices.length > 0 ? `${overdueInvoices.length} overdue` : 'No overdue invoices'}
-            trendPositive={overdueInvoices.length === 0}
-            icon={<Receipt className="h-5 w-5 text-amber-600" />}
-          />
-        </div>
+            <div className="space-y-3">
+              <QueueLink
+                href="/admin/invoices"
+                title="Collections queue"
+                detail={`${overdueInvoices.length} overdue invoices, ${outstandingInvoices.length} still outstanding.`}
+                value={formatCurrency(overdueTotal)}
+              />
+              <QueueLink
+                href="/admin/shifts"
+                title="Shift exceptions"
+                detail={`${lateToday} late starts and ${missedToday} missed shifts today.`}
+                value={`${lateToday + missedToday}`}
+              />
+              <QueueLink
+                href="/admin/vacation"
+                title="Leave approvals"
+                detail="Requests waiting for review before schedule planning is blocked."
+                value={`${pendingLeaveRequests}`}
+              />
+              <QueueLink
+                href="/admin/reimbursements"
+                title="Reimbursements"
+                detail={`${pendingReimbursements} pending approvals and ${awaitingEvidence} waiting for evidence.`}
+                value={`${pendingReimbursements}`}
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="grid gap-4 sm:gap-6 xl:grid-cols-3">
-        <div className="space-y-4 sm:space-y-6 xl:col-span-2">
-          <Card>
-            <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-            <div className="mb-5 flex items-start justify-between">
-              <div>
-                <h3 className="font-display text-xl font-semibold text-foreground">Revenue vs Burn</h3>
-                <p className="text-sm text-muted-foreground">Monthly operating pulse for fast decision making</p>
-              </div>
-              <div className="inline-flex items-center rounded-full border border-border/60 bg-muted/70 px-3 py-1 text-xs font-semibold text-muted-foreground">
-                <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
-                Rolling 6 months
-              </div>
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <MetricTile
+          label="Cash In (MTD)"
+          value={formatCurrency(paidThisMonthTotal)}
+          hint={`${paidThisMonth.length} invoices paid this month`}
+          tone="emerald"
+          icon={<DollarSign className="h-5 w-5" />}
+          trend={(
+            <div className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
+              revenueGrowthPct >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+            )}>
+              {revenueGrowthPct >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+              {`${revenueGrowthPct >= 0 ? '+' : ''}${revenueGrowthPct.toFixed(1)}% vs last month`}
             </div>
+          )}
+        />
+        <MetricTile
+          label="Burn (MTD)"
+          value={formatCurrency(currentMonthFinance?.burn || 0)}
+          hint="Salaries and operating expenses"
+          tone="rose"
+          icon={<TrendingDown className="h-5 w-5" />}
+          trend={(
+            <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              {(previousMonthFinance?.burn || 0) > 0
+                ? `${(((currentMonthFinance?.burn || 0) - (previousMonthFinance?.burn || 0)) / Math.max(1, previousMonthFinance?.burn || 1) * 100).toFixed(1)}% vs last month`
+                : 'First month with burn data'}
+            </div>
+          )}
+        />
+        <MetricTile
+          label="Net (MTD)"
+          value={formatCurrency(currentMonthFinance?.net || 0)}
+          hint="Revenue minus burn"
+          tone="primary"
+          icon={<Wallet className="h-5 w-5" />}
+          trend={(
+            <div className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
+              (currentMonthFinance?.net || 0) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+            )}>
+              {(currentMonthFinance?.net || 0) >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+              {(currentMonthFinance?.net || 0) >= 0 ? 'Positive month so far' : 'Margin needs attention'}
+            </div>
+          )}
+        />
+        <MetricTile
+          label="Outstanding A/R"
+          value={formatCurrency(outstandingReceivables)}
+          hint={`${outstandingInvoices.length} invoices still unpaid`}
+          tone="amber"
+          icon={<Receipt className="h-5 w-5" />}
+          trend={(
+            <div className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
+              overdueInvoices.length === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+            )}>
+              {overdueInvoices.length === 0 ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+              {overdueInvoices.length === 0 ? 'No overdue invoices' : `${overdueInvoices.length} overdue`}
+            </div>
+          )}
+        />
+      </div>
 
-            <div className="h-56 sm:h-72">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
+        <Card className="content-auto">
+          <CardContent>
+            <SectionHeading
+              title="Revenue vs burn"
+              description="A six-month view of how cash coming in compares to operating cost."
+              action={(
+                <span className="hidden rounded-full border border-border/70 bg-muted/70 px-3 py-1 text-xs font-semibold text-muted-foreground sm:inline-flex">
+                  Rolling 6 months
+                </span>
+              )}
+            />
+
+            <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={financeSeries} margin={{ top: 12, right: 16, left: 4, bottom: 0 }}>
+                <AreaChart data={financeSeries} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.32} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                    <linearGradient id="dashboardRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.22} />
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.02} />
                     </linearGradient>
-                    <linearGradient id="burnGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.28} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                    <linearGradient id="dashboardBurn" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#dc2626" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e9edf2" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#6b7c93" />
+                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#64748b" axisLine={false} tickLine={false} />
                   <YAxis
-                    stroke="#6b7c93"
                     tick={{ fontSize: 12 }}
+                    stroke="#64748b"
+                    axisLine={false}
+                    tickLine={false}
                     tickFormatter={(value: number) => formatShortCurrency(value)}
                   />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
                     contentStyle={{
-                      borderRadius: 10,
-                      border: '1px solid #dbe3ec',
-                      boxShadow: '0 10px 24px rgba(10,37,64,0.08)',
+                      borderRadius: 16,
+                      border: '1px solid rgba(148,163,184,0.18)',
+                      boxShadow: '0 24px 48px -28px rgba(15,23,42,0.24)',
                     }}
                   />
-                  <Legend />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#0f8da1" fill="url(#revenueGradient)" strokeWidth={2.2} />
-                  <Area type="monotone" dataKey="burn" name="Burn" stroke="#ef4444" fill="url(#burnGradient)" strokeWidth={2.2} />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2563eb" fill="url(#dashboardRevenue)" strokeWidth={2.4} />
+                  <Area type="monotone" dataKey="burn" name="Burn" stroke="#dc2626" fill="url(#dashboardBurn)" strokeWidth={2.2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-            </div>
-          </Card>
 
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">This month invoiced</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{formatCurrency(invoicedThisMonthTotal)}</p>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Avg collection cycle</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{avgCollectionDays} days</p>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Cash available</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{formatCurrency(cashAvailable)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
           <Card className="content-auto">
-            <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="font-display text-xl font-semibold text-foreground">Collections Watchlist</h3>
-                <p className="text-sm text-muted-foreground">Invoices at risk of delaying cashflow</p>
-              </div>
-              <Link href="/admin/invoices">
-                <Button variant="outline">Open invoices</Button>
-              </Link>
-            </div>
+            <CardContent>
+              <SectionHeading
+                title="Risk board"
+                description="Signals that need attention before they affect revenue or delivery."
+              />
 
-            {overdueWatchlist.length === 0 ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-                No overdue invoices. Collections are currently healthy.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {overdueWatchlist.map((invoice) => (
-                  <div key={invoice.id} className="flex items-center justify-between gap-4 rounded-lg border border-rose-200 bg-rose-50/40 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{invoice.clientName}</p>
-                      <p className="text-xs text-muted-foreground">{invoice.invoiceNumber} • {invoice.overdueDays} days overdue</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold text-rose-700">{formatCurrency(invoice.amount)}</p>
-                      <p className="text-xs text-rose-600">Action needed</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-4 sm:space-y-6">
-          <Card className="content-auto">
-            <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-            <div className="mb-4 flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5 text-amber-600" />
-              <h3 className="font-display text-xl font-semibold text-foreground">Risk Board</h3>
-            </div>
-
-            {alerts.length === 0 ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-                No critical alerts right now.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {alerts.map((alert) => (
-                  <Link key={alert.id} href={alert.href}>
-                    <button className="w-full rounded-[1.2rem] border border-border/70 bg-white/85 p-3 text-left transition hover:border-primary/25 hover:bg-primary/5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{alert.title}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">{alert.detail}</p>
+              {alerts.length === 0 ? (
+                <EmptyState
+                  title="No critical alerts"
+                  description="The current snapshot does not show any escalations. Keep an eye on refreshes and live exceptions."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {alerts.map((alert) => (
+                    <Link key={alert.id} href={alert.href} className="block">
+                      <div className="rounded-[1.15rem] border border-border/70 bg-white/72 px-4 py-3 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white/94">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{alert.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{alert.detail}</p>
+                          </div>
+                          <RiskBadge level={alert.level} />
                         </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${alert.level === 'high' ? 'bg-rose-100 text-rose-700' : alert.level === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>
-                          {alert.level.toUpperCase()}
-                        </span>
                       </div>
-                    </button>
-                  </Link>
-                ))}
-              </div>
-            )}
-            </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
           </Card>
 
           <Card className="content-auto">
-            <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-            <div className="mb-4 flex items-center gap-2">
-              <Zap className="h-5 w-5 text-indigo-600" />
-              <h3 className="font-display text-xl font-semibold text-foreground">Action Center</h3>
-            </div>
+            <CardContent>
+              <SectionHeading
+                title="Ops tools"
+                description="Low-frequency controls for keeping workspace data clean."
+              />
 
-            <div className="space-y-2">
-              <Link href="/admin/vacation">
-                <button className="w-full rounded-[1.2rem] border border-border/70 p-3 text-left transition hover:border-primary/25 hover:bg-primary/5">
-                  <p className="text-sm font-medium text-foreground">Leave approvals</p>
-                  <p className="text-xs text-muted-foreground">{pendingLeaveRequests} pending</p>
-                </button>
-              </Link>
-              <Link href="/admin/reimbursements">
-                <button className="w-full rounded-[1.2rem] border border-border/70 p-3 text-left transition hover:border-primary/25 hover:bg-primary/5">
-                  <p className="text-sm font-medium text-foreground">Reimbursements</p>
-                  <p className="text-xs text-muted-foreground">{pendingReimbursements} pending, {awaitingEvidence} awaiting evidence</p>
-                </button>
-              </Link>
-              <Link href="/admin/shifts">
-                <button className="w-full rounded-[1.2rem] border border-border/70 p-3 text-left transition hover:border-primary/25 hover:bg-primary/5">
-                  <p className="text-sm font-medium text-foreground">Shift exceptions</p>
-                  <p className="text-xs text-muted-foreground">{lateToday} late starts, {missedToday} missed today</p>
-                </button>
-              </Link>
-              <Link href="/admin/invoices">
-                <button className="w-full rounded-[1.2rem] border border-border/70 p-3 text-left transition hover:border-primary/25 hover:bg-primary/5">
-                  <p className="text-sm font-medium text-foreground">Collections queue</p>
-                  <p className="text-xs text-muted-foreground">{overdueInvoices.length} overdue invoices</p>
-                </button>
-              </Link>
-            </div>
-            </div>
-          </Card>
-
-          <Card className="content-auto">
-            <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-            <div className="mb-4 flex items-center gap-2">
-              <Settings className="h-5 w-5 text-muted-foreground" />
-              <h3 className="font-display text-xl font-semibold text-foreground">Ops Tools</h3>
-            </div>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={handleSyncSlackAvatars}
-              disabled={isSyncingAvatars}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingAvatars ? 'animate-spin' : ''}`} />
-              {isSyncingAvatars ? 'Syncing avatars...' : 'Sync Slack Avatars'}
-            </Button>
-            <p className="mt-2 text-xs text-muted-foreground">Refreshes user profile photos from Slack by email.</p>
-            </div>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={handleSyncSlackAvatars}
+                disabled={isSyncingAvatars}
+              >
+                <RefreshCw className={cn('h-4 w-4', isSyncingAvatars && 'animate-spin')} />
+                {isSyncingAvatars ? 'Syncing Slack avatars...' : 'Sync Slack avatars'}
+              </Button>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Refreshes user profile photos from Slack so people and search results stay recognizable.
+              </p>
+            </CardContent>
           </Card>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         <Card className="content-auto">
-          <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="font-display text-xl font-semibold text-foreground">Top Clients</h3>
-              <p className="text-sm text-muted-foreground">Paid revenue concentration in the last 90 days</p>
-            </div>
-            <Building2 className="h-5 w-5 text-indigo-600" />
-          </div>
+          <CardContent>
+            <SectionHeading
+              title="Collections watchlist"
+              description="Invoices most likely to delay cashflow if nobody follows up."
+            />
 
-          {topClients.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No paid invoices in the last 90 days.</p>
-          ) : (
-            <div className="space-y-3">
-              {topClients.map((row) => (
-                <div key={row.clientId} className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
-                    <p className="text-sm font-semibold text-foreground">{formatCurrency(row.revenue)}</p>
+            {overdueWatchlist.length === 0 ? (
+              <EmptyState
+                title="Collections look healthy"
+                description="There are no overdue invoices in the current watchlist."
+              />
+            ) : (
+              <div className="space-y-3">
+                {overdueWatchlist.map((invoice) => (
+                  <div key={invoice.id} className="rounded-[1.15rem] border border-rose-100 bg-rose-50/55 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{invoice.clientName}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {invoice.invoiceNumber} • {invoice.overdueDays} days overdue
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-rose-700">{formatCurrency(invoice.amount)}</p>
+                        <p className="mt-1 text-xs text-rose-600">Action needed</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-slate-100">
-                    <div
-                      className="h-2 rounded-full bg-slate-900 shadow-[0_8px_18px_-12px_rgba(15,23,42,0.55)]"
-                      style={{ width: `${Math.min(100, row.share)}%` }}
-                    ></div>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{row.share.toFixed(1)}% of paid revenue</p>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
         </Card>
 
         <Card className="content-auto">
-          <div className="px-4 pb-4 pt-5 sm:px-6 sm:pb-6 sm:pt-7">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="font-display text-xl font-semibold text-foreground">Workforce & Operating Health</h3>
-              <p className="text-sm text-muted-foreground">Capacity, delivery and working capital signals</p>
-            </div>
-            <Users2 className="h-5 w-5 text-indigo-600" />
-          </div>
+          <CardContent>
+            <SectionHeading
+              title="Client concentration"
+              description="How much paid revenue is currently tied to the largest accounts."
+            />
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-              <p className="text-xs text-muted-foreground">Active clients</p>
-              <p className="mt-1 font-display text-2xl font-semibold text-foreground">{activeClients}</p>
-              <p className="text-xs text-muted-foreground">+{newClientsThisQuarter} this quarter</p>
-            </div>
-            <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-              <p className="text-xs text-muted-foreground">Team utilization</p>
-              <p className="mt-1 font-display text-2xl font-semibold text-foreground">{formatPercent(utilizationRate)}</p>
-              <p className="text-xs text-muted-foreground">{activeTeamMembers}/{Math.max(totalTeamMembers, activeTeamMembers)} active</p>
-            </div>
-            <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-              <p className="text-xs text-muted-foreground">Billable mix</p>
-              <p className="mt-1 font-display text-2xl font-semibold text-foreground">{formatPercent(billableRate)}</p>
-              <p className="text-xs text-muted-foreground">{benchMembers} bench • {unavailableMembers} unavailable</p>
-            </div>
-            <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-              <p className="text-xs text-muted-foreground">Avg collection cycle</p>
-              <p className="mt-1 font-display text-2xl font-semibold text-foreground">{avgCollectionDays} days</p>
-              <p className="text-xs text-muted-foreground">Across paid invoices</p>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-emerald-600" />
-                <p className="text-sm font-medium text-foreground">Live operations</p>
+            {topClients.length === 0 ? (
+              <EmptyState
+                title="No recent paid invoices"
+                description="Revenue concentration will appear here once paid invoices land in the last 90 days."
+              />
+            ) : (
+              <div className="space-y-4">
+                {topClients.map((row) => (
+                  <div key={row.clientId} className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold text-foreground">{row.name}</p>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">{formatCurrency(row.revenue)}</p>
+                        <p className="text-xs text-muted-foreground">{row.share.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-2 rounded-full bg-slate-900 shadow-[0_8px_18px_-12px_rgba(15,23,42,0.55)]"
+                        style={{ width: `${Math.min(100, row.share)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {activeShifts.length} on shift now
-                {isFetchingActiveShifts ? ' • updating...' : ''}
-              </p>
-            </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-            <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-3">
-              <div className="flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-indigo-600" />
-                <p className="text-sm font-medium text-foreground">Runway estimate</p>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <Card className="content-auto">
+          <CardContent>
+            <SectionHeading
+              title="Workforce and operating health"
+              description="A compact readout of client load, utilization, billable mix, and live operations."
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Active clients</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{activeClients}</p>
+                <p className="mt-1 text-sm text-muted-foreground">+{newClientsThisQuarter} added this quarter</p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {runwayMonths !== null && Number.isFinite(runwayMonths)
-                  ? `${runwayMonths.toFixed(1)} months at avg burn (${formatCurrency(avgMonthlyBurn)}/mo)`
-                  : 'Not enough data for runway estimate'}
-              </p>
-              {cashAvailable > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">Cash available: {formatCurrency(cashAvailable)}</p>
-              )}
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Utilization</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{formatPercent(utilizationRate)}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{activeTeamMembers}/{Math.max(totalTeamMembers, activeTeamMembers)} active team members</p>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Billable mix</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{formatPercent(billableRate)}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{benchMembers} bench • {unavailableMembers} unavailable</p>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Live operations</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{activeShifts.length}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  On shift now{isFetchingActiveShifts ? ' • updating…' : ''}
+                </p>
+              </div>
             </div>
-          </div>
-          </div>
+          </CardContent>
+        </Card>
+
+        <Card className="content-auto">
+          <CardContent>
+            <SectionHeading
+              title="Today at a glance"
+              description="A compact board for exceptions and activity."
+            />
+
+            <div className="space-y-3">
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-rose-600" />
+                    <span className="text-sm font-semibold text-foreground">Overdue value</span>
+                  </div>
+                  <span className="text-sm font-semibold text-rose-700">{formatCurrency(overdueTotal)}</span>
+                </div>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-emerald-600" />
+                    <span className="text-sm font-semibold text-foreground">Late starts</span>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">{lateToday}</span>
+                </div>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 text-amber-600" />
+                    <span className="text-sm font-semibold text-foreground">Missed shifts</span>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">{missedToday}</span>
+                </div>
+              </div>
+              <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-foreground">Pending reimbursements</span>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">{pendingReimbursements}</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 
       {isLoadingCore && (
         <Card>
-          <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+          <CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
             <Clock3 className="h-4 w-4" />
-            Loading latest executive metrics...
-          </div>
+            Loading the latest executive metrics...
+          </CardContent>
         </Card>
       )}
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="border-white/80 bg-white/82">
-          <div className="px-4 pb-4 pt-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground">Overdue</p>
-              <p className="text-xl font-semibold text-rose-700">{formatCurrency(overdueTotal)}</p>
-            </div>
-            <AlertTriangle className="h-5 w-5 text-rose-600" />
-          </div>
-          </div>
-        </Card>
-
-        <Card className="border-white/80 bg-white/82">
-          <div className="px-4 pb-4 pt-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground">Live shifts</p>
-              <p className="text-xl font-semibold text-foreground">{activeShifts.length}</p>
-            </div>
-            <Briefcase className="h-5 w-5 text-emerald-600" />
-          </div>
-          </div>
-        </Card>
-
-        <Card className="border-white/80 bg-white/82">
-          <div className="px-4 pb-4 pt-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground">Late starts today</p>
-              <p className="text-xl font-semibold text-foreground">{lateToday}</p>
-            </div>
-            <CalendarClock className="h-5 w-5 text-amber-600" />
-          </div>
-          </div>
-        </Card>
-
-        <Card className="border-white/80 bg-white/82">
-          <div className="px-4 pb-4 pt-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground">Missed shifts today</p>
-              <p className="text-xl font-semibold text-foreground">{missedToday}</p>
-            </div>
-            {missedToday > 0 ? <ShieldAlert className="h-5 w-5 text-rose-600" /> : <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
-          </div>
-          </div>
-        </Card>
-      </div>
     </div>
   )
 }

@@ -296,8 +296,8 @@ export async function notifyVacationRequest(options: NotifyVacationRequestOption
   const frontendUrl = getFrontendUrl()
   const adminUrl = `${frontendUrl}/admin/vacation`
 
-  const startDateFormatted = new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  const endDateFormatted = new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const startDateFormatted = new Date(startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
+  const endDateFormatted = new Date(endDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
 
   const isSickLeave = /sick/i.test(leaveTypeName)
   const emoji = isSickLeave ? '🏥' : '🏖️'
@@ -386,7 +386,7 @@ export async function notifyShiftOverride(options: NotifyShiftOverrideOptions) {
   const frontendUrl = getFrontendUrl()
   const adminUrl = `${frontendUrl}/admin/vacation`
 
-  const dateFormatted = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  const dateFormatted = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
 
   const isRemoved = action === 'removed'
   const emoji = isRemoved ? '🔄' : '📅'
@@ -665,4 +665,3 @@ export async function batchGetSlackAvatars(
 
   return results
 }
-

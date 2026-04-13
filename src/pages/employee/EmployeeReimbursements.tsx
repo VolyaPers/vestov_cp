@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { formatDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 
 const getEvidenceUrl = (evidencePath: string | null) => {
@@ -428,7 +429,7 @@ export function EmployeeReimbursements() {
                     <div>
                       <div className="text-xs text-gray-500">Requested</div>
                       <div className="font-semibold text-gray-900">
-                        {new Date(request.requestedAt).toLocaleDateString()}
+                        {formatDate(request.requestedAt)}
                       </div>
                     </div>
                   </div>

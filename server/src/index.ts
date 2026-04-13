@@ -24,6 +24,7 @@ import { feedbackRouter } from './routes/feedback.js'
 import { financesRouter } from './routes/finances.js'
 import { settingsRouter } from './routes/settings.js'
 import { searchRouter } from './routes/search.js'
+import { clickupRouter } from './routes/clickup.js'
 import { setupPassport } from './auth/passport.js'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -31,8 +32,9 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
-import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureFinanceTables } from './utils/migrations.js'
+import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureFinanceTables, ensureClickUpTables } from './utils/migrations.js'
 import { initializeSocket } from './socket.js'
+import { startClickUpScheduler } from './services/clickup.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -103,6 +105,7 @@ async function runMigrations() {
     
     await ensureUserColumns(pool)
     await ensureFinanceTables(pool)
+    await ensureClickUpTables(pool)
     const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
     if (columnExistsAfter) {
       console.log('[MIGRATIONS] ✓ Column is_active verified - exists in database')
@@ -125,7 +128,8 @@ async function runMigrations() {
     try {
       await ensureUserColumns(pool)
       await ensureFinanceTables(pool)
-      console.log('[MIGRATIONS] ✓ Added missing user columns and finance tables as fallback')
+      await ensureClickUpTables(pool)
+      console.log('[MIGRATIONS] ✓ Added missing user columns, finance tables, and ClickUp tables as fallback')
     } catch (fallbackError) {
       console.error('[MIGRATIONS] Fallback failed:', fallbackError)
     }
@@ -323,6 +327,7 @@ app.use('/api/feedback', feedbackRouter)
 app.use('/api/finances', financesRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/search', searchRouter)
+app.use('/api/clickup', clickupRouter)
 
 const uploadsPath = path.join(process.cwd(), 'uploads')
 app.use('/api/uploads', express.static(uploadsPath))
@@ -520,6 +525,7 @@ runMigrations().then(async () => {
 
   // Initialize Socket.IO
   initializeSocket(httpServer, corsOrigin)
+  startClickUpScheduler()
 
   httpServer.listen(PORT, () => {
     console.log('========================================')

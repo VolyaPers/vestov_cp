@@ -476,7 +476,7 @@ export function AdminDocumentsPage() {
               <span className="font-medium">{formatFileSize(doc.document.fileSize)}</span>
               <span className="flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" />
-                {new Date(doc.document.createdAt).toLocaleDateString()}
+                {new Date(doc.document.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
               {doc.uploadedBy && (
                 <span className="flex items-center gap-1.5">
@@ -622,7 +622,7 @@ export function AdminDocumentsPage() {
             <span>{formatFileSize(doc.document.fileSize)}</span>
             <span className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              {new Date(doc.document.createdAt).toLocaleDateString()}
+              {new Date(doc.document.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
             </span>
             {doc.uploadedBy && (
               <span className="flex items-center gap-1">

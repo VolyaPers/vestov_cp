@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
+import { formatDate } from '@/lib/utils'
 import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Invoice {
@@ -144,16 +145,16 @@ export function ClientInvoices() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center space-x-1">
                           <Calendar className="h-4 w-4" />
-                          <span>Issued: {new Date(invoice.invoiceDate).toLocaleDateString()}</span>
+                          <span>Issued: {formatDate(invoice.invoiceDate)}</span>
                         </div>
                         <div className="flex items-center space-x-1">
                           <Calendar className="h-4 w-4" />
-                          <span>Period: {new Date(invoice.periodStart).toLocaleDateString()} - {new Date(invoice.periodEnd).toLocaleDateString()}</span>
+                          <span>Period: {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}</span>
                         </div>
                         {invoice.dueDate && (
                           <div className="flex items-center space-x-1">
                             <Calendar className="h-4 w-4" />
-                            <span>Due: {new Date(invoice.dueDate).toLocaleDateString()}</span>
+                            <span>Due: {formatDate(invoice.dueDate)}</span>
                           </div>
                         )}
                       </div>
@@ -162,7 +163,7 @@ export function ClientInvoices() {
                       )}
                       {invoice.paidAt && (
                         <p className="mt-2 text-sm text-green-600">
-                          Paid on {new Date(invoice.paidAt).toLocaleDateString()}
+                          Paid on {formatDate(invoice.paidAt)}
                         </p>
                       )}
                       {invoice.notes && (
@@ -235,18 +236,18 @@ export function ClientInvoices() {
                 <div className="space-y-3">
                   <div>
                     <label className="text-sm font-medium text-gray-700">Invoice Date</label>
-                    <div className="text-sm text-gray-900">{new Date(viewInvoice.invoiceDate).toLocaleDateString()}</div>
+                    <div className="text-sm text-gray-900">{formatDate(viewInvoice.invoiceDate)}</div>
                   </div>
                   {viewInvoice.dueDate && (
                     <div>
                       <label className="text-sm font-medium text-gray-700">Due Date</label>
-                      <div className="text-sm text-gray-900">{new Date(viewInvoice.dueDate).toLocaleDateString()}</div>
+                      <div className="text-sm text-gray-900">{formatDate(viewInvoice.dueDate)}</div>
                     </div>
                   )}
                   {viewInvoice.paidAt && (
                     <div>
                       <label className="text-sm font-medium text-gray-700">Paid Date</label>
-                      <div className="text-sm text-gray-900">{new Date(viewInvoice.paidAt).toLocaleDateString()}</div>
+                      <div className="text-sm text-gray-900">{formatDate(viewInvoice.paidAt)}</div>
                     </div>
                   )}
                 </div>
@@ -256,7 +257,7 @@ export function ClientInvoices() {
                     <div>
                       <label className="text-sm font-medium text-gray-700">Service Period</label>
                       <div className="text-sm text-gray-900">
-                        {new Date(viewInvoice.periodStart).toLocaleDateString()} - {new Date(viewInvoice.periodEnd).toLocaleDateString()}
+                        {formatDate(viewInvoice.periodStart)} - {formatDate(viewInvoice.periodEnd)}
                       </div>
                     </div>
                   )}

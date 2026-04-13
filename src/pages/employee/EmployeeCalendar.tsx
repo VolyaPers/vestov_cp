@@ -261,8 +261,8 @@ export function EmployeeCalendar() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{request.leaveTypeName}</h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        {format(parseISO(request.startDate), 'MMM d, yyyy')} -{' '}
-                        {format(parseISO(request.endDate), 'MMM d, yyyy')}
+                        {format(parseISO(request.startDate), 'd MMMM yyyy')} -{' '}
+                        {format(parseISO(request.endDate), 'd MMMM yyyy')}
                       </p>
                       <p className="text-sm text-gray-500 mt-1">
                         {request.totalDays} {request.totalDays === 1 ? 'day' : 'days'}

@@ -5,7 +5,6 @@ import { ClientLayout } from './components/ClientLayout'
 import { TeamMemberLayout } from './components/TeamMemberLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { GlobalSearch } from './components/GlobalSearch'
-import { ClerkAuthBar } from './components/ClerkAuthBar'
 import { AuthPage } from './pages/AuthPage'
 import { api } from './lib/api'
 import type { User } from './types/common'
@@ -148,7 +147,6 @@ function App() {
 
   const withSearch = (content: JSX.Element) => (
     <>
-      <ClerkAuthBar />
       {content}
       <GlobalSearch user={user} />
     </>

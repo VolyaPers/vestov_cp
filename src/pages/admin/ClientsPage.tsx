@@ -1239,7 +1239,7 @@ function ClientRow({
                   )}
                   <div className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5" />
-                    <span>Client since {new Date(client.createdAt).toLocaleDateString()}</span>
+                    <span>Client since {new Date(client.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <DollarSign className="h-3.5 w-3.5" />
@@ -1307,7 +1307,7 @@ function ClientRow({
                           <div className="text-xs text-gray-500 min-w-[100px]">
                             <div className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {parseLocalDate(service.startDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                              {parseLocalDate(service.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                             </div>
                           </div>
 

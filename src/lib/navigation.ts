@@ -9,7 +9,7 @@ import {
   Clock,
   DollarSign,
   FileText,
-  Handshake,
+  Home,
   Receipt,
   Star,
   TrendingUp,
@@ -30,6 +30,7 @@ export interface NavItem {
   name: string
   href: string
   icon: LucideIcon
+  section?: string
   external?: boolean
   children?: NavItemChild[]
 }
@@ -52,38 +53,33 @@ export interface SearchShortcut {
 }
 
 export const adminNavigation: NavItem[] = [
-  { name: 'Dashboard', href: '/admin/dashboard', icon: BarChart3 },
-  { name: 'Reports', href: '/admin/reports', icon: TrendingUp },
-  { name: 'Services', href: '/admin/services', icon: Briefcase },
-  {
-    name: 'CRM',
-    href: '/admin/clients',
-    icon: Handshake,
-    children: [
-      { name: 'Clients', href: '/admin/clients', icon: Building2 },
-      { name: 'Invoices', href: '/admin/invoices', icon: DollarSign },
-    ],
-  },
-  { name: 'Finances', href: '/admin/finances', icon: Wallet },
-  { name: 'Users', href: '/admin/users', icon: UserCog },
-  { name: 'Team', href: '/admin/team', icon: Users },
-  { name: 'Shifts', href: '/admin/shifts', icon: Clock },
-  { name: 'Calendar', href: '/admin/vacation', icon: Calendar },
-  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt },
-  { name: 'Documents', href: '/admin/documents', icon: FileText },
-  { name: 'Feedback', href: '/admin/feedback', icon: Star },
+  { name: 'Home', href: '/admin/dashboard', icon: Home, section: 'Main' },
+  { name: 'Reports', href: '/admin/reports', icon: TrendingUp, section: 'Main' },
+  { name: 'Clients', href: '/admin/clients', icon: Building2, section: 'Revenue' },
+  { name: 'Invoices', href: '/admin/invoices', icon: DollarSign, section: 'Revenue' },
+  { name: 'Finances', href: '/admin/finances', icon: Wallet, section: 'Revenue' },
+  { name: 'Services', href: '/admin/services', icon: Briefcase, section: 'Workspace' },
+  { name: 'Time Tracking', href: '/admin/time-tracking', icon: Clock, section: 'Workspace' },
+  { name: 'Team', href: '/admin/team', icon: Users, section: 'People' },
+  { name: 'Users', href: '/admin/users', icon: UserCog, section: 'People' },
+  { name: 'Shifts', href: '/admin/shifts', icon: Clock, section: 'People' },
+  { name: 'Calendar', href: '/admin/vacation', icon: Calendar, section: 'People' },
+  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt, section: 'Shortcuts' },
+  { name: 'Documents', href: '/admin/documents', icon: FileText, section: 'Shortcuts' },
+  { name: 'Feedback', href: '/admin/feedback', icon: Star, section: 'Shortcuts' },
 ]
 
 export const teamMemberNavigation: NavItem[] = [
-  { name: 'Dashboard', href: '/employee/dashboard', icon: BarChart3 },
-  { name: 'Roadmap', href: '/employee/roadmap', icon: TrendingUp },
-  { name: 'Calendar', href: '/employee/vacations', icon: Calendar },
-  { name: 'Reimbursements', href: '/employee/reimbursements', icon: Receipt },
-  { name: 'Profile', href: '/employee/profile', icon: User },
+  { name: 'Dashboard', href: '/employee/dashboard', icon: BarChart3, section: 'Overview' },
+  { name: 'Roadmap', href: '/employee/roadmap', icon: TrendingUp, section: 'Growth' },
+  { name: 'Calendar', href: '/employee/vacations', icon: Calendar, section: 'Operations' },
+  { name: 'Reimbursements', href: '/employee/reimbursements', icon: Receipt, section: 'Operations' },
+  { name: 'Profile', href: '/employee/profile', icon: User, section: 'Account' },
   {
     name: 'Knowledge Base',
     href: 'https://www.notion.so/Vestov-Knowledge-Base-2611a26473ed80c08f2dd2178bccc864',
     icon: BookOpen,
+    section: 'Account',
     external: true,
   },
 ]
@@ -91,19 +87,19 @@ export const teamMemberNavigation: NavItem[] = [
 export function getClientNavigation(clientId?: number): NavItem[] {
   if (!clientId) {
     return [
-      { name: 'Team Status', href: '/client/team-status', icon: Users },
-      { name: 'Feedback', href: '/client/feedback', icon: Star },
-      { name: 'Profile', href: '/client/profile', icon: User },
+      { name: 'Team Status', href: '/client/team-status', icon: Users, section: 'Overview' },
+      { name: 'Feedback', href: '/client/feedback', icon: Star, section: 'Collaboration' },
+      { name: 'Profile', href: '/client/profile', icon: User, section: 'Account' },
     ]
   }
 
   return [
-    { name: 'Overview', href: `/client/portal/${clientId}`, icon: Building },
-    { name: 'Team Status', href: '/client/team-status', icon: Users },
-    { name: 'Documents', href: `/client/documents/${clientId}`, icon: FileText },
-    { name: 'Invoices', href: `/client/invoices/${clientId}`, icon: DollarSign },
-    { name: 'Feedback', href: '/client/feedback', icon: Star },
-    { name: 'Profile', href: '/client/profile', icon: User },
+    { name: 'Overview', href: `/client/portal/${clientId}`, icon: Building, section: 'Overview' },
+    { name: 'Team Status', href: '/client/team-status', icon: Users, section: 'Overview' },
+    { name: 'Documents', href: `/client/documents/${clientId}`, icon: FileText, section: 'Shared Data' },
+    { name: 'Invoices', href: `/client/invoices/${clientId}`, icon: DollarSign, section: 'Shared Data' },
+    { name: 'Feedback', href: '/client/feedback', icon: Star, section: 'Collaboration' },
+    { name: 'Profile', href: '/client/profile', icon: User, section: 'Account' },
   ]
 }
 
@@ -183,6 +179,7 @@ export function getSearchShortcuts(role: UserRole, currentClientId?: number | nu
       { id: 'page:admin-finances-overview', type: 'page', title: 'Finances Overview', subtitle: 'Revenue, expenses, and balances', href: '/admin/finances/overview', badge: 'Page', keywords: ['finances', 'money', 'overview', 'revenue'] },
       { id: 'page:admin-finances-transactions', type: 'page', title: 'Transactions', subtitle: 'Income, expenses, and salary records', href: '/admin/finances/transactions', badge: 'Page', keywords: ['transactions', 'expenses', 'income', 'salaries'] },
       { id: 'page:admin-finances-salaries', type: 'page', title: 'Salaries', subtitle: 'Salary history and payouts', href: '/admin/finances/salaries', badge: 'Page', keywords: ['salary', 'payroll', 'payouts'] },
+      { id: 'page:admin-time-tracking', type: 'page', title: 'Time Tracking', subtitle: 'ClickUp sync, mappings, and tracked hours', href: '/admin/time-tracking', badge: 'Page', keywords: ['time tracking', 'clickup', 'hours', 'tracked time'] },
       { id: 'page:admin-users', type: 'page', title: 'Users', subtitle: 'User accounts and access', href: '/admin/users', badge: 'Page', keywords: ['users', 'accounts', 'permissions'] },
       { id: 'page:admin-team', type: 'page', title: 'Team', subtitle: 'Team member roster and staffing', href: '/admin/team', badge: 'Page', keywords: ['team', 'employees', 'people'] },
       { id: 'page:admin-shifts', type: 'page', title: 'Shifts', subtitle: 'Shift activity and status', href: '/admin/shifts', badge: 'Page', keywords: ['shifts', 'time tracking'] },

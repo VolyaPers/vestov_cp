@@ -210,7 +210,7 @@ export function EmployeeDashboard() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
+      month: 'long',
       day: 'numeric',
       year: 'numeric'
     })
@@ -272,7 +272,7 @@ export function EmployeeDashboard() {
         theme="teal"
         meta={
           <>
-            <span>{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            <span>{currentTime.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
             <span className="h-1 w-1 rounded-full bg-slate-300"></span>
             <span>{formatTime(currentTime)}</span>
             <span className="h-1 w-1 rounded-full bg-slate-300"></span>

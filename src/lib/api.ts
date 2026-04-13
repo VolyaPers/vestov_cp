@@ -14,6 +14,12 @@ import type {
   UpdateInvoiceData,
   CreateUserData,
   UpdateUserData,
+  ClickUpIntegrationStatus,
+  ClickUpComplianceResponse,
+  ClickUpMember,
+  ClickUpMemberMapping,
+  ClickUpTimeEntry,
+  ClickUpTimeReportRow,
 } from '../types/common'
 
 const envApiUrl = import.meta.env.VITE_API_URL
@@ -704,6 +710,91 @@ class ApiClient {
     return this.request(`/settings/integrations/${provider}`, {
       method: 'DELETE',
     })
+  }
+
+  async getClickUpStatus(): Promise<ClickUpIntegrationStatus> {
+    return this.request('/clickup/status')
+  }
+
+  async getClickUpCompliance(params?: {
+    rangePreset?: 'today' | 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'last_quarter' | 'last_year' | 'custom'
+    startDate?: string
+    endDate?: string
+  }): Promise<ClickUpComplianceResponse> {
+    return this.request(`/clickup/compliance${buildQueryString(params ?? {})}`)
+  }
+
+  async getClickUpMembers(): Promise<ClickUpMember[]> {
+    return this.request('/clickup/members')
+  }
+
+  async validateClickUpToken(apiToken: string): Promise<{ workspaces: Array<{ id: string; name: string; color?: string | null }> }> {
+    return this.request('/clickup/validate', {
+      method: 'POST',
+      body: JSON.stringify({ apiToken }),
+    })
+  }
+
+  async getClickUpMemberMappings(): Promise<ClickUpMemberMapping[]> {
+    return this.request('/clickup/member-mappings')
+  }
+
+  async saveClickUpMemberMappings(mappings: Array<{
+    teamMemberId: number
+    clickupUserId: string
+    clickupUserName: string
+    clickupUserEmail?: string | null
+  }>): Promise<ClickUpMemberMapping[]> {
+    return this.request('/clickup/member-mappings', {
+      method: 'PUT',
+      body: JSON.stringify({ mappings }),
+    })
+  }
+
+  async syncClickUp(): Promise<{ success: boolean; runId: number; fetched: number; upserted: number; skipped: number }> {
+    return this.request('/clickup/sync', {
+      method: 'POST',
+    })
+  }
+
+  async getClickUpTimeReport(params?: {
+    startDate?: string
+    endDate?: string
+    teamMemberId?: number
+    clientId?: number
+    clientServiceId?: number
+    attributionStatus?: 'assigned' | 'unassigned'
+  }): Promise<{
+    summary: {
+      totalDurationMs: number
+      totalHours: number
+      totalEntries: number
+      mappedMembers: number
+    }
+    rows: ClickUpTimeReportRow[]
+  }> {
+    return this.request(`/clickup/time-report${buildQueryString(params ?? {})}`)
+  }
+
+  async getClickUpTimeEntries(params?: {
+    startDate?: string
+    endDate?: string
+    teamMemberId?: number
+    clientId?: number
+    clientServiceId?: number
+    attributionStatus?: 'assigned' | 'unassigned'
+    page?: number
+    pageSize?: number
+  }): Promise<{
+    entries: ClickUpTimeEntry[]
+    pagination: {
+      page: number
+      pageSize: number
+      total: number
+      totalPages: number
+    }
+  }> {
+    return this.request(`/clickup/time-entries${buildQueryString(params ?? {})}`)
   }
 
   // User Management

@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
-import { parseLocalDate } from '@/lib/utils'
+import { formatDate, parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 import type { ClientService } from '@/types/common'
@@ -291,7 +291,7 @@ export function ClientDocuments() {
                   <span>{formatFileSize(doc.document.fileSize)}</span>
                   <span className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    {new Date(doc.document.createdAt).toLocaleDateString()}
+                    {formatDate(doc.document.createdAt)}
                   </span>
                   {doc.uploadedBy && (
                     <Badge
@@ -534,7 +534,7 @@ export function ClientDocuments() {
                           {service.serviceCategory}
                         </Badge>
                         <span className="text-muted-foreground">
-                          Started {parseLocalDate(service.startDate).toLocaleDateString()}
+                          Started {formatDate(parseLocalDate(service.startDate))}
                         </span>
                       </CardDescription>
                     </div>

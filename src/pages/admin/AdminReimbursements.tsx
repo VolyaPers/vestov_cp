@@ -384,7 +384,7 @@ export function AdminReimbursements() {
                     <div>
                       <div className="text-xs text-gray-500">Requested</div>
                       <div className="font-semibold text-gray-900">
-                        {new Date(request.requestedAt).toLocaleDateString()}
+                        {new Date(request.requestedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </div>
                     </div>
                     <div>

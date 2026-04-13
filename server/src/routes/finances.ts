@@ -448,6 +448,7 @@ router.get('/salaries', async (req, res) => {
         id: teamMembers.id,
         name: teamMembers.name,
         position: teamMembers.position,
+        startDate: teamMembers.startDate,
         monthlyRate: teamMembers.monthlyRate,
         hourlyRate: teamMembers.hourlyRate,
         isBillable: teamMembers.isBillable,

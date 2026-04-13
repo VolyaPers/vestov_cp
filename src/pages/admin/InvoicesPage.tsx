@@ -198,10 +198,10 @@ export function InvoicesPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {new Date(invoice.invoiceDate).toLocaleDateString()}
+                        {new Date(invoice.invoiceDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {new Date(invoice.periodStart).toLocaleDateString()} - {new Date(invoice.periodEnd).toLocaleDateString()}
+                        {new Date(invoice.periodStart).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} - {new Date(invoice.periodEnd).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </td>
                       <td className="px-4 py-3 text-sm font-semibold text-foreground">
                         ${parseFloat(invoice.amount).toLocaleString()}

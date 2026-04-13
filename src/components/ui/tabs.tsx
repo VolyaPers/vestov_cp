@@ -12,7 +12,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-12 items-center justify-center rounded-[1.15rem] border border-white/70 bg-muted/78 p-1 text-muted-foreground shadow-[0_18px_34px_-26px_rgba(15,23,42,0.32)] backdrop-blur-xl",
+      "inline-flex h-10 items-center justify-center rounded-[0.8rem] border border-slate-200 bg-slate-50 p-0.5 text-muted-foreground shadow-none",
       className
     )}
     {...props}
@@ -27,7 +27,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-[0.95rem] border border-transparent px-4 py-2 text-sm font-semibold text-muted-foreground/90 no-underline ring-offset-background transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-blue-200/80 data-[state=active]:bg-[linear-gradient(180deg,rgba(255,255,255,0.46),rgba(255,255,255,0.18)),rgba(37,99,235,0.2)] data-[state=active]:text-blue-800 data-[state=active]:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_18px_32px_-20px_rgba(37,99,235,0.28)]",
+      "inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded-[0.65rem] border border-transparent px-3 py-1.5 text-[13px] font-medium text-muted-foreground no-underline ring-offset-background transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-slate-200 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm",
       className
     )}
     {...props}
@@ -42,7 +42,7 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      "mt-3 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       className
     )}
     {...props}

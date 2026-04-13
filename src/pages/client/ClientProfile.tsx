@@ -3,6 +3,7 @@ import { Building, Calendar, Mail, Shield, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { api } from '@/lib/api'
+import { formatDate } from '@/lib/utils'
 import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 interface UserProfile {
@@ -114,8 +115,8 @@ export function ClientProfile() {
         />
         <MetricTile
           label="Last Login"
-          value={user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'No data'}
-          hint={`Member since ${new Date(user.createdAt).toLocaleDateString()}`}
+          value={user.lastLoginAt ? formatDate(user.lastLoginAt) : 'No data'}
+          hint={`Member since ${formatDate(user.createdAt)}`}
           icon={<Calendar className="h-5 w-5" />}
           tone="emerald"
         />
@@ -174,7 +175,7 @@ export function ClientProfile() {
                   Member since
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {new Date(user.createdAt).toLocaleDateString()}
+                  {formatDate(user.createdAt)}
                 </p>
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-muted/25 p-4">
@@ -183,7 +184,7 @@ export function ClientProfile() {
                   Last login
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'No login recorded'}
+                  {user.lastLoginAt ? formatDate(user.lastLoginAt) : 'No login recorded'}
                 </p>
               </div>
             </div>

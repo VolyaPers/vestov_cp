@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
-import { parseLocalDate } from '@/lib/utils'
+import { formatDate, parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { useCustomAlert } from '@/components/ui/custom-alert'
@@ -306,7 +306,7 @@ export function ClientPortal() {
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium text-foreground">Start Date</p>
-                  <p className="text-sm text-muted-foreground">{new Date(client.contractStart).toLocaleDateString()}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(client.contractStart)}</p>
                 </div>
               </div>
             )}
@@ -315,7 +315,7 @@ export function ClientPortal() {
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium text-foreground">End Date</p>
-                  <p className="text-sm text-muted-foreground">{new Date(client.contractEnd).toLocaleDateString()}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(client.contractEnd)}</p>
                 </div>
               </div>
             )}
@@ -360,9 +360,9 @@ export function ClientPortal() {
                       <p className="mb-2 text-sm text-muted-foreground">{service.serviceDescription}</p>
                     )}
                     <div className="flex flex-col gap-1.5 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-                      <span>Started: {parseLocalDate(service.startDate).toLocaleDateString()}</span>
+                      <span>Started: {formatDate(parseLocalDate(service.startDate))}</span>
                       {service.endDate && (
-                        <span>Ended: {parseLocalDate(service.endDate).toLocaleDateString()}</span>
+                        <span>Ended: {formatDate(parseLocalDate(service.endDate))}</span>
                       )}
                     </div>
                   </div>
@@ -493,7 +493,7 @@ export function ClientPortal() {
                             </Badge>
                           )}
                           <span>{formatFileSize(doc.document.fileSize)}</span>
-                          <span>Uploaded: {new Date(doc.document.createdAt).toLocaleDateString()}</span>
+                          <span>Uploaded: {formatDate(doc.document.createdAt)}</span>
                         </div>
                       </div>
                     </div>
@@ -545,8 +545,8 @@ export function ClientPortal() {
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900">{invoice.invoiceNumber}</p>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                          <span>Period: {new Date(invoice.periodStart).toLocaleDateString()} - {new Date(invoice.periodEnd).toLocaleDateString()}</span>
-                          <span>Due: {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}</span>
+                          <span>Period: {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}</span>
+                          <span>Due: {invoice.dueDate ? formatDate(invoice.dueDate) : 'N/A'}</span>
                         </div>
                       </div>
                     </div>

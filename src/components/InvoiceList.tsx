@@ -326,20 +326,20 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-gray-400" />
-                      <span>Invoice: {new Date(invoice.invoiceDate).toLocaleDateString()}</span>
+                      <span>Invoice: {new Date(invoice.invoiceDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                     </div>
                     <div className="text-gray-600">
-                      Period: {new Date(invoice.periodStart).toLocaleDateString()} - {new Date(invoice.periodEnd).toLocaleDateString()}
+                      Period: {new Date(invoice.periodStart).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} - {new Date(invoice.periodEnd).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </div>
                     {invoice.paidAt ? (
                       <div className="flex items-center gap-2 text-green-600 font-medium">
                         <Calendar className="h-4 w-4" />
-                        <span>Paid: {new Date(invoice.paidAt).toLocaleDateString()}</span>
+                        <span>Paid: {new Date(invoice.paidAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                       </div>
                     ) : invoice.dueDate ? (
                       <div className="flex items-center gap-2 text-orange-600">
                         <Calendar className="h-4 w-4" />
-                        <span>Due: {new Date(invoice.dueDate).toLocaleDateString()}</span>
+                        <span>Due: {new Date(invoice.dueDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                       </div>
                     ) : null}
                   </div>

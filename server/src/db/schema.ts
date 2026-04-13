@@ -226,10 +226,95 @@ export const financeCategories = pgTable('finance_categories', {
 // Integration Settings table
 export const integrationSettings = pgTable('integration_settings', {
   id: serial('id').primaryKey(),
-  provider: varchar('provider', { length: 50 }).notNull().unique(), // 'stripe', 'payoneer'
+  provider: varchar('provider', { length: 50 }).notNull().unique(), // 'stripe', 'payoneer', 'clickup'
   credentials: text('credentials').notNull().default(''), // AES-256-GCM encrypted JSON
   isActive: boolean('is_active').default(false),
   lastSyncAt: timestamp('last_sync_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ClickUp member mappings
+export const clickupMemberMappings = pgTable('clickup_member_mappings', {
+  id: serial('id').primaryKey(),
+  workspaceId: varchar('workspace_id', { length: 50 }).notNull(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull().unique(),
+  clickupUserId: varchar('clickup_user_id', { length: 50 }).notNull().unique(),
+  clickupUserName: text('clickup_user_name').notNull(),
+  clickupUserEmail: varchar('clickup_user_email', { length: 255 }),
+  lastSeenAt: timestamp('last_seen_at'),
+  createdBy: integer('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ClickUp sync runs
+export const clickupSyncRuns = pgTable('clickup_sync_runs', {
+  id: serial('id').primaryKey(),
+  workspaceId: varchar('workspace_id', { length: 50 }).notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('running'), // 'running' | 'success' | 'failed'
+  triggerType: varchar('trigger_type', { length: 20 }).notNull(), // 'manual' | 'scheduled'
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+  rangeStart: timestamp('range_start').notNull(),
+  rangeEnd: timestamp('range_end').notNull(),
+  entriesFetched: integer('entries_fetched').default(0).notNull(),
+  entriesUpserted: integer('entries_upserted').default(0).notNull(),
+  entriesSkipped: integer('entries_skipped').default(0).notNull(),
+  errorMessage: text('error_message'),
+  details: jsonb('details'),
+  triggeredBy: integer('triggered_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ClickUp synced time entries
+export const clickupTimeEntries = pgTable('clickup_time_entries', {
+  id: serial('id').primaryKey(),
+  workspaceId: varchar('workspace_id', { length: 50 }).notNull(),
+  externalId: varchar('external_id', { length: 100 }).notNull().unique(),
+  clickupUserId: varchar('clickup_user_id', { length: 50 }).notNull(),
+  clickupUserName: text('clickup_user_name').notNull(),
+  clickupUserEmail: varchar('clickup_user_email', { length: 255 }),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id),
+  clientId: integer('client_id').references(() => clients.id),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id),
+  attributionStatus: varchar('attribution_status', { length: 20 }).notNull().default('unassigned'), // 'assigned' | 'unassigned'
+  taskId: varchar('task_id', { length: 100 }),
+  taskName: text('task_name'),
+  taskStatus: text('task_status'),
+  listId: varchar('list_id', { length: 100 }),
+  listName: text('list_name'),
+  folderId: varchar('folder_id', { length: 100 }),
+  folderName: text('folder_name'),
+  spaceId: varchar('space_id', { length: 100 }),
+  spaceName: text('space_name'),
+  durationMs: decimal('duration_ms', { precision: 16, scale: 0 }).notNull(),
+  isBillable: boolean('is_billable'),
+  startAt: timestamp('start_at'),
+  endAt: timestamp('end_at'),
+  entryDate: date('entry_date').notNull(),
+  tags: jsonb('tags'),
+  sourceData: jsonb('source_data'),
+  sourceUpdatedAt: timestamp('source_updated_at'),
+  syncedAt: timestamp('synced_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// ClickUp daily reporting rollups
+export const clickupDailyRollups = pgTable('clickup_daily_rollups', {
+  id: serial('id').primaryKey(),
+  workspaceId: varchar('workspace_id', { length: 50 }).notNull(),
+  rollupDate: date('rollup_date').notNull(),
+  clickupUserId: varchar('clickup_user_id', { length: 50 }).notNull(),
+  clickupUserName: text('clickup_user_name').notNull(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id),
+  clientId: integer('client_id').references(() => clients.id),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id),
+  attributionStatus: varchar('attribution_status', { length: 20 }).notNull().default('unassigned'),
+  totalDurationMs: decimal('total_duration_ms', { precision: 16, scale: 0 }).notNull(),
+  entryCount: integer('entry_count').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })

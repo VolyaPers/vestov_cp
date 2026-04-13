@@ -188,7 +188,7 @@ export function ClientTeamStatus() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
+      month: 'long',
       day: 'numeric',
       year: 'numeric'
     })
@@ -782,7 +782,7 @@ export function ClientTeamStatus() {
             {selectedDate && getVacationsForDate(selectedDate).length > 0 && (
               <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
                 <h4 className="font-semibold text-gray-900 mb-2">
-                  {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  {selectedDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </h4>
                 <div className="space-y-2">
                   {getVacationsForDate(selectedDate).map((vacation) => (

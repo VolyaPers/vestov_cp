@@ -1392,13 +1392,13 @@ export function ClientDetailsPage() {
                       {client.contractStart && (
                         <div>
                           <p className="text-sm font-medium text-gray-900">Start Date</p>
-                          <p className="text-sm text-gray-600">{new Date(client.contractStart).toLocaleDateString()}</p>
+                          <p className="text-sm text-gray-600">{new Date(client.contractStart).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                         </div>
                       )}
                       {client.contractEnd && (
                         <div>
                           <p className="text-sm font-medium text-gray-900">End Date</p>
-                          <p className="text-sm text-gray-600">{new Date(client.contractEnd).toLocaleDateString()}</p>
+                          <p className="text-sm text-gray-600">{new Date(client.contractEnd).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                         </div>
                       )}
                     </div>
@@ -1421,7 +1421,7 @@ export function ClientDetailsPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">Client Since</p>
-                  <p className="text-sm text-gray-600">{new Date(client.createdAt).toLocaleDateString()}</p>
+                  <p className="text-sm text-gray-600">{new Date(client.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                 </div>
               </>
             )}
@@ -1521,9 +1521,9 @@ export function ClientDetailsPage() {
                             </span>
                           )
                         )}
-                        <span>Started: {parseLocalDate(service.startDate).toLocaleDateString()}</span>
+                        <span>Started: {parseLocalDate(service.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                         {service.endDate && (
-                          <span>Ended: {parseLocalDate(service.endDate).toLocaleDateString()}</span>
+                          <span>Ended: {parseLocalDate(service.endDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                         )}
                         {service.slackChannelId && (
                           <span className="flex items-center gap-1">
@@ -1610,7 +1610,7 @@ export function ClientDetailsPage() {
                                 <span>{developer.email}</span>
                                 {developer.hourlyRate && <span>Rate: ${developer.hourlyRate}/hr</span>}
                                 {developer.fixedPrice && <span>Fixed: ${developer.fixedPrice}</span>}
-                                <span>Started: {parseLocalDate(developer.startDate).toLocaleDateString()}</span>
+                                <span>Started: {parseLocalDate(developer.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                               </div>
                               {developer.workSchedule && (
                                 <div className="flex items-center gap-1 mt-2">
@@ -2259,11 +2259,11 @@ export function ClientDetailsPage() {
                         </Badge>
                       )}
                       <span className="text-gray-500">
-                        Assigned: {new Date(user.assignedAt).toLocaleDateString()}
+                        Assigned: {new Date(user.assignedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </span>
                       {user.lastLoginAt && (
                         <span className="text-gray-500">
-                          Last login: {new Date(user.lastLoginAt).toLocaleDateString()}
+                          Last login: {new Date(user.lastLoginAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </span>
                       )}
                     </div>
@@ -2339,7 +2339,7 @@ export function ClientDetailsPage() {
                             {doc.document.type}
                           </Badge>
                           <span>{formatFileSize(doc.document.fileSize)}</span>
-                          <span>Uploaded: {new Date(doc.document.createdAt).toLocaleDateString()}</span>
+                          <span>Uploaded: {new Date(doc.document.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                         </div>
                       </div>
                     </div>
@@ -2538,7 +2538,7 @@ export function ClientDetailsPage() {
             <div className="flex items-center justify-between w-full mt-6">
               <div className="text-sm text-gray-500">
                 Uploaded by: {previewDocument?.uploadedBy.fullName} on{' '}
-                {previewDocument ? new Date(previewDocument.document.createdAt).toLocaleDateString() : ''}
+                {previewDocument ? new Date(previewDocument.document.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
               </div>
               <div className="flex gap-2">
                 <Button

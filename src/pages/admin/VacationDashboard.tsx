@@ -781,11 +781,11 @@ export default function VacationDashboard() {
                 <div className="grid md:grid-cols-3 gap-6">
                   <div className="bg-green-50 rounded-lg p-6 border border-green-200">
                     <p className="text-sm font-medium text-green-600 mb-2">Start Date</p>
-                    <p className="text-xl font-bold text-gray-900">{format(parseISO(employmentCycle.cycleStart), 'MMM d, yyyy')}</p>
+                    <p className="text-xl font-bold text-gray-900">{format(parseISO(employmentCycle.cycleStart), 'd MMMM yyyy')}</p>
                   </div>
                   <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
                     <p className="text-sm font-medium text-blue-600 mb-2">End Date</p>
-                    <p className="text-xl font-bold text-gray-900">{format(parseISO(employmentCycle.cycleEnd), 'MMM d, yyyy')}</p>
+                    <p className="text-xl font-bold text-gray-900">{format(parseISO(employmentCycle.cycleEnd), 'd MMMM yyyy')}</p>
                   </div>
                   <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100">
                     <p className="text-sm font-medium text-purple-600 mb-2">Days Remaining</p>
@@ -906,7 +906,7 @@ export default function VacationDashboard() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {format(parseISO(request.startDate), 'MMM d')} -{' '}
-                        {format(parseISO(request.endDate), 'MMM d, yyyy')}
+                        {format(parseISO(request.endDate), 'd MMMM yyyy')}
                         {(request.halfDayStart || request.halfDayEnd) && (
                           <span className="text-xs text-gray-500 ml-1">
                             ({request.halfDayStart && 'Half day start'}
@@ -1010,7 +1010,7 @@ export default function VacationDashboard() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {format(parseISO(request.startDate), 'MMM d')} -{' '}
-                      {format(parseISO(request.endDate), 'MMM d, yyyy')}
+                      {format(parseISO(request.endDate), 'd MMMM yyyy')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {request.daysCount}
@@ -1019,7 +1019,7 @@ export default function VacationDashboard() {
                       {request.reason || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {format(parseISO(request.createdAt), 'MMM d, yyyy')}
+                      {format(parseISO(request.createdAt), 'd MMMM yyyy')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex gap-3">

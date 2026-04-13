@@ -110,7 +110,7 @@ const formatCurrency = (amount: number) => {
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString('en-US', {
     year: 'numeric',
-    month: 'short',
+    month: 'long',
     day: 'numeric'
   })
 }
@@ -264,7 +264,7 @@ export function InvoiceStatsChart({ clientId }: InvoiceStatsChartProps) {
       if (inv.paidAt) {
         const date = new Date(inv.paidAt)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+        const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
 
         if (!monthlyData[monthLabel]) {
           monthlyData[monthLabel] = 0

@@ -31,9 +31,9 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   const [currentClient, setCurrentClient] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const todayLabel = new Date().toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'long',
     day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   })
   const mobileTitle = getActiveNavigationLabel('client', location, currentClient) ?? 'Workspace'
 

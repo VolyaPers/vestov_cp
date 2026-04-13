@@ -395,7 +395,7 @@ router.get('/my-balance', auth, async (req: Request, res) => {
             res.header('Access-Control-Allow-Credentials', 'true')
           }
           return res.status(404).json({
-            error: `Your employment cycle starts on ${startDate.toLocaleDateString()}. Your vacation balance will be available once your employment begins.`
+            error: `Your employment cycle starts on ${startDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}. Your vacation balance will be available once your employment begins.`
           })
         }
       }

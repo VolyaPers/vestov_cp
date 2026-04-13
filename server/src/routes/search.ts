@@ -25,8 +25,8 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 })
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
   day: 'numeric',
+  month: 'long',
   year: 'numeric',
 })
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { UserButton } from '@clerk/react'
 import { Route, Switch, Link, useLocation } from 'wouter'
 import {
   FileText,
@@ -21,6 +22,7 @@ import { AdminShifts } from '@/pages/admin/AdminShifts'
 import { AdminDocumentsPage } from '@/pages/admin/AdminDocumentsPage'
 import { AdminFeedbackPage } from '@/pages/admin/AdminFeedbackPage'
 import { FinancesPage } from '@/pages/admin/FinancesPage'
+import { TimeTrackingPage } from '@/pages/admin/TimeTrackingPage'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
@@ -39,9 +41,9 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
   const signOut = useAppSignOut()
   const [location] = useLocation()
   const todayLabel = new Date().toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'long',
     day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   })
   const mobileTitle = getActiveNavigationLabel('admin', location) ?? 'Workspace'
 
@@ -60,11 +62,11 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
         <Sidebar role="admin" user={user} onLogout={handleLogout} />
       </MobileSidebarSheet>
 
-      <div className="fixed inset-y-4 left-4 z-30 hidden w-[288px] lg:flex">
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-[220px] xl:w-[232px] lg:flex">
         <Sidebar role="admin" user={user} onLogout={handleLogout} />
       </div>
 
-      <div className="flex min-h-screen flex-col lg:pl-[320px]">
+      <div className="flex min-h-screen flex-col lg:pl-[220px] xl:pl-[232px]">
         <header className="sticky top-0 z-20">
           <div className="mobile-top-chrome lg:hidden">
             <div className="mobile-top-chrome-main">
@@ -85,38 +87,23 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
           </div>
 
           <div className="hidden workspace-topbar lg:block">
-            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.7rem] font-extrabold uppercase tracking-[0.26em] text-primary/80">
-                  Admin Workspace
-                </p>
-                <h1 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">
-                  Operations, finance and delivery control
-                </h1>
-                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-                  Shared shell refreshed with shadcn-based surfaces, clearer hierarchy and faster navigation affordances.
-                </p>
-              </div>
+            <div className="mx-auto flex w-full max-w-[1600px] items-center gap-4 px-6 py-3 xl:px-8">
+              <GlobalSearchLauncher className="max-w-[340px] flex-1" />
 
-              <div className="workspace-date-chip hidden rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground md:block">
-                {todayLabel}
+              <div className="ml-auto flex items-center gap-2">
+                <div className="workspace-date-chip rounded-[0.7rem] px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+                  {todayLabel}
+                </div>
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white">
+                  <UserButton />
+                </div>
               </div>
             </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="stripe-badge-success">
-                <div className="h-2 w-2 rounded-full animate-pulse bg-[var(--stripe-success)]"></div>
-                <span>Live system status</span>
-              </div>
-              <GlobalSearchLauncher className="w-full max-w-[280px]" />
-            </div>
-          </div>
           </div>
         </header>
 
         <main className="flex-1">
-          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-5 xl:px-10">
             <div className="mx-auto max-w-[1500px]">
               <Switch>
                 <Route path="/admin/dashboard" component={AdminDashboard} />
@@ -140,6 +127,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
                 <Route path="/admin/feedback" component={AdminFeedbackPage} />
                 <Route path="/admin/finances/:section" component={FinancesPage} />
                 <Route path="/admin/finances" component={FinancesPage} />
+                <Route path="/admin/time-tracking" component={TimeTrackingPage} />
                 <Route path="/admin" component={AdminDashboard} />
                 <Route path="*">
                   {() => (

@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { parseISO } from "date-fns"
+import { format, parseISO } from "date-fns"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -25,11 +25,7 @@ export function formatCurrency(amount: number): string {
 
 export function formatDate(date: string | Date): string {
   const parsedDate = typeof date === 'string' ? parseLocalDate(date) : date
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(parsedDate)
+  return format(parsedDate, 'd MMMM yyyy')
 }
 
 export function calculateDays(

@@ -579,7 +579,7 @@ export function UsersPage() {
                                   )}
                                 </div>
                                 <p className="mt-1.5 text-xs text-muted-foreground">
-                                  Assigned: {new Date(assignment.assignedAt).toLocaleDateString()}
+                                  Assigned: {new Date(assignment.assignedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                                 </p>
                               </div>
                               <div className="flex items-center gap-1">
@@ -630,9 +630,9 @@ export function UsersPage() {
 
                   {/* Metadata */}
                   <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
-                    <span>Created: {new Date(user.createdAt).toLocaleDateString()}</span>
+                    <span>Created: {new Date(user.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                     {user.lastLoginAt && (
-                      <span>Last login: {new Date(user.lastLoginAt).toLocaleDateString()}</span>
+                      <span>Last login: {new Date(user.lastLoginAt).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                     )}
                   </div>
                 </div>

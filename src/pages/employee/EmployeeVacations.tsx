@@ -874,7 +874,7 @@ export function EmployeeVacations() {
                           <div className="flex items-center gap-4 text-sm text-gray-600">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4" />
-                              {format(parseISO(request.startDate), 'MMM d, yyyy')} - {format(parseISO(request.endDate), 'MMM d, yyyy')}
+                              {format(parseISO(request.startDate), 'd MMMM yyyy')} - {format(parseISO(request.endDate), 'd MMMM yyyy')}
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock className="h-4 w-4" />
@@ -1014,7 +1014,7 @@ export function EmployeeVacations() {
         >
           <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <CardHeader>
-              <CardTitle className="text-lg">Edit Shift - {format(selectedShiftDate, 'EEEE, MMM d')}</CardTitle>
+              <CardTitle className="text-lg">Edit Shift - {format(selectedShiftDate, 'd MMMM yyyy')}</CardTitle>
               <CardDescription>Set custom shift hours for this day</CardDescription>
             </CardHeader>
             <CardContent>

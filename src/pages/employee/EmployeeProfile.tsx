@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
-import { parseLocalDate } from '@/lib/utils'
+import { formatDate, parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
@@ -111,10 +111,7 @@ export function EmployeeProfile() {
     .toUpperCase()
 
   const profileCompletion = [teamMember.phone, teamMember.location, teamMember.bio].filter(Boolean).length
-  const startedAt = parseLocalDate(teamMember.startDate).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const startedAt = formatDate(parseLocalDate(teamMember.startDate))
 
   return (
     <div className="space-y-6">

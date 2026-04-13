@@ -111,7 +111,7 @@ async function listTestUsers() {
       (user.full_name || '').slice(0, 23).padEnd(25) +
       (user.role || '').padEnd(12) +
       (user.is_active ? 'Yes' : 'No').padEnd(8) +
-      (user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A')
+      (user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A')
     )
   }
 

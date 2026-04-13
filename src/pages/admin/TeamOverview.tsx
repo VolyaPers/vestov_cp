@@ -39,6 +39,7 @@ import { format } from 'date-fns'
 import { api } from '@/lib/api'
 import { convertTime, getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus, User } from '@/types/common'
+import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
 
 // Local TeamMember interface extends common type with additional fields from API
 interface LocalTeamMember {
@@ -326,30 +327,29 @@ export function TeamOverview() {
   }
 
   const MemberCard = ({ member }: { member: LocalTeamMember }) => (
-    <div className="group relative bg-white border border-gray-200 rounded-xl p-6 hover:border-gray-300 hover:shadow-sm transition-all duration-200">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+    <div className="group relative rounded-2xl border border-border/80 bg-white p-5 transition-colors hover:bg-slate-50/70">
+      <div className="mb-4 flex items-start justify-between">
         <div className="flex items-start space-x-4">
           <div className="relative">
             <Link href={`/admin/team-detail/${member.id}`} className="cursor-pointer">
-              <Avatar className="h-12 w-12 ring-2 ring-gray-100 hover:ring-blue-300 transition-all duration-200">
+              <Avatar className="h-12 w-12 ring-1 ring-border/70 transition-all duration-200 group-hover:ring-blue-200">
                 <AvatarImage src={member.avatarUrl} alt={member.name} className="object-cover" />
                 <AvatarFallback className="bg-slate-700 text-white font-medium">
                   {member.name.split(' ').map(n => n[0]).join('')}
                 </AvatarFallback>
               </Avatar>
             </Link>
-            <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ring-2 ring-white ${member.status === 'active' ? 'bg-green-400' :
-              member.status === 'bench' ? 'bg-yellow-400' : 'bg-gray-400'
+            <div className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full ring-2 ring-white ${member.status === 'active' ? 'bg-emerald-400' :
+              member.status === 'bench' ? 'bg-amber-400' : 'bg-slate-400'
               }`} />
           </div>
           <div className="flex-1 min-w-0">
             <Link href={`/admin/team-detail/${member.id}`}>
-              <h3 className="font-semibold text-gray-900 text-lg leading-tight hover:text-blue-600 cursor-pointer transition-colors">{member.name}</h3>
+              <h3 className="cursor-pointer text-base font-semibold leading-tight text-foreground transition-colors hover:text-blue-600">{member.name}</h3>
             </Link>
-            <p className="text-gray-600 text-sm mt-0.5">{member.position}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{member.position}</p>
             {member.location && (
-              <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
+              <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3" />
                 <span>{member.location}</span>
               </div>
@@ -359,7 +359,7 @@ export function TeamOverview() {
               const tz = member.timezone
               if (!tz && !shiftSummary) return null
               return (
-                <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                   {tz ? <Globe className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
                   {tz && <span>{getTimezoneAbbreviation(tz)}</span>}
                   {shiftSummary && (
@@ -373,70 +373,68 @@ export function TeamOverview() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           <Link href={`/admin/team-detail/${member.id}`}>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 hover:bg-green-50 hover:text-green-600"
+              className="h-8 w-8 p-0 hover:bg-emerald-50 hover:text-emerald-600"
               title="View details"
             >
               <Eye className="h-4 w-4" />
             </Button>
           </Link>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600"
-            onClick={() => handleEditTeamMember(member)}
-            title="Edit team member"
-          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600"
+              onClick={() => handleEditTeamMember(member)}
+              title="Edit team member"
+            >
             <Edit3 className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600"
-            onClick={() => handleDeleteTeamMember(member.id, member.name)}
-            title="Delete team member"
-          >
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600"
+              onClick={() => handleDeleteTeamMember(member.id, member.name)}
+              title="Delete team member"
+            >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
-      {/* Contact Info */}
-      <div className="space-y-2 mb-4">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Mail className="h-3.5 w-3.5 text-gray-400" />
+      <div className="mb-4 space-y-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Mail className="h-3.5 w-3.5 text-slate-400" />
           <span className="truncate">{member.email}</span>
         </div>
         {member.phone && (
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Phone className="h-3.5 w-3.5 text-gray-400" />
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Phone className="h-3.5 w-3.5 text-slate-400" />
             <span>{member.phone}</span>
           </div>
         )}
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Calendar className="h-3.5 w-3.5 text-gray-400" />
-          <span>Started {format(parseLocalDate(member.startDate), 'MMM d, yyyy')}</span>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+          <span>Started {format(parseLocalDate(member.startDate), 'd MMMM yyyy')}</span>
         </div>
       </div>
 
-      {/* Skills */}
       {member.skills && member.skills.length > 0 && (
         <div className="mb-4">
           <div className="flex flex-wrap gap-1.5">
             {member.skills.slice(0, 4).map((skill, index) => (
               <span
                 key={index}
-                className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700"
+                className="inline-flex items-center rounded-md border border-border/80 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700"
               >
                 {skill}
               </span>
             ))}
             {member.skills.length > 4 && (
-              <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-500">
+              <span className="inline-flex items-center rounded-md border border-border/80 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-500">
                 +{member.skills.length - 4} more
               </span>
             )}
@@ -444,21 +442,20 @@ export function TeamOverview() {
         </div>
       )}
 
-      {/* Billable Info */}
       {member.isBillable && (
-        <div className="pt-4 border-t border-gray-100">
+        <div className="border-t border-border/70 pt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {member.hourlyRate && (
                 <div className="flex items-center gap-1.5">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-50">
-                    <DollarSign className="h-4 w-4 text-green-600" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
+                    <DollarSign className="h-4 w-4 text-emerald-600" />
                   </div>
                   <div>
-                    <div className="font-semibold text-gray-900">
+                    <div className="font-semibold text-foreground">
                       {formatCurrency(parseFloat(String(member.hourlyRate || '0')))}
                     </div>
-                    <div className="text-xs text-gray-500">per hour</div>
+                    <div className="text-xs text-muted-foreground">per hour</div>
                   </div>
                 </div>
               )}
@@ -466,19 +463,19 @@ export function TeamOverview() {
 
             <div className="flex items-center gap-2">
               {member.clientName && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded-md">
+                <div className="flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-1">
                   <Briefcase className="h-3 w-3 text-blue-600" />
                   <span className="text-xs font-medium text-blue-700">{member.clientName}</span>
                 </div>
               )}
               {member.employmentType && member.employmentType !== 'fulltime' && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                   {member.employmentType === 'part_time' ? 'Part-time' : 'Freelancer'}
                 </span>
               )}
-              <div className={`px-2 py-1 rounded-md text-xs font-medium ${member.status === 'active' && member.clientId ? 'bg-green-50 text-green-700' :
-                member.status === 'bench' || !member.clientId ? 'bg-yellow-50 text-yellow-700' :
-                  'bg-gray-50 text-gray-700'
+              <div className={`rounded-md px-2 py-1 text-xs font-medium ${member.status === 'active' && member.clientId ? 'bg-emerald-50 text-emerald-700' :
+                member.status === 'bench' || !member.clientId ? 'bg-amber-50 text-amber-700' :
+                  'bg-slate-100 text-slate-700'
                 }`}>
                 {member.status === 'active' && member.clientId ? 'Assigned' :
                   member.status === 'bench' || !member.clientId ? 'Available' :
@@ -489,22 +486,21 @@ export function TeamOverview() {
         </div>
       )}
 
-      {/* Non-billable info */}
       {!member.isBillable && (
-        <div className="pt-4 border-t border-gray-100">
+        <div className="border-t border-border/70 pt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-50">
-                <UserCheck className="h-4 w-4 text-purple-600" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50">
+                <UserCheck className="h-4 w-4 text-violet-600" />
               </div>
-              <span className="text-sm font-medium text-gray-700">Internal Team</span>
+              <span className="text-sm font-medium text-foreground">Internal team</span>
             </div>
             {member.employmentType && member.employmentType !== 'fulltime' && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                 {member.employmentType === 'part_time' ? 'Part-time' : 'Freelancer'}
               </span>
             )}
-            <div className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-medium">
+            <div className="rounded-md bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700">
               {member.status}
             </div>
           </div>
@@ -523,139 +519,70 @@ export function TeamOverview() {
 
   return (
     <div className="space-y-6">
-      <div className="stripe-card p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold stripe-text-primary mb-2">
-              Team
-            </h1>
-            <p className="stripe-text-secondary text-lg">
-              Manage your billable resources and internal staff
-            </p>
-          </div>
-          <div className="hidden sm:flex items-center gap-3">
-            <div className="stripe-badge-success rounded-lg px-4 py-2">
-              <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: 'var(--stripe-success)' }}></div>
-              {billableMembers.filter(m => m.status === 'active' && m.clientId).length} Active
-            </div>
-            <div className="stripe-badge-warning rounded-lg px-4 py-2">
-              <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: 'var(--stripe-warning)' }}></div>
-              {billableMembers.filter(m => m.status === 'bench' || !m.clientId).length} Available
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Statistics - Stripe style */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-              <Users className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-gray-900">{teamMembers.length}</div>
-              <div className="text-sm text-gray-500">Total Team</div>
-            </div>
-          </div>
-          <div className="text-sm text-gray-500">All team members</div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-              <DollarSign className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-gray-900">{billableMembers.length}</div>
-              <div className="text-sm text-gray-500">Billable Resources</div>
-            </div>
-          </div>
-          <div className="text-sm text-gray-500">Available for clients</div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
-              <UserCheck className="h-6 w-6 text-purple-600" />
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-gray-900">{internalStaff.length}</div>
-              <div className="text-sm text-gray-500">Internal Staff</div>
-            </div>
-          </div>
-          <div className="text-sm text-gray-500">Non-billable members</div>
-        </div>
-
-        <div className="stripe-stat-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
-              <Briefcase className="h-6 w-6 text-orange-600" />
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-gray-900">
-                {billableMembers.filter(m => m.status === 'bench' || !m.clientId).length}
-              </div>
-              <div className="text-sm text-gray-500">Available Now</div>
-            </div>
-          </div>
-          <div className="text-sm text-gray-500">Ready for assignment</div>
-        </div>
-      </div>
-
-      {/* Search and Actions */}
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="Search by name, position, email, or location..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-white border-gray-200 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 rounded-xl"
-          />
-        </div>
-        <div className="flex items-center gap-2" style={{ minWidth: '200px' }}>
-          <div className="relative team-member-dropdown" style={{ display: 'block' }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (availableUsers.length === 0) {
-                  showAlert({ message: 'No users available with role "team_member". Please create a user with this role first.', type: 'info' })
-                  return
-                }
-                setIsSelectOpen(!isSelectOpen)
-              }}
-              disabled={availableUsers.length === 0 || isSubmitting}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-400 via-purple-400 to-purple-500 hover:from-sky-500 hover:via-purple-500 hover:to-purple-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              style={{ display: 'inline-flex', visibility: 'visible', minWidth: '150px', position: 'relative', zIndex: 1 }}
-            >
-              <Plus className="h-4 w-4" />
-              Add Team Member
-            </button>
-            {isSelectOpen && availableUsers.length > 0 && (
-              <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                <div className="p-2">
-                  {availableUsers.map((user) => (
-                    <div
-                      key={user.id}
-                      onClick={async () => {
-                        setIsSelectOpen(false)
-                        await handleAddTeamMember(user.id.toString())
-                      }}
-                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer rounded-md text-sm"
-                    >
-                      <div className="font-medium">{user.fullName}</div>
-                      <div className="text-gray-500 text-xs">{user.email}</div>
-                    </div>
-                  ))}
+      <PageHero
+        eyebrow="Admin / Team"
+        title="Workforce overview"
+        description="Track who is staffed, who is available, and how the delivery bench is changing across the team."
+        theme="teal"
+        meta={
+          <>
+            <span>{teamMembers.length} team members</span>
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span>{billableMembers.filter((m) => m.status === 'active' && m.clientId).length} assigned</span>
+            <span className="h-1 w-1 rounded-full bg-slate-300" />
+            <span>{billableMembers.filter((m) => m.status === 'bench' || !m.clientId).length} available</span>
+          </>
+        }
+        aside={
+          <Card className="border border-border/80 shadow-none">
+            <CardContent className="space-y-3 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Workforce split</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-slate-50/70 px-3 py-2.5">
+                  <span className="text-sm font-medium text-foreground">Billable resources</span>
+                  <span className="text-sm text-muted-foreground">{billableMembers.length}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-slate-50/70 px-3 py-2.5">
+                  <span className="text-sm font-medium text-foreground">Internal staff</span>
+                  <span className="text-sm text-muted-foreground">{internalStaff.length}</span>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+            </CardContent>
+          </Card>
+        }
+      />
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricTile
+          label="Total team"
+          value={teamMembers.length}
+          hint="All people currently in the admin roster."
+          icon={<Users className="h-4 w-4" />}
+          tone="primary"
+        />
+        <MetricTile
+          label="Billable resources"
+          value={billableMembers.length}
+          hint="Team members that can be allocated to client work."
+          icon={<DollarSign className="h-4 w-4" />}
+          tone="emerald"
+        />
+        <MetricTile
+          label="Internal staff"
+          value={internalStaff.length}
+          hint="Non-billable operational or leadership roles."
+          icon={<UserCheck className="h-4 w-4" />}
+          tone="violet"
+        />
+        <MetricTile
+          label="Available now"
+          value={billableMembers.filter((m) => m.status === 'bench' || !m.clientId).length}
+          hint="Bench capacity ready for new assignments."
+          icon={<Briefcase className="h-4 w-4" />}
+          tone="amber"
+        />
       </div>
 
-      {/* Edit Team Member Dialog */}
       <EditTeamMemberDialog
         open={isEditModalOpen}
         onOpenChange={(open) => {
@@ -674,45 +601,88 @@ export function TeamOverview() {
         isSubmitting={isSubmitting}
       />
 
-      {/* Tabs for different member types - Stripe style */}
-      <div className="stripe-card">
-        <div className="border-b stripe-border">
-          <nav className="flex space-x-8 px-6" aria-label="Tabs">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'all'
-                ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
-                : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
-                }`}
-            >
-              <Users className="h-4 w-4 mr-2 inline" />
-              All Team Members ({teamMembers.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('billable')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'billable'
-                ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
-                : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
-                }`}
-            >
-              <DollarSign className="h-4 w-4 mr-2 inline" />
-              Billable Resources ({billableMembers.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('internal')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'internal'
-                ? 'border-[var(--stripe-primary)] text-[var(--stripe-primary)]'
-                : 'border-transparent stripe-text-secondary hover:stripe-text-primary hover:border-gray-300'
-                }`}
-            >
-              <UserCheck className="h-4 w-4 mr-2 inline" />
-              Internal Staff ({internalStaff.length})
-            </button>
-          </nav>
-        </div>
+      <Card className="border border-border/80 shadow-none">
+        <CardContent className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <SectionHeading
+              title="Team directory"
+              description="Filter the roster by staffing mode and jump straight into detail work."
+              icon={<Users className="h-4 w-4" />}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative min-w-0 flex-1 sm:w-[320px]">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, position, email, or location..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-10 rounded-xl border-border/80 bg-white pl-10 shadow-none"
+                />
+              </div>
+              <div className="relative team-member-dropdown">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (availableUsers.length === 0) {
+                      showAlert({ message: 'No users available with role "team_member". Please create a user with this role first.', type: 'info' })
+                      return
+                    }
+                    setIsSelectOpen(!isSelectOpen)
+                  }}
+                  disabled={availableUsers.length === 0 || isSubmitting}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add team member
+                </Button>
+                {isSelectOpen && availableUsers.length > 0 && (
+                  <div className="absolute right-0 z-50 mt-2 max-h-60 w-72 overflow-y-auto rounded-xl border border-border/80 bg-white p-2 shadow-lg">
+                    {availableUsers.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={async () => {
+                          setIsSelectOpen(false)
+                          await handleAddTeamMember(user.id.toString())
+                        }}
+                        className="block w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                      >
+                        <div className="font-medium text-foreground">{user.fullName}</div>
+                        <div className="text-xs text-muted-foreground">{user.email}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
-        <div className="p-6">
-          {/* Tab Content */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'all', label: `All team (${teamMembers.length})`, icon: Users },
+              { id: 'billable', label: `Billable (${billableMembers.length})`, icon: DollarSign },
+              { id: 'internal', label: `Internal (${internalStaff.length})`, icon: UserCheck },
+            ].map((tab) => {
+              const Icon = tab.icon
+              const active = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-border/80 bg-white text-muted-foreground hover:bg-slate-50 hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
           {activeTab === 'all' && (
             <div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
@@ -721,13 +691,11 @@ export function TeamOverview() {
                 ))}
               </div>
               {getFilteredMembers(teamMembers).length === 0 && (
-                <div className="stripe-surface rounded-lg p-12 text-center stripe-border">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-lg stripe-surface flex items-center justify-center">
-                    <Users className="h-8 w-8 stripe-text-muted" />
-                  </div>
-                  <h3 className="text-lg font-semibold stripe-text-primary mb-2">No team members found</h3>
-                  <p className="stripe-text-muted">Try adjusting your search or add new team members</p>
-                </div>
+                <EmptyState
+                  icon={<Users className="h-5 w-5" />}
+                  title="No team members found"
+                  description="Try a different search term or add a new team member to the directory."
+                />
               )}
             </div>
           )}
@@ -740,13 +708,11 @@ export function TeamOverview() {
                 ))}
               </div>
               {getFilteredMembers(billableMembers).length === 0 && (
-                <div className="stripe-surface rounded-lg p-12 text-center stripe-border">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-lg stripe-surface flex items-center justify-center">
-                    <DollarSign className="h-8 w-8 stripe-text-muted" />
-                  </div>
-                  <h3 className="text-lg font-semibold stripe-text-primary mb-2">No billable members found</h3>
-                  <p className="stripe-text-muted">Try adjusting your search or add new billable team members</p>
-                </div>
+                <EmptyState
+                  icon={<DollarSign className="h-5 w-5" />}
+                  title="No billable members found"
+                  description="Try a different search term or move a team member into a billable role."
+                />
               )}
             </div>
           )}
@@ -759,18 +725,16 @@ export function TeamOverview() {
                 ))}
               </div>
               {getFilteredMembers(internalStaff).length === 0 && (
-                <div className="stripe-surface rounded-lg p-12 text-center stripe-border">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-lg stripe-surface flex items-center justify-center">
-                    <UserCheck className="h-8 w-8 stripe-text-muted" />
-                  </div>
-                  <h3 className="text-lg font-semibold stripe-text-primary mb-2">No internal staff found</h3>
-                  <p className="stripe-text-muted">Try adjusting your search or add new internal staff members</p>
-                </div>
+                <EmptyState
+                  icon={<UserCheck className="h-5 w-5" />}
+                  title="No internal staff found"
+                  description="Try a different search term or create an internal-only team profile."
+                />
               )}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
     </div>
   )

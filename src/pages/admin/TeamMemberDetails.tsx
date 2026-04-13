@@ -603,7 +603,7 @@ export function TeamMemberDetails() {
                 )}
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                   <Calendar className="h-4 w-4 text-gray-400" />
-                  <span className="text-gray-900">Started {format(parseLocalDate(member.startDate), 'MMM d, yyyy')}</span>
+                  <span className="text-gray-900">Started {format(parseLocalDate(member.startDate), 'd MMMM yyyy')}</span>
                 </div>
               </div>
             </div>
@@ -768,7 +768,7 @@ export function TeamMemberDetails() {
                           <span className="text-sm font-medium text-blue-900">Current Cycle Start</span>
                         </div>
                         <div className="text-2xl font-bold text-blue-900">
-                          {format(new Date(currentCycle.cycleStart), 'MMM d, yyyy')}
+                          {format(new Date(currentCycle.cycleStart), 'd MMMM yyyy')}
                         </div>
                       </div>
 
@@ -779,7 +779,7 @@ export function TeamMemberDetails() {
                           <span className="text-sm font-medium text-purple-900">Current Cycle End</span>
                         </div>
                         <div className="text-2xl font-bold text-purple-900">
-                          {format(new Date(currentCycle.cycleEnd), 'MMM d, yyyy')}
+                          {format(new Date(currentCycle.cycleEnd), 'd MMMM yyyy')}
                         </div>
                       </div>
 
@@ -864,7 +864,7 @@ export function TeamMemberDetails() {
                                 <div className="flex items-center gap-3">
                                   <Badge className={colors.badge}>{request.leaveTypeName}</Badge>
                                   <span className="text-sm text-gray-600">
-                                    {format(parseLocalDate(request.startDate), 'MMM d, yyyy')} - {format(parseLocalDate(request.endDate), 'MMM d, yyyy')}
+                                    {format(parseLocalDate(request.startDate), 'd MMMM yyyy')} - {format(parseLocalDate(request.endDate), 'd MMMM yyyy')}
                                   </span>
                                 </div>
                                 <span className="text-sm font-medium">{parseFloat(request.daysCount).toFixed(2)} days</span>
@@ -887,7 +887,7 @@ export function TeamMemberDetails() {
                               <div className="flex items-center gap-3">
                                 <Badge className="bg-yellow-100 text-yellow-800">{request.leaveTypeName}</Badge>
                                 <span className="text-sm text-gray-600">
-                                  {format(parseLocalDate(request.startDate), 'MMM d, yyyy')} - {format(parseLocalDate(request.endDate), 'MMM d, yyyy')}
+                                  {format(parseLocalDate(request.startDate), 'd MMMM yyyy')} - {format(parseLocalDate(request.endDate), 'd MMMM yyyy')}
                                 </span>
                               </div>
                               <span className="text-sm font-medium">{parseFloat(request.daysCount).toFixed(2)} days</span>
@@ -909,7 +909,7 @@ export function TeamMemberDetails() {
                               <div className="flex items-center gap-3">
                                 <Badge className="bg-red-100 text-red-800">{request.leaveTypeName}</Badge>
                                 <span className="text-sm text-gray-600">
-                                  {format(parseLocalDate(request.startDate), 'MMM d, yyyy')} - {format(parseLocalDate(request.endDate), 'MMM d, yyyy')}
+                                  {format(parseLocalDate(request.startDate), 'd MMMM yyyy')} - {format(parseLocalDate(request.endDate), 'd MMMM yyyy')}
                                 </span>
                               </div>
                               <span className="text-sm font-medium">{parseFloat(request.daysCount).toFixed(2)} days</span>
@@ -968,7 +968,7 @@ export function TeamMemberDetails() {
                       )[0]
                       const nextStartDate = new Date(lastCycle.cycleEnd)
                       nextStartDate.setDate(nextStartDate.getDate() + 1)
-                      return nextStartDate.toLocaleDateString()
+                      return nextStartDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
                     })()} with automatic leave allocations`
                     : 'Create the first employment cycle with default leave allocations'
                 }

@@ -178,7 +178,7 @@ export function ReportsPage() {
   }
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   }
 
   const aggregateByPeriod = (data: Invoice[], period: 'month' | 'quarter' | 'year') => {

@@ -327,7 +327,7 @@ export function EmployeeLeaveRequest() {
                     <div className="flex items-center gap-4 text-sm text-gray-600">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        {format(parseISO(request.startDate), 'MMM d, yyyy')} - {format(parseISO(request.endDate), 'MMM d, yyyy')}
+                        {format(parseISO(request.startDate), 'd MMMM yyyy')} - {format(parseISO(request.endDate), 'd MMMM yyyy')}
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="h-4 w-4" />

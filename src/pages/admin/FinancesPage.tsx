@@ -30,6 +30,7 @@ import {
   Calendar,
   ArrowRight,
   ChevronDown,
+  Clock3,
   Info,
 } from 'lucide-react'
 import { Tooltip as InfoTooltip } from '@/components/ui/tooltip'
@@ -260,7 +261,7 @@ function formatDateRangeLabel(start: string, end: string): string {
   const s = new Date(start + 'T00:00:00')
   const e = new Date(end + 'T00:00:00')
   const sameYear = s.getFullYear() === e.getFullYear()
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+  const opts: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric' }
   const optsY: Intl.DateTimeFormatOptions = { ...opts, year: 'numeric' }
   if (sameYear) {
     return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', optsY)}`
@@ -295,7 +296,7 @@ function formatCurrency(amount: number | string): string {
 function formatDate(dateStr: string): string {
   if (!dateStr) return ''
   const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T00:00:00'))
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 function toInputDate(dateStr?: string): string {
@@ -318,6 +319,25 @@ function formatMonthLabel(monthValue: string): string {
     return monthValue
   }
   return `${MONTHS[monthIndex]} ${year}`
+}
+
+function getMonthRange(startMonth: string, endMonth: string): string[] {
+  if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth) || startMonth > endMonth) {
+    return []
+  }
+
+  const [startYear, startMonthIndex] = startMonth.split('-').map(Number)
+  const [endYear, endMonthIndex] = endMonth.split('-').map(Number)
+  const result: string[] = []
+  const cursor = new Date(startYear, startMonthIndex - 1, 1)
+  const end = new Date(endYear, endMonthIndex - 1, 1)
+
+  while (cursor <= end) {
+    result.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`)
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+
+  return result
 }
 
 function parseMoney(value: number | string | null | undefined): number {
@@ -538,6 +558,7 @@ interface SalaryMember {
   id: number
   name: string
   position: string | null
+  startDate: string
   monthlyRate: number
   monthlySalaryExtras?: SalaryExtra[]
   hourlyRate: number | null
@@ -578,6 +599,14 @@ interface BalancesData {
   stripe: { available: number; pending: number; currency: string } | null
   payoneer: { available: number; currency: string } | null
   fetchedAt: string
+}
+
+interface IntegrationConfigState {
+  isActive: boolean
+  isConfigured: boolean
+  workspaceId?: string | null
+  workspaceName?: string | null
+  authorizedUserName?: string | null
 }
 
 type MergedRow = {
@@ -687,7 +716,7 @@ export function FinancesPage() {
   const [balancesLoading, setBalancesLoading] = useState(true)
 
   // Integration config modal state
-  const [showConfigModal, setShowConfigModal] = useState<'stripe' | 'payoneer' | null>(null)
+  const [showConfigModal, setShowConfigModal] = useState<'stripe' | 'payoneer' | 'clickup' | null>(null)
   const [configSaving, setConfigSaving] = useState(false)
   const [stripeForm, setStripeForm] = useState({ secretKey: '' })
   const [payoneerForm, setPayoneerForm] = useState({
@@ -696,6 +725,8 @@ export function FinancesPage() {
     programId: '',
     environment: 'sandbox',
   })
+  const [clickupForm, setClickupForm] = useState({ apiToken: '' })
+  const [clickupIntegration, setClickupIntegration] = useState<IntegrationConfigState | null>(null)
 
   useEffect(() => {
     if (location === '/admin/finances' || location === '/admin/finances/') {
@@ -719,6 +750,7 @@ export function FinancesPage() {
   // Load balances on mount
   useEffect(() => {
     loadBalances()
+    loadClickUpIntegration()
   }, [])
 
   // Load overview data when date range changes
@@ -768,9 +800,20 @@ export function FinancesPage() {
     }
   }
 
-  const openConfigModal = (provider: 'stripe' | 'payoneer') => {
+  const loadClickUpIntegration = async () => {
+    try {
+      const data = await api.getIntegration('clickup')
+      setClickupIntegration(data)
+    } catch (error) {
+      console.error('Failed to load ClickUp integration:', error)
+      setClickupIntegration(null)
+    }
+  }
+
+  const openConfigModal = (provider: 'stripe' | 'payoneer' | 'clickup') => {
     setStripeForm({ secretKey: '' })
     setPayoneerForm({ clientId: '', clientSecret: '', programId: '', environment: 'sandbox' })
+    setClickupForm({ apiToken: '' })
     setShowConfigModal(provider)
   }
 
@@ -780,11 +823,13 @@ export function FinancesPage() {
       setConfigSaving(true)
       if (showConfigModal === 'stripe') {
         await api.saveIntegration('stripe', { secretKey: stripeForm.secretKey })
+      } else if (showConfigModal === 'clickup') {
+        await api.saveIntegration('clickup', { apiToken: clickupForm.apiToken })
       } else {
         await api.saveIntegration('payoneer', payoneerForm)
       }
       setShowConfigModal(null)
-      await loadBalances()
+      await Promise.all([loadBalances(), loadClickUpIntegration()])
     } catch (error) {
       console.error('Failed to save integration:', error)
     } finally {
@@ -796,7 +841,7 @@ export function FinancesPage() {
     if (!confirm(`Disconnect ${provider}? This will remove saved credentials.`)) return
     try {
       await api.deleteIntegration(provider)
-      await loadBalances()
+      await Promise.all([loadBalances(), loadClickUpIntegration()])
       setShowConfigModal(null)
     } catch (error) {
       console.error('Failed to disconnect integration:', error)
@@ -1143,6 +1188,50 @@ export function FinancesPage() {
     return getSalaryMonthContext(selectedMember.id, salaryForm.salaryMonth, editingSalaryPayment?.id)
   }, [selectedMember, salaryForm.salaryMonth, editingSalaryPayment?.id, parsedSalaryPayments])
 
+  const remainingSalaryByMember = useMemo(() => {
+    if (!salariesData?.members?.length) return new Map<number, number>()
+
+    if (salariesYear > currentYear) {
+      return new Map(salariesData.members.map((member) => [member.id, 0]))
+    }
+
+    const rangeEndMonth = salariesYear === currentYear ? toInputMonth() : `${salariesYear}-12`
+    const paymentsByMemberAndMonth = new Map<number, Map<string, Array<{ parsed: ParsedSalaryPayment }>>>()
+
+    for (const entry of parsedSalaryPayments) {
+      const memberMap = paymentsByMemberAndMonth.get(entry.payment.teamMemberId) ?? new Map<string, Array<{ parsed: ParsedSalaryPayment }>>()
+      const monthEntries = memberMap.get(entry.parsed.salaryMonth) ?? []
+      monthEntries.push({ parsed: entry.parsed })
+      memberMap.set(entry.parsed.salaryMonth, monthEntries)
+      paymentsByMemberAndMonth.set(entry.payment.teamMemberId, memberMap)
+    }
+
+    return new Map(
+      salariesData.members.map((member) => {
+        const memberStartMonth = toInputMonth(member.startDate)
+        const rangeStartMonth = memberStartMonth > `${salariesYear}-01`
+          ? memberStartMonth
+          : `${salariesYear}-01`
+        const months = getMonthRange(rangeStartMonth, rangeEndMonth)
+        const defaultExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
+
+        const remainingTotal = months.reduce((sum, month) => {
+          const monthPayments = paymentsByMemberAndMonth.get(member.id)?.get(month) ?? []
+          const plannedBase = monthPayments.find((entry) => entry.parsed.plannedBase > 0)?.parsed.plannedBase
+            ?? parseMoney(member.monthlyRate)
+          const paidBase = monthPayments.reduce((monthSum, entry) => monthSum + entry.parsed.paidBase, 0)
+          const remainingBase = Math.max(plannedBase - paidBase, 0)
+          const remainingExtras = getRemainingDefaultExtras(defaultExtras, monthPayments)
+            .reduce((extrasSum, extra) => extrasSum + parseMoney(extra.amount), 0)
+
+          return sum + remainingBase + remainingExtras
+        }, 0)
+
+        return [member.id, remainingTotal]
+      })
+    )
+  }, [currentYear, parsedSalaryPayments, salariesData, salariesYear])
+
   const plannedSalaryAmount = parseMoney(salaryForm.baseSalary)
   const salaryPaymentAmount = parseMoney(salaryForm.paymentAmount)
   const extrasTotal = salaryForm.extras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
@@ -1484,6 +1573,21 @@ export function FinancesPage() {
                 {balancesLoading ? '...' : balances?.payoneer ? formatCurrency(balances.payoneer.available) : '--'}
               </span>
               {!balances?.payoneer && !balancesLoading && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+            <button
+              onClick={() => setLocation('/admin/time-tracking')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-sky-300 hover:bg-sky-50/50 transition-colors text-sm"
+              title="Open ClickUp time tracking"
+            >
+              <Clock3 className="w-3.5 h-3.5 text-sky-600" />
+              <span className="font-semibold text-gray-900">
+                {clickupIntegration?.workspaceName || 'Time Tracking'}
+              </span>
+              {clickupIntegration?.isActive ? (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              ) : (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               )}
             </button>
@@ -2213,6 +2317,7 @@ export function FinancesPage() {
                   const monthlyExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
                   const monthlyExtrasTotal = monthlyExtras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
                   const monthlyTotalWithExtras = parseMoney(member.monthlyRate) + monthlyExtrasTotal
+                  const remainingToPay = remainingSalaryByMember.get(member.id) ?? 0
 
                   return (
                     <div key={member.id} className="stripe-card p-6">
@@ -2300,6 +2405,15 @@ export function FinancesPage() {
                           <span className="stripe-text-secondary">Monthly Total</span>
                           <span className="font-semibold text-blue-600">
                             {formatCurrency(monthlyTotalWithExtras)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-start gap-3 text-sm">
+                          <div className="flex flex-col">
+                            <span className="stripe-text-secondary">Remaining to Pay</span>
+                            <span className="text-xs stripe-text-muted">Includes unpaid previous months</span>
+                          </div>
+                          <span className={`font-semibold ${remainingToPay > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {formatCurrency(remainingToPay)}
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">
@@ -3177,7 +3291,7 @@ export function FinancesPage() {
           >
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-lg font-semibold stripe-text-primary">
-                {showConfigModal === 'stripe' ? 'Stripe' : 'Payoneer'} Integration
+                {showConfigModal === 'stripe' ? 'Stripe' : showConfigModal === 'payoneer' ? 'Payoneer' : 'ClickUp'} Integration
               </h3>
               <button
                 onClick={() => setShowConfigModal(null)}
@@ -3189,7 +3303,9 @@ export function FinancesPage() {
             <p className="text-sm stripe-text-muted mb-5">
               {showConfigModal === 'stripe'
                 ? 'Enter your Stripe secret key to connect your account.'
-                : 'Enter your Payoneer API credentials to connect your account.'}
+                : showConfigModal === 'payoneer'
+                  ? 'Enter your Payoneer API credentials to connect your account.'
+                  : 'Enter your ClickUp API token to validate the workspace and enable time syncing.'}
             </p>
 
             <div className="space-y-4">
@@ -3209,7 +3325,7 @@ export function FinancesPage() {
                     Find it at dashboard.stripe.com/apikeys
                   </p>
                 </div>
-              ) : (
+              ) : showConfigModal === 'payoneer' ? (
                 <>
                   <div>
                     <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
@@ -3261,11 +3377,40 @@ export function FinancesPage() {
                     </select>
                   </div>
                 </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
+                      Personal API token
+                    </label>
+                    <input
+                      type="password"
+                      value={clickupForm.apiToken}
+                      onChange={(e) => setClickupForm({ apiToken: e.target.value })}
+                      placeholder="pk_..."
+                      className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm font-mono"
+                    />
+                    <p className="text-xs stripe-text-muted mt-1.5">
+                      Use a ClickUp workspace owner or admin token so Vestov Hub can fetch time entries across the team.
+                    </p>
+                  </div>
+                  {clickupIntegration?.isActive && (
+                    <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                      <p className="font-medium">{clickupIntegration.workspaceName || 'Connected workspace'}</p>
+                      <p className="mt-1 text-xs text-sky-800">
+                        Workspace ID: {clickupIntegration.workspaceId || 'N/A'}
+                        {clickupIntegration.authorizedUserName ? ` · Token owner: ${clickupIntegration.authorizedUserName}` : ''}
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Buttons */}
               <div className="flex gap-3 pt-2">
-                {(showConfigModal === 'stripe' ? balances?.stripe : balances?.payoneer) && (
+                {((showConfigModal === 'stripe' && balances?.stripe) ||
+                  (showConfigModal === 'payoneer' && balances?.payoneer) ||
+                  (showConfigModal === 'clickup' && clickupIntegration?.isActive)) && (
                   <button
                     onClick={() => handleDisconnectIntegration(showConfigModal)}
                     className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
@@ -3286,7 +3431,8 @@ export function FinancesPage() {
                     configSaving ||
                     (showConfigModal === 'stripe' && !stripeForm.secretKey) ||
                     (showConfigModal === 'payoneer' &&
-                      (!payoneerForm.clientId || !payoneerForm.clientSecret || !payoneerForm.programId))
+                      (!payoneerForm.clientId || !payoneerForm.clientSecret || !payoneerForm.programId)) ||
+                    (showConfigModal === 'clickup' && !clickupForm.apiToken)
                   }
                   className="stripe-btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
                 >

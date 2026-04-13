@@ -4,6 +4,7 @@ import { db } from '../db/index.js'
 import { integrationSettings } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 import { encrypt, decrypt } from '../lib/encryption.js'
+import { listClickUpWorkspaces, validateClickUpToken } from '../services/clickup.js'
 
 const router = Router()
 router.use(requireAuth)
@@ -16,7 +17,7 @@ function isAdmin(req: any, res: any): boolean {
   return true
 }
 
-const VALID_PROVIDERS = ['stripe', 'payoneer']
+const VALID_PROVIDERS = ['stripe', 'payoneer', 'clickup']
 
 // Mask a secret key for display
 function maskSecret(value: string): string {
@@ -94,6 +95,9 @@ router.get('/integrations/:provider', async (req, res) => {
       isConfigured: true,
       lastSyncAt: row.lastSyncAt,
       credentials: masked,
+      workspaceId: provider === 'clickup' ? creds.workspaceId ?? null : null,
+      workspaceName: provider === 'clickup' ? creds.workspaceName ?? null : null,
+      authorizedUserName: provider === 'clickup' ? creds.authorizedUserName ?? null : null,
     })
   } catch (error) {
     console.error('Get integration error:', error)
@@ -123,10 +127,39 @@ router.put('/integrations/:provider', async (req, res) => {
     if (!credentials.clientId || !credentials.clientSecret || !credentials.programId) {
       return res.status(400).json({ error: 'Client ID, Client Secret, and Program ID are required' })
     }
+  } else if (provider === 'clickup') {
+    if (!credentials.apiToken) {
+      return res.status(400).json({ error: 'ClickUp API token is required' })
+    }
+    if (!credentials.workspaceId || !credentials.workspaceName) {
+      return res.status(400).json({ error: 'ClickUp workspace selection is required' })
+    }
   }
 
   try {
-    const encrypted = encrypt(JSON.stringify(credentials))
+    let normalizedCredentials = credentials
+
+    if (provider === 'clickup') {
+      const [validation, workspaces] = await Promise.all([
+        validateClickUpToken(credentials.apiToken),
+        listClickUpWorkspaces(credentials.apiToken),
+      ])
+      const selectedWorkspace = workspaces.find(
+        (workspace) => workspace.id.trim() === String(credentials.workspaceId).trim(),
+      )
+      if (!selectedWorkspace) {
+        return res.status(400).json({ error: 'Selected ClickUp workspace is not accessible with this token.' })
+      }
+      normalizedCredentials = {
+        apiToken: credentials.apiToken,
+        workspaceId: selectedWorkspace.id,
+        workspaceName: selectedWorkspace.name,
+        workspaceColor: selectedWorkspace.color ?? null,
+        authorizedUserName: validation.status.authorizedUserName ?? null,
+      }
+    }
+
+    const encrypted = encrypt(JSON.stringify(normalizedCredentials))
 
     const [existing] = await db
       .select({ id: integrationSettings.id })
@@ -150,7 +183,14 @@ router.put('/integrations/:provider', async (req, res) => {
       })
     }
 
-    res.json({ success: true, provider, isActive: true })
+    res.json({
+      success: true,
+      provider,
+      isActive: true,
+      workspaceId: provider === 'clickup' ? normalizedCredentials.workspaceId ?? null : null,
+      workspaceName: provider === 'clickup' ? normalizedCredentials.workspaceName ?? null : null,
+      authorizedUserName: provider === 'clickup' ? normalizedCredentials.authorizedUserName ?? null : null,
+    })
   } catch (error) {
     console.error('Save integration error:', error)
     res.status(500).json({ error: 'Failed to save integration' })

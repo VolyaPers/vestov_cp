@@ -393,7 +393,7 @@ export function VacationPage() {
   }
 
   const handleShowDayDetails = (date: Date, events: any[]) => {
-    setSelectedDate(format(date, 'MMMM d, yyyy'))
+    setSelectedDate(format(date, 'd MMMM yyyy'))
     setSelectedDayEvents(events)
     setShowDayDetailsModal(true)
   }
@@ -1747,7 +1747,7 @@ export function VacationPage() {
           >
             <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <CardHeader>
-                <CardTitle>Team — {format(allMembersModalDate, 'MMMM d, yyyy')}</CardTitle>
+                <CardTitle>Team — {format(allMembersModalDate, 'd MMMM yyyy')}</CardTitle>
                 <CardDescription>
                   {totalCount} {totalCount === 1 ? 'member' : 'members'} · {allMembersModalWorking.length} working · {allMembersModalLeaves.length} on leave
                 </CardDescription>
