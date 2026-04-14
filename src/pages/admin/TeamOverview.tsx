@@ -39,7 +39,7 @@ import { format } from 'date-fns'
 import { api } from '@/lib/api'
 import { convertTime, getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 import type { CreateTeamMemberData, UpdateTeamMemberData, TeamMemberStatus, User } from '@/types/common'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading, TableSkeleton } from '@/components/page-primitives'
 
 // Local TeamMember interface extends common type with additional fields from API
 interface LocalTeamMember {
@@ -511,8 +511,16 @@ export function TeamOverview() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <PageHeroSkeleton />
+        <div className="grid gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+        <CardSkeleton titleWidth="w-44" lines={3} />
+        <CardSkeleton titleWidth="w-40" lines={2} />
+        <TableSkeleton rows={6} columns={4} />
       </div>
     )
   }

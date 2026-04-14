@@ -151,7 +151,7 @@ export function InvoicesPage() {
         <CardContent className="p-6">
           {invoicesLoading ? (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <div className="inline-block h-10 w-10 animate-pulse rounded-full bg-slate-300/70"></div>
               <p className="mt-4 font-medium text-muted-foreground">Loading invoices...</p>
             </div>
           ) : invoices.length === 0 ? (

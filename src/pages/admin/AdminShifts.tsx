@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 import { PreferredShiftsDisplay } from '@/components/PreferredShiftsDisplay'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading } from '@/components/page-primitives'
 
 interface Shift {
   id: number
@@ -95,8 +95,19 @@ export function AdminShifts() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+      <div className="space-y-6">
+        <PageHeroSkeleton />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+        <CardSkeleton titleWidth="w-44" lines={4} />
+        <CardSkeleton titleWidth="w-40" lines={4} />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+        </div>
       </div>
     )
   }

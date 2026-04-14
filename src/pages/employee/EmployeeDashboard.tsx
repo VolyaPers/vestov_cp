@@ -23,7 +23,7 @@ import { PreferredShiftsEditor } from '@/components/PreferredShiftsEditor'
 import { TimezoneSelect } from '@/components/TimezoneSelect'
 import { Label } from '@/components/ui/label'
 import type { ShiftSchedule } from '@/types/common'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading } from '@/components/page-primitives'
 
 interface DashboardData {
   profile: {
@@ -243,8 +243,24 @@ export function EmployeeDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="space-y-4 sm:space-y-6">
+        <PageHeroSkeleton />
+
+        <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+              <MetricTileSkeleton />
+            </div>
+          ))}
+        </div>
+
+        <CardSkeleton titleWidth="w-32" lines={2} />
+        <CardSkeleton titleWidth="w-44" lines={3} tall />
+
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+          <CardSkeleton titleWidth="w-36" lines={5} tall />
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+        </div>
       </div>
     )
   }

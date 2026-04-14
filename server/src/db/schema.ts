@@ -223,6 +223,24 @@ export const financeCategories = pgTable('finance_categories', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
+// Finance activity audit log
+export const financeActivityLogs = pgTable('finance_activity_logs', {
+  id: serial('id').primaryKey(),
+  action: varchar('action', { length: 50 }).notNull(), // 'invoice_created' | 'transaction_updated' | etc.
+  entityType: varchar('entity_type', { length: 50 }).notNull(), // 'invoice' | 'transaction' | 'salary_payment' | 'salary_rate' | 'salary_extras'
+  entityId: integer('entity_id').notNull(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id),
+  clientId: integer('client_id').references(() => clients.id),
+  invoiceId: integer('invoice_id').references(() => invoices.id),
+  transactionId: integer('transaction_id').references(() => financialTransactions.id),
+  actorId: integer('actor_id').references(() => users.id).notNull(),
+  summary: text('summary').notNull(),
+  beforeData: jsonb('before_data'),
+  afterData: jsonb('after_data'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 // Integration Settings table
 export const integrationSettings = pgTable('integration_settings', {
   id: serial('id').primaryKey(),

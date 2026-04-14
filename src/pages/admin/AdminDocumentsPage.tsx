@@ -699,7 +699,7 @@ export function AdminDocumentsPage() {
     if (isLoadingDocs) {
       return (
         <div className="p-4 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          <div className="h-6 w-6 animate-pulse rounded-full bg-slate-300/70"></div>
         </div>
       )
     }
@@ -707,7 +707,7 @@ export function AdminDocumentsPage() {
     if (!docs) {
       return (
         <div className="p-4 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+          <div className="h-6 w-6 animate-pulse rounded-full bg-slate-300/70"></div>
         </div>
       )
     }
@@ -758,7 +758,7 @@ export function AdminDocumentsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="h-10 w-10 animate-pulse rounded-full bg-slate-300/70"></div>
       </div>
     )
   }

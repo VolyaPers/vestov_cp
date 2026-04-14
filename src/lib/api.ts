@@ -84,6 +84,50 @@ export interface FinanceCategoriesResponse {
   expense: FinanceCategory[]
 }
 
+export interface FinanceAuditLog {
+  id: number
+  action: string
+  entityType: string
+  entityId: number
+  teamMemberId: number | null
+  clientId: number | null
+  invoiceId: number | null
+  transactionId: number | null
+  summary: string
+  beforeData: Record<string, any> | null
+  afterData: Record<string, any> | null
+  metadata: Record<string, any> | null
+  createdAt: string
+  actorName: string | null
+  actorAvatarUrl: string | null
+}
+
+export interface SalaryHistoryEntry {
+  id: string
+  kind: 'log' | 'rate'
+  title: string
+  action: string
+  entityType: string
+  createdAt: string
+  actorName: string | null
+  actorAvatarUrl: string | null
+  effectiveDate: string | null
+  note: string | null
+  beforeData: Record<string, any> | null
+  afterData: Record<string, any> | null
+  metadata: Record<string, any> | null
+}
+
+export interface SalaryHistoryResponse {
+  member: {
+    id: number
+    name: string
+    monthlyRate: string | number
+    monthlySalaryExtras: Array<{ label: string; amount: number | string }>
+  }
+  history: SalaryHistoryEntry[]
+}
+
 class ApiError extends Error {
   status: number
 
@@ -639,6 +683,20 @@ class ApiClient {
     return this.request(`/finances/salaries${year ? `?year=${year}` : ''}`)
   }
 
+  async getFinanceLogs(params?: { teamMemberId?: number; entityType?: string; action?: string; entityId?: number; startDate?: string; endDate?: string; q?: string; limit?: number }): Promise<FinanceAuditLog[]> {
+    const sp = new URLSearchParams()
+    if (params?.teamMemberId) sp.append('teamMemberId', params.teamMemberId.toString())
+    if (params?.entityType) sp.append('entityType', params.entityType)
+    if (params?.action) sp.append('action', params.action)
+    if (params?.entityId) sp.append('entityId', params.entityId.toString())
+    if (params?.startDate) sp.append('startDate', params.startDate)
+    if (params?.endDate) sp.append('endDate', params.endDate)
+    if (params?.q) sp.append('q', params.q)
+    if (params?.limit) sp.append('limit', params.limit.toString())
+    const q = sp.toString()
+    return this.request(`/finances/logs${q ? `?${q}` : ''}`) as Promise<FinanceAuditLog[]>
+  }
+
   async recordSalaryPayment(data: { teamMemberId: number; amount: number; transactionDate: string; description?: string }) {
     return this.request('/finances/salaries/record', { method: 'POST', body: JSON.stringify(data) })
   }
@@ -653,6 +711,10 @@ class ApiClient {
 
   async getSalaryRateHistory(teamMemberId: number) {
     return this.request(`/finances/salaries/${teamMemberId}/rate-history`)
+  }
+
+  async getSalaryHistory(teamMemberId: number): Promise<SalaryHistoryResponse> {
+    return this.request(`/finances/salaries/${teamMemberId}/history`) as Promise<SalaryHistoryResponse>
   }
 
   async getFinanceCategories(kind?: FinanceCategoryKind): Promise<FinanceCategoriesResponse | FinanceCategory[]> {

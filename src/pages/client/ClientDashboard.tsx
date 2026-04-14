@@ -13,7 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { PageHero } from '@/components/page-primitives'
+import { CardSkeleton, MetricTileSkeleton, PageHero, PageHeroSkeleton } from '@/components/page-primitives'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
@@ -85,8 +85,19 @@ export function ClientDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
+      <div className="space-y-4 sm:space-y-6">
+        <PageHeroSkeleton />
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+          <CardSkeleton titleWidth="w-44" lines={3} tall />
+        </div>
       </div>
     )
   }

@@ -11,6 +11,11 @@ import {
   invoiceServices,
   invoiceDevelopers
 } from '../db/schema.js'
+import {
+  diffRecord,
+  logFinanceActivity,
+  pickInvoiceSnapshot,
+} from '../lib/financeAudit.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -269,100 +274,119 @@ router.post('/', async (req, res) => {
       paidAtDate = new Date(paidAt)
     }
 
-    const [newInvoice] = await db.insert(invoices).values({
-      clientId: parseInt(clientId),
-      invoiceNumber,
-      amount: amount.toString(),
-      invoiceDate: invoiceDate || today,
-      periodStart: periodStart || lastMonthStart,
-      periodEnd: periodEnd || lastMonthEnd,
-      description: description || null,
-      dueDate: dueDate || null,
-      notes: notes || null,
-      status: invoiceStatus,
-      paidAt: paidAtDate,
-      createdBy: req.user!.id,
-    }).returning()
+    const createdInvoice = await db.transaction(async (tx) => {
+      const [newInvoice] = await tx.insert(invoices).values({
+        clientId: parseInt(clientId),
+        invoiceNumber,
+        amount: amount.toString(),
+        invoiceDate: invoiceDate || today,
+        periodStart: periodStart || lastMonthStart,
+        periodEnd: periodEnd || lastMonthEnd,
+        description: description || null,
+        dueDate: dueDate || null,
+        notes: notes || null,
+        status: invoiceStatus,
+        paidAt: paidAtDate,
+        createdBy: req.user!.id,
+      }).returning()
 
-    // If service-based pricing is used, create invoice_services and invoice_developers records
-    if (useServicePricing && serviceIds && serviceIds.length > 0) {
-      for (const serviceId of serviceIds) {
-        // Get service details
-        const [serviceDetail] = await db
-          .select({
-            id: clientServices.id,
-            serviceTypeId: clientServices.serviceTypeId,
-            serviceLevelPrice: clientServices.serviceLevelPrice,
-          })
-          .from(clientServices)
-          .where(eq(clientServices.id, serviceId))
+      // If service-based pricing is used, create invoice_services and invoice_developers records
+      if (useServicePricing && serviceIds && serviceIds.length > 0) {
+        for (const serviceId of serviceIds) {
+          // Get service details
+          const [serviceDetail] = await tx
+            .select({
+              id: clientServices.id,
+              serviceTypeId: clientServices.serviceTypeId,
+              serviceLevelPrice: clientServices.serviceLevelPrice,
+            })
+            .from(clientServices)
+            .where(eq(clientServices.id, serviceId))
 
-        if (!serviceDetail) continue
+          if (!serviceDetail) continue
 
-        // Calculate service amount
-        let serviceAmount = 0
+          // Calculate service amount
+          let serviceAmount = 0
 
-        // Get assigned developers
-        const assignedDevelopers = await db
-          .select({
-            id: clientServiceTeamMembers.id,
-            teamMemberId: clientServiceTeamMembers.teamMemberId,
-            hourlyRate: clientServiceTeamMembers.hourlyRate,
-            fixedPrice: clientServiceTeamMembers.fixedPrice,
-          })
-          .from(clientServiceTeamMembers)
-          .where(and(
-            eq(clientServiceTeamMembers.clientServiceId, serviceId),
-            eq(clientServiceTeamMembers.isActive, true)
-          ))
+          // Get assigned developers
+          const assignedDevelopers = await tx
+            .select({
+              id: clientServiceTeamMembers.id,
+              teamMemberId: clientServiceTeamMembers.teamMemberId,
+              hourlyRate: clientServiceTeamMembers.hourlyRate,
+              fixedPrice: clientServiceTeamMembers.fixedPrice,
+            })
+            .from(clientServiceTeamMembers)
+            .where(and(
+              eq(clientServiceTeamMembers.clientServiceId, serviceId),
+              eq(clientServiceTeamMembers.isActive, true)
+            ))
 
-        // Create invoice_services record
-        const [invoiceService] = await db.insert(invoiceServices).values({
-          invoiceId: newInvoice.id,
-          clientServiceId: serviceId,
-          calculatedAmount: '0', // Will be updated after calculating developers
-        }).returning()
+          // Create invoice_services record
+          const [invoiceService] = await tx.insert(invoiceServices).values({
+            invoiceId: newInvoice.id,
+            clientServiceId: serviceId,
+            calculatedAmount: '0', // Will be updated after calculating developers
+          }).returning()
 
-        // Create invoice_developers records and calculate total
-        let developerTotal = 0
-        for (const developer of assignedDevelopers) {
-          const devRates = developerRates?.[developer.teamMemberId] || {}
-          const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
-          const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
-          const hoursWorked = devRates.hoursWorked || 0
+          // Create invoice_developers records and calculate total
+          let developerTotal = 0
+          for (const developer of assignedDevelopers) {
+            const devRates = developerRates?.[developer.teamMemberId] || {}
+            const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
+            const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
+            const hoursWorked = devRates.hoursWorked || 0
 
-          let devAmount = 0
-          if (fixedPrice > 0) {
-            devAmount = fixedPrice
-          } else if (hourlyRate > 0 && hoursWorked > 0) {
-            devAmount = hourlyRate * hoursWorked
+            let devAmount = 0
+            if (fixedPrice > 0) {
+              devAmount = fixedPrice
+            } else if (hourlyRate > 0 && hoursWorked > 0) {
+              devAmount = hourlyRate * hoursWorked
+            }
+
+            developerTotal += devAmount
+
+            // Create invoice_developers record
+            await tx.insert(invoiceDevelopers).values({
+              invoiceServiceId: invoiceService.id,
+              clientServiceTeamMemberId: developer.id,
+              hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
+              fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
+              hoursWorked: hoursWorked > 0 ? hoursWorked : null,
+              calculatedAmount: devAmount.toString(),
+            })
           }
 
-          developerTotal += devAmount
+          // Use service-level price if available, otherwise use developer total
+          serviceAmount = parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
 
-          // Create invoice_developers record
-          await db.insert(invoiceDevelopers).values({
-            invoiceServiceId: invoiceService.id,
-            clientServiceTeamMemberId: developer.id,
-            hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
-            fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
-            hoursWorked: hoursWorked > 0 ? hoursWorked : null,
-            calculatedAmount: devAmount.toString(),
-          })
+          // Update invoice_services with calculated amount
+          await tx
+            .update(invoiceServices)
+            .set({ calculatedAmount: serviceAmount.toString() })
+            .where(eq(invoiceServices.id, invoiceService.id))
         }
-
-        // Use service-level price if available, otherwise use developer total
-        serviceAmount = parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
-
-        // Update invoice_services with calculated amount
-        await db
-          .update(invoiceServices)
-          .set({ calculatedAmount: serviceAmount.toString() })
-          .where(eq(invoiceServices.id, invoiceService.id))
       }
-    }
 
-    res.json(newInvoice)
+      await logFinanceActivity(tx, {
+        action: 'invoice_created',
+        entityType: 'invoice',
+        entityId: newInvoice.id,
+        invoiceId: newInvoice.id,
+        clientId: newInvoice.clientId,
+        actorId: req.user!.id,
+        summary: `Created invoice ${newInvoice.invoiceNumber}`,
+        afterData: pickInvoiceSnapshot(newInvoice),
+        metadata: {
+          useServicePricing: Boolean(useServicePricing),
+          serviceIds: serviceIds || [],
+        },
+      })
+
+      return newInvoice
+    })
+
+    res.json(createdInvoice)
   } catch (error) {
     console.error('Create invoice error:', error)
     res.status(500).json({ error: 'Failed to create invoice' })
@@ -414,110 +438,143 @@ router.put('/:id', async (req, res) => {
 
     updateData.updatedAt = new Date()
 
-    const [updatedInvoice] = await db
-      .update(invoices)
-      .set(updateData)
+    const [existingInvoice] = await db
+      .select()
+      .from(invoices)
       .where(eq(invoices.id, invoiceId))
-      .returning()
+      .limit(1)
 
-    if (!updatedInvoice) {
+    if (!existingInvoice) {
       return res.status(404).json({ error: 'Invoice not found' })
     }
 
-    // Handle service-based pricing updates
-    if (useServicePricing && serviceIds && serviceIds.length > 0) {
-      // First, delete existing invoice_services and invoice_developers
-      const existingServices = await db
-        .select({ id: invoiceServices.id })
-        .from(invoiceServices)
-        .where(eq(invoiceServices.invoiceId, invoiceId))
+    const updatedInvoice = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(invoices)
+        .set(updateData)
+        .where(eq(invoices.id, invoiceId))
+        .returning()
 
-      for (const service of existingServices) {
-        // Delete invoice_developers first
-        await db
-          .delete(invoiceDevelopers)
-          .where(eq(invoiceDevelopers.invoiceServiceId, service.id))
-      }
+      if (!row) return null
 
-      // Delete invoice_services
-      await db
-        .delete(invoiceServices)
-        .where(eq(invoiceServices.invoiceId, invoiceId))
+      // Handle service-based pricing updates
+      if (useServicePricing && serviceIds && serviceIds.length > 0) {
+        // First, delete existing invoice_services and invoice_developers
+        const existingServices = await tx
+          .select({ id: invoiceServices.id })
+          .from(invoiceServices)
+          .where(eq(invoiceServices.invoiceId, invoiceId))
 
-      // Now create new invoice_services and invoice_developers
-      for (const serviceId of serviceIds) {
-        // Get service details
-        const [serviceDetail] = await db
-          .select({
-            id: clientServices.id,
-            serviceTypeId: clientServices.serviceTypeId,
-            serviceLevelPrice: clientServices.serviceLevelPrice,
-          })
-          .from(clientServices)
-          .where(eq(clientServices.id, serviceId))
-
-        if (!serviceDetail) continue
-
-        // Get assigned developers
-        const assignedDevelopers = await db
-          .select({
-            id: clientServiceTeamMembers.id,
-            teamMemberId: clientServiceTeamMembers.teamMemberId,
-            hourlyRate: clientServiceTeamMembers.hourlyRate,
-            fixedPrice: clientServiceTeamMembers.fixedPrice,
-          })
-          .from(clientServiceTeamMembers)
-          .where(and(
-            eq(clientServiceTeamMembers.clientServiceId, serviceId),
-            eq(clientServiceTeamMembers.isActive, true)
-          ))
-
-        // Create invoice_services record
-        const [invoiceService] = await db.insert(invoiceServices).values({
-          invoiceId: invoiceId,
-          clientServiceId: serviceId,
-          calculatedAmount: '0', // Will be updated after calculating developers
-        }).returning()
-
-        // Create invoice_developers records and calculate total
-        let developerTotal = 0
-        for (const developer of assignedDevelopers) {
-          const devRates = developerRates?.[developer.teamMemberId] || {}
-          const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
-          const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
-          const hoursWorked = devRates.hoursWorked || 0
-
-          let devAmount = 0
-          if (fixedPrice > 0) {
-            devAmount = fixedPrice
-          } else if (hourlyRate > 0 && hoursWorked > 0) {
-            devAmount = hourlyRate * hoursWorked
-          }
-
-          developerTotal += devAmount
-
-          // Create invoice_developers record
-          if (devAmount > 0) {
-            await db.insert(invoiceDevelopers).values({
-              invoiceServiceId: invoiceService.id,
-              clientServiceTeamMemberId: developer.id,
-              hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
-              fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
-              hoursWorked: hoursWorked > 0 ? hoursWorked : null,
-              calculatedAmount: devAmount.toString(),
-            })
-          }
+        for (const service of existingServices) {
+          // Delete invoice_developers first
+          await tx
+            .delete(invoiceDevelopers)
+            .where(eq(invoiceDevelopers.invoiceServiceId, service.id))
         }
 
-        // Use service-level price if available, otherwise use developer total
-        const serviceAmount = parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
+        // Delete invoice_services
+        await tx
+          .delete(invoiceServices)
+          .where(eq(invoiceServices.invoiceId, invoiceId))
 
-        // Update invoice_services with calculated amount
-        await db
-          .update(invoiceServices)
-          .set({ calculatedAmount: serviceAmount.toString() })
-          .where(eq(invoiceServices.id, invoiceService.id))
+        // Now create new invoice_services and invoice_developers
+        for (const serviceId of serviceIds) {
+          // Get service details
+          const [serviceDetail] = await tx
+            .select({
+              id: clientServices.id,
+              serviceTypeId: clientServices.serviceTypeId,
+              serviceLevelPrice: clientServices.serviceLevelPrice,
+            })
+            .from(clientServices)
+            .where(eq(clientServices.id, serviceId))
+
+          if (!serviceDetail) continue
+
+          // Get assigned developers
+          const assignedDevelopers = await tx
+            .select({
+              id: clientServiceTeamMembers.id,
+              teamMemberId: clientServiceTeamMembers.teamMemberId,
+              hourlyRate: clientServiceTeamMembers.hourlyRate,
+              fixedPrice: clientServiceTeamMembers.fixedPrice,
+            })
+            .from(clientServiceTeamMembers)
+            .where(and(
+              eq(clientServiceTeamMembers.clientServiceId, serviceId),
+              eq(clientServiceTeamMembers.isActive, true)
+            ))
+
+          // Create invoice_services record
+          const [invoiceService] = await tx.insert(invoiceServices).values({
+            invoiceId: invoiceId,
+            clientServiceId: serviceId,
+            calculatedAmount: '0', // Will be updated after calculating developers
+          }).returning()
+
+          // Create invoice_developers records and calculate total
+          let developerTotal = 0
+          for (const developer of assignedDevelopers) {
+            const devRates = developerRates?.[developer.teamMemberId] || {}
+            const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
+            const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
+            const hoursWorked = devRates.hoursWorked || 0
+
+            let devAmount = 0
+            if (fixedPrice > 0) {
+              devAmount = fixedPrice
+            } else if (hourlyRate > 0 && hoursWorked > 0) {
+              devAmount = hourlyRate * hoursWorked
+            }
+
+            developerTotal += devAmount
+
+            // Create invoice_developers record
+            if (devAmount > 0) {
+              await tx.insert(invoiceDevelopers).values({
+                invoiceServiceId: invoiceService.id,
+                clientServiceTeamMemberId: developer.id,
+                hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
+                fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
+                hoursWorked: hoursWorked > 0 ? hoursWorked : null,
+                calculatedAmount: devAmount.toString(),
+              })
+            }
+          }
+
+          // Use service-level price if available, otherwise use developer total
+          const serviceAmount = parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
+
+          // Update invoice_services with calculated amount
+          await tx
+            .update(invoiceServices)
+            .set({ calculatedAmount: serviceAmount.toString() })
+            .where(eq(invoiceServices.id, invoiceService.id))
+        }
       }
+
+      await logFinanceActivity(tx, {
+        action: 'invoice_updated',
+        entityType: 'invoice',
+        entityId: row.id,
+        invoiceId: row.id,
+        clientId: row.clientId,
+        actorId: req.user!.id,
+        summary: `Updated invoice ${row.invoiceNumber}`,
+        beforeData: pickInvoiceSnapshot(existingInvoice),
+        afterData: pickInvoiceSnapshot(row),
+        metadata: {
+          changes: diffRecord(pickInvoiceSnapshot(existingInvoice), pickInvoiceSnapshot(row)),
+          useServicePricing: Boolean(useServicePricing),
+          serviceIds: serviceIds || [],
+        },
+      })
+
+      return row
+    })
+
+    if (!updatedInvoice) {
+      return res.status(404).json({ error: 'Invoice not found' })
     }
 
     res.json(updatedInvoice)
@@ -537,45 +594,64 @@ router.delete('/:id', async (req, res) => {
 
     const invoiceId = parseInt(req.params.id)
 
-    // Check if invoice exists
-    const existingInvoice = await db
-      .select({ id: invoices.id })
-      .from(invoices)
-      .where(eq(invoices.id, invoiceId))
-      .limit(1)
+    const deletedInvoice = await db.transaction(async (tx) => {
+      const [existingInvoice] = await tx
+        .select()
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .limit(1)
 
-    if (!existingInvoice.length) {
-      return res.status(404).json({ error: 'Invoice not found' })
-    }
-
-    // Get all invoice service IDs to delete related records
-    const invoiceServiceIds = await db
-      .select({ id: invoiceServices.id })
-      .from(invoiceServices)
-      .where(eq(invoiceServices.invoiceId, invoiceId))
-
-    // Delete related records in the correct order
-    if (invoiceServiceIds.length > 0) {
-      const serviceIds = invoiceServiceIds.map(is => is.id)
-
-      // Delete invoice developers first (references invoice_services)
-      for (const serviceId of serviceIds) {
-        await db
-          .delete(invoiceDevelopers)
-          .where(eq(invoiceDevelopers.invoiceServiceId, serviceId))
+      if (!existingInvoice) {
+        return null
       }
 
-      // Delete invoice services (references invoices)
-      await db
-        .delete(invoiceServices)
+      const invoiceServiceIds = await tx
+        .select({ id: invoiceServices.id })
+        .from(invoiceServices)
         .where(eq(invoiceServices.invoiceId, invoiceId))
-    }
 
-    // Finally delete the invoice itself
-    const [deletedInvoice] = await db
-      .delete(invoices)
-      .where(eq(invoices.id, invoiceId))
-      .returning({ id: invoices.id })
+      // Delete related records in the correct order
+      if (invoiceServiceIds.length > 0) {
+        const serviceIds = invoiceServiceIds.map(is => is.id)
+
+        // Delete invoice developers first (references invoice_services)
+        for (const serviceId of serviceIds) {
+          await tx
+            .delete(invoiceDevelopers)
+            .where(eq(invoiceDevelopers.invoiceServiceId, serviceId))
+        }
+
+        // Delete invoice services (references invoices)
+        await tx
+          .delete(invoiceServices)
+          .where(eq(invoiceServices.invoiceId, invoiceId))
+      }
+
+      // Finally delete the invoice itself
+      const [row] = await tx
+        .delete(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .returning({ id: invoices.id })
+
+      if (!row) return null
+
+      await logFinanceActivity(tx, {
+        action: 'invoice_deleted',
+        entityType: 'invoice',
+        entityId: existingInvoice.id,
+        invoiceId: existingInvoice.id,
+        clientId: existingInvoice.clientId,
+        actorId: req.user!.id,
+        summary: `Deleted invoice ${existingInvoice.invoiceNumber}`,
+        beforeData: pickInvoiceSnapshot(existingInvoice),
+      })
+
+      return row
+    })
+
+    if (!deletedInvoice) {
+      return res.status(404).json({ error: 'Invoice not found' })
+    }
 
     console.log('Invoice deleted successfully:', deletedInvoice.id)
     res.json({ message: 'Invoice deleted successfully' })

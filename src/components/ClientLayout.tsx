@@ -17,6 +17,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { api } from '@/lib/api'
 import { getActiveNavigationLabel } from '@/lib/navigation'
+import { WorkspaceShellSkeleton } from '@/components/page-primitives'
 import type { User, Client } from '@/types/common'
 
 interface ClientLayoutProps {
@@ -164,9 +165,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
         <main className="flex-1">
           <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
             {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
+              <WorkspaceShellSkeleton roleLabel="Client Workspace" title="Loading client workspace" />
             ) : assignedClients.length === 0 ? (
               <div className="flex min-h-[60vh] items-center justify-center">
                 <Card className="max-w-lg text-center">

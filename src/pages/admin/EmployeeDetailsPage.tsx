@@ -32,7 +32,7 @@ export function EmployeeDetailsPage() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-sky-400 border-r-purple-400"></div>
+          <div className="h-16 w-16 animate-pulse rounded-full bg-slate-300/60"></div>
           <div className="absolute inset-0 rounded-full bg-slate-200 opacity-20"></div>
         </div>
       </div>

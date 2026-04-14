@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
 import { TimezoneSelect } from '@/components/TimezoneSelect'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading, TableSkeleton } from '@/components/page-primitives'
 
 interface User {
   id: number
@@ -350,8 +350,15 @@ export function UsersPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+      <div className="space-y-6">
+        <PageHeroSkeleton />
+        <div className="grid gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+        <CardSkeleton titleWidth="w-44" lines={3} />
+        <TableSkeleton rows={6} columns={5} />
       </div>
     )
   }

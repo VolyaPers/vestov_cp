@@ -749,7 +749,7 @@ export function TeamMemberDetails() {
           <CardContent>
             {vacationLoading ? (
               <div className="flex items-center justify-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                <div className="h-6 w-6 animate-pulse rounded-full bg-slate-300/70"></div>
               </div>
             ) : allEmploymentCycles.length > 0 ? (
               (() => {
@@ -836,7 +836,7 @@ export function TeamMemberDetails() {
           <CardContent>
             {vacationLoading ? (
               <div className="flex items-center justify-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                <div className="h-6 w-6 animate-pulse rounded-full bg-slate-300/70"></div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1039,7 +1039,7 @@ export function TeamMemberDetails() {
               >
                 {isCreatingCycle ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <div className="mr-2 h-4 w-4 animate-pulse rounded-full bg-white/60"></div>
                     {employmentCycle ? 'Updating...' : 'Creating...'}
                   </>
                 ) : (

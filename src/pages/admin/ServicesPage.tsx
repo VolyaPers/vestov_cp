@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading } from '@/components/page-primitives'
 
 interface ServiceType {
   id: number
@@ -190,8 +190,20 @@ export function ServicesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <PageHeroSkeleton />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.8fr)]">
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+          <div className="space-y-6">
+            <CardSkeleton titleWidth="w-36" lines={3} />
+            <CardSkeleton titleWidth="w-32" lines={3} />
+          </div>
+        </div>
       </div>
     )
   }

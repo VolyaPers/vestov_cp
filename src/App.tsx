@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { GlobalSearch } from './components/GlobalSearch'
 import { AuthPage } from './pages/AuthPage'
 import { api } from './lib/api'
+import { WorkspaceShellSkeleton } from './components/page-primitives'
 import type { User } from './types/common'
 
 // Helper component for catch-all redirect
@@ -25,9 +26,7 @@ function DefaultRedirect({ user }: { user: User }) {
   }, [user])
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-    </div>
+    <WorkspaceShellSkeleton roleLabel="Workspace" title="Connecting workspace" />
   )
 }
 
@@ -134,11 +133,7 @@ function App() {
   }, [clerkUser?.id, clerkUser?.primaryEmailAddress?.emailAddress, getToken, isClerkLoaded, isSignedIn])
 
   if (!isClerkLoaded || isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
+    return <WorkspaceShellSkeleton roleLabel="Workspace" title="Loading your workspace" />
   }
 
   if (!isSignedIn || !user) {

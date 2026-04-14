@@ -183,6 +183,13 @@
       "when": 1769604512678,
       "tag": "0025_abnormal_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1765560000000,
+      "tag": "0036_add_finance_audit_logs",
+      "breakpoints": true
     }
   ]
 }

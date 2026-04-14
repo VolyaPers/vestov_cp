@@ -4,6 +4,7 @@ import { db } from '../db/index.js'
 import {
   financialTransactions,
   financeCategories,
+  financeActivityLogs,
   integrationSettings,
   invoices,
   clients,
@@ -12,6 +13,12 @@ import {
   salaryRateHistory,
 } from '../db/schema.js'
 import { decrypt } from '../lib/encryption.js'
+import {
+  diffRecord,
+  logFinanceActivity,
+  pickInvoiceSnapshot,
+  pickTransactionSnapshot,
+} from '../lib/financeAudit.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -99,6 +106,73 @@ function normalizeSalaryExtras(value: unknown): SalaryExtraPayload[] {
     }]
   })
 }
+
+// GET /logs - Finance audit trail
+router.get('/logs', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const { teamMemberId, entityType, action, entityId, startDate, endDate, q, limit } = req.query as {
+      teamMemberId?: string
+      entityType?: string
+      action?: string
+      entityId?: string
+      startDate?: string
+      endDate?: string
+      q?: string
+      limit?: string
+    }
+
+    const conditions: any[] = []
+    const parsedTeamMemberId = teamMemberId ? parseInt(teamMemberId) : NaN
+    if (Number.isFinite(parsedTeamMemberId)) conditions.push(eq(financeActivityLogs.teamMemberId, parsedTeamMemberId))
+    const parsedEntityId = entityId ? parseInt(entityId) : NaN
+    if (Number.isFinite(parsedEntityId)) conditions.push(eq(financeActivityLogs.entityId, parsedEntityId))
+    if (entityType) conditions.push(eq(financeActivityLogs.entityType, entityType))
+    if (action) conditions.push(eq(financeActivityLogs.action, action))
+    if (startDate) conditions.push(gte(financeActivityLogs.createdAt, new Date(`${startDate}T00:00:00.000Z`)))
+    if (endDate) conditions.push(lte(financeActivityLogs.createdAt, new Date(`${endDate}T23:59:59.999Z`)))
+    if (q) {
+      conditions.push(sql`(
+        ${financeActivityLogs.summary} ILIKE ${`%${q}%`} OR
+        CAST(${financeActivityLogs.metadata} AS TEXT) ILIKE ${`%${q}%`} OR
+        CAST(${financeActivityLogs.beforeData} AS TEXT) ILIKE ${`%${q}%`} OR
+        CAST(${financeActivityLogs.afterData} AS TEXT) ILIKE ${`%${q}%`}
+      )`)
+    }
+
+    const parsedLimit = limit ? parseInt(limit) : 100
+    const maxLimit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 100, 1), 250)
+
+    const rows = await db
+      .select({
+        id: financeActivityLogs.id,
+        action: financeActivityLogs.action,
+        entityType: financeActivityLogs.entityType,
+        entityId: financeActivityLogs.entityId,
+        teamMemberId: financeActivityLogs.teamMemberId,
+        clientId: financeActivityLogs.clientId,
+        invoiceId: financeActivityLogs.invoiceId,
+        transactionId: financeActivityLogs.transactionId,
+        summary: financeActivityLogs.summary,
+        beforeData: financeActivityLogs.beforeData,
+        afterData: financeActivityLogs.afterData,
+        metadata: financeActivityLogs.metadata,
+        createdAt: financeActivityLogs.createdAt,
+        actorName: users.fullName,
+        actorAvatarUrl: users.avatarUrl,
+      })
+      .from(financeActivityLogs)
+      .leftJoin(users, eq(financeActivityLogs.actorId, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(financeActivityLogs.createdAt), desc(financeActivityLogs.id))
+      .limit(maxLimit)
+
+    res.json(rows)
+  } catch (error) {
+    console.error('Finance logs error:', error)
+    res.status(500).json({ error: 'Failed to fetch finance logs' })
+  }
+})
 
 // GET /overview - Dashboard summary
 router.get('/overview', async (req, res) => {
@@ -293,21 +367,40 @@ router.post('/transactions', async (req, res) => {
       categoryValue = ensuredCategory?.name || categoryValue
     }
 
-    const [created] = await db
-      .insert(financialTransactions)
-      .values({
-        type,
-        category: categoryValue || null,
-        amount: amount.toString(),
-        description: description || null,
-        transactionDate,
-        teamMemberId: teamMemberId || null,
-        clientId: clientId || null,
-        invoiceId: invoiceId || null,
-        isRecurring: isRecurring || false,
-        createdBy: req.user!.id,
+    const [created] = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(financialTransactions)
+        .values({
+          type,
+          category: categoryValue || null,
+          amount: amount.toString(),
+          description: description || null,
+          transactionDate,
+          teamMemberId: teamMemberId || null,
+          clientId: clientId || null,
+          invoiceId: invoiceId || null,
+          isRecurring: isRecurring || false,
+          createdBy: req.user!.id,
+        })
+        .returning()
+
+      const snapshot = pickTransactionSnapshot(row)
+      await logFinanceActivity(tx, {
+        action: 'transaction_created',
+        entityType: 'transaction',
+        entityId: row.id,
+        transactionId: row.id,
+        teamMemberId: row.teamMemberId,
+        clientId: row.clientId,
+        invoiceId: row.invoiceId,
+        actorId: req.user!.id,
+        summary: `Created ${row.type} transaction for $${Number(row.amount).toFixed(2)}`,
+        afterData: snapshot,
+        metadata: { category: row.category, isRecurring: row.isRecurring },
       })
-      .returning()
+
+      return [row]
+    })
 
     res.status(201).json(created)
   } catch (error) {
@@ -323,49 +416,70 @@ router.put('/transactions/:id', async (req, res) => {
     const id = parseInt(req.params.id)
     const { type, category, amount, description, transactionDate, teamMemberId, clientId, isRecurring } = req.body
 
-    const updateData: any = { updatedAt: new Date() }
-    if (type !== undefined) updateData.type = type
-    if (amount !== undefined) updateData.amount = amount.toString()
-    if (description !== undefined) updateData.description = description
-    if (transactionDate !== undefined) updateData.transactionDate = transactionDate
-    if (teamMemberId !== undefined) updateData.teamMemberId = teamMemberId || null
-    if (clientId !== undefined) updateData.clientId = clientId || null
-    if (isRecurring !== undefined) updateData.isRecurring = isRecurring
+    const [updated] = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(financialTransactions)
+        .where(eq(financialTransactions.id, id))
+        .limit(1)
 
-    if (category !== undefined) {
-      let txType = type as string | undefined
+      if (!existing) {
+        return [null]
+      }
 
-      if (!txType) {
-        const [existingTx] = await db
-          .select({ type: financialTransactions.type })
-          .from(financialTransactions)
-          .where(eq(financialTransactions.id, id))
-          .limit(1)
+      const updateData: any = { updatedAt: new Date() }
+      if (type !== undefined) updateData.type = type
+      if (amount !== undefined) updateData.amount = amount.toString()
+      if (description !== undefined) updateData.description = description
+      if (transactionDate !== undefined) updateData.transactionDate = transactionDate
+      if (teamMemberId !== undefined) updateData.teamMemberId = teamMemberId || null
+      if (clientId !== undefined) updateData.clientId = clientId || null
+      if (isRecurring !== undefined) updateData.isRecurring = isRecurring
 
-        if (!existingTx) {
-          return res.status(404).json({ error: 'Transaction not found' })
+      if (category !== undefined) {
+        let txType = (type as string | undefined) || existing.type
+        const categoryKind = normalizeCategoryKind(txType)
+        const categoryValue = typeof category === 'string' ? category.trim() : category
+
+        if (categoryKind && typeof categoryValue === 'string' && categoryValue) {
+          const ensuredCategory = await ensureCategoryExists(categoryKind, categoryValue, req.user?.id)
+          updateData.category = ensuredCategory?.name || categoryValue
+        } else if (categoryValue === '' || categoryValue === null) {
+          updateData.category = null
+        } else {
+          updateData.category = categoryValue
         }
-        txType = existingTx.type
       }
 
-      const categoryKind = normalizeCategoryKind(txType)
-      const categoryValue = typeof category === 'string' ? category.trim() : category
+      const [row] = await tx
+        .update(financialTransactions)
+        .set(updateData)
+        .where(eq(financialTransactions.id, id))
+        .returning()
 
-      if (categoryKind && typeof categoryValue === 'string' && categoryValue) {
-        const ensuredCategory = await ensureCategoryExists(categoryKind, categoryValue, req.user?.id)
-        updateData.category = ensuredCategory?.name || categoryValue
-      } else if (categoryValue === '' || categoryValue === null) {
-        updateData.category = null
-      } else {
-        updateData.category = categoryValue
+      if (!row) {
+        return [null]
       }
-    }
 
-    const [updated] = await db
-      .update(financialTransactions)
-      .set(updateData)
-      .where(eq(financialTransactions.id, id))
-      .returning()
+      const beforeData = pickTransactionSnapshot(existing)
+      const afterData = pickTransactionSnapshot(row)
+      await logFinanceActivity(tx, {
+        action: 'transaction_updated',
+        entityType: 'transaction',
+        entityId: row.id,
+        transactionId: row.id,
+        teamMemberId: row.teamMemberId,
+        clientId: row.clientId,
+        invoiceId: row.invoiceId,
+        actorId: req.user!.id,
+        summary: `Updated ${row.type} transaction #${row.id}`,
+        beforeData,
+        afterData,
+        metadata: { changes: diffRecord(beforeData, afterData) },
+      })
+
+      return [row]
+    })
 
     if (!updated) {
       return res.status(404).json({ error: 'Transaction not found' })
@@ -383,10 +497,41 @@ router.delete('/transactions/:id', async (req, res) => {
   if (!isAdmin(req, res)) return
   try {
     const id = parseInt(req.params.id)
-    const [deleted] = await db
-      .delete(financialTransactions)
-      .where(eq(financialTransactions.id, id))
-      .returning()
+
+    const deleted = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(financialTransactions)
+        .where(eq(financialTransactions.id, id))
+        .limit(1)
+
+      if (!existing) {
+        return null
+      }
+
+      const [row] = await tx
+        .delete(financialTransactions)
+        .where(eq(financialTransactions.id, id))
+        .returning()
+
+      if (!row) return null
+
+      const snapshot = pickTransactionSnapshot(existing)
+      await logFinanceActivity(tx, {
+        action: 'transaction_deleted',
+        entityType: 'transaction',
+        entityId: existing.id,
+        transactionId: existing.id,
+        teamMemberId: existing.teamMemberId,
+        clientId: existing.clientId,
+        invoiceId: existing.invoiceId,
+        actorId: req.user!.id,
+        summary: `Deleted ${existing.type} transaction #${existing.id}`,
+        beforeData: snapshot,
+      })
+
+      return row
+    })
 
     if (!deleted) {
       return res.status(404).json({ error: 'Transaction not found' })
@@ -547,18 +692,34 @@ router.post('/salaries/record', async (req, res) => {
       return res.status(400).json({ error: 'teamMemberId, amount, and transactionDate are required' })
     }
 
-    const [created] = await db
-      .insert(financialTransactions)
-      .values({
-        type: 'salary',
-        category: 'monthly_salary',
-        amount: amount.toString(),
-        description: description || null,
-        transactionDate,
-        teamMemberId,
-        createdBy: req.user!.id,
+    const [created] = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(financialTransactions)
+        .values({
+          type: 'salary',
+          category: 'monthly_salary',
+          amount: amount.toString(),
+          description: description || null,
+          transactionDate,
+          teamMemberId,
+          createdBy: req.user!.id,
+        })
+        .returning()
+
+      await logFinanceActivity(tx, {
+        action: 'salary_payment_created',
+        entityType: 'salary_payment',
+        entityId: row.id,
+        transactionId: row.id,
+        teamMemberId: row.teamMemberId,
+        actorId: req.user!.id,
+        summary: `Recorded salary payment #${row.id} for team member ${row.teamMemberId}`,
+        afterData: pickTransactionSnapshot(row),
+        metadata: { description: row.description },
       })
-      .returning()
+
+      return [row]
+    })
 
     res.status(201).json(created)
   } catch (error) {
@@ -877,19 +1038,51 @@ router.put('/salaries/:teamMemberId/rate', async (req, res) => {
     const rate = String(parseFloat(monthlyRate).toFixed(2))
     const effDate = effectiveDate || new Date().toISOString().split('T')[0]
 
-    // Update team member's monthly rate
-    await db
-      .update(teamMembers)
-      .set({ monthlyRate: rate, updatedAt: new Date() })
+    const [existing] = await db
+      .select({
+        id: teamMembers.id,
+        monthlyRate: teamMembers.monthlyRate,
+      })
+      .from(teamMembers)
       .where(eq(teamMembers.id, teamMemberId))
+      .limit(1)
 
-    // Log to salary rate history
-    await db.insert(salaryRateHistory).values({
-      teamMemberId,
-      monthlyRate: rate,
-      effectiveDate: effDate,
-      note: note || null,
-      createdBy: req.user!.id,
+    if (!existing) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(teamMembers)
+        .set({ monthlyRate: rate, updatedAt: new Date() })
+        .where(eq(teamMembers.id, teamMemberId))
+
+      await tx.insert(salaryRateHistory).values({
+        teamMemberId,
+        monthlyRate: rate,
+        effectiveDate: effDate,
+        note: note || null,
+        createdBy: req.user!.id,
+      })
+
+      const beforeData = { monthlyRate: existing.monthlyRate, effectiveDate: effDate, note: null }
+      const afterData = {
+        monthlyRate: rate,
+        effectiveDate: effDate,
+        note: note || null,
+      }
+
+      await logFinanceActivity(tx, {
+        action: 'salary_rate_updated',
+        entityType: 'salary_rate',
+        entityId: teamMemberId,
+        teamMemberId,
+        actorId: req.user!.id,
+        summary: `Updated monthly salary rate for team member #${teamMemberId}`,
+        beforeData,
+        afterData,
+        metadata: { changes: diffRecord(beforeData, afterData) },
+      })
     })
 
     res.json({ success: true, monthlyRate: rate })
@@ -905,17 +1098,57 @@ router.put('/salaries/:teamMemberId/monthly-extras', async (req, res) => {
     const teamMemberId = parseInt(req.params.teamMemberId)
     const monthlyExtras = normalizeSalaryExtras(req.body?.monthlyExtras)
 
-    const [updated] = await db
-      .update(teamMembers)
-      .set({
+    const [updated] = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({
+          id: teamMembers.id,
+          monthlySalaryExtras: teamMembers.monthlySalaryExtras,
+        })
+        .from(teamMembers)
+        .where(eq(teamMembers.id, teamMemberId))
+        .limit(1)
+
+      if (!existing) {
+        return [null]
+      }
+
+      const [row] = await tx
+        .update(teamMembers)
+        .set({
+          monthlySalaryExtras: monthlyExtras,
+          updatedAt: new Date(),
+        })
+        .where(eq(teamMembers.id, teamMemberId))
+        .returning({
+          id: teamMembers.id,
+          monthlySalaryExtras: teamMembers.monthlySalaryExtras,
+        })
+
+      if (!row) {
+        return [null]
+      }
+
+      const beforeData = {
+        monthlySalaryExtras: normalizeSalaryExtras(existing.monthlySalaryExtras),
+      }
+      const afterData = {
         monthlySalaryExtras: monthlyExtras,
-        updatedAt: new Date(),
+      }
+
+      await logFinanceActivity(tx, {
+        action: 'salary_extras_updated',
+        entityType: 'salary_extras',
+        entityId: teamMemberId,
+        teamMemberId,
+        actorId: req.user!.id,
+        summary: `Updated default salary extras for team member #${teamMemberId}`,
+        beforeData,
+        afterData,
+        metadata: { changes: diffRecord(beforeData, afterData) },
       })
-      .where(eq(teamMembers.id, teamMemberId))
-      .returning({
-        id: teamMembers.id,
-        monthlySalaryExtras: teamMembers.monthlySalaryExtras,
-      })
+
+      return [row]
+    })
 
     if (!updated) {
       return res.status(404).json({ error: 'Team member not found' })
@@ -955,6 +1188,116 @@ router.get('/salaries/:teamMemberId/rate-history', async (req, res) => {
   } catch (error) {
     console.error('Salary rate history error:', error)
     res.status(500).json({ error: 'Failed to fetch salary rate history' })
+  }
+})
+
+// GET /salaries/:teamMemberId/history - Combined salary history for the card popup
+router.get('/salaries/:teamMemberId/history', async (req, res) => {
+  if (!isAdmin(req, res)) return
+  try {
+    const teamMemberId = parseInt(req.params.teamMemberId)
+
+    const [member] = await db
+      .select({
+        id: teamMembers.id,
+        name: teamMembers.name,
+        monthlyRate: teamMembers.monthlyRate,
+        monthlySalaryExtras: teamMembers.monthlySalaryExtras,
+      })
+      .from(teamMembers)
+      .where(eq(teamMembers.id, teamMemberId))
+      .limit(1)
+
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' })
+    }
+
+    const logEntries = await db
+      .select({
+        id: financeActivityLogs.id,
+        action: financeActivityLogs.action,
+        entityType: financeActivityLogs.entityType,
+        entityId: financeActivityLogs.entityId,
+        summary: financeActivityLogs.summary,
+        beforeData: financeActivityLogs.beforeData,
+        afterData: financeActivityLogs.afterData,
+        metadata: financeActivityLogs.metadata,
+        createdAt: financeActivityLogs.createdAt,
+        actorName: users.fullName,
+        actorAvatarUrl: users.avatarUrl,
+      })
+      .from(financeActivityLogs)
+      .leftJoin(users, eq(financeActivityLogs.actorId, users.id))
+      .where(eq(financeActivityLogs.teamMemberId, teamMemberId))
+      .orderBy(desc(financeActivityLogs.createdAt), desc(financeActivityLogs.id))
+      .limit(100)
+
+    const rateRows = await db
+      .select({
+        id: salaryRateHistory.id,
+        monthlyRate: salaryRateHistory.monthlyRate,
+        effectiveDate: salaryRateHistory.effectiveDate,
+        note: salaryRateHistory.note,
+        createdAt: salaryRateHistory.createdAt,
+        actorName: users.fullName,
+        actorAvatarUrl: users.avatarUrl,
+      })
+      .from(salaryRateHistory)
+      .leftJoin(users, eq(salaryRateHistory.createdBy, users.id))
+      .where(eq(salaryRateHistory.teamMemberId, teamMemberId))
+      .orderBy(desc(salaryRateHistory.createdAt), desc(salaryRateHistory.id))
+      .limit(100)
+
+    const normalizedLogs = logEntries.map((entry) => ({
+      id: `log-${entry.id}`,
+      kind: 'log' as const,
+      title: entry.summary,
+      action: entry.action,
+      entityType: entry.entityType,
+      createdAt: entry.createdAt,
+      actorName: entry.actorName || 'Unknown',
+      actorAvatarUrl: entry.actorAvatarUrl || null,
+      effectiveDate: null,
+      note: null,
+      beforeData: entry.beforeData || null,
+      afterData: entry.afterData || null,
+      metadata: entry.metadata || null,
+    }))
+
+    const normalizedRates = rateRows.map((entry) => ({
+      id: `rate-${entry.id}`,
+      kind: 'rate' as const,
+      title: `Monthly rate updated to $${Number(entry.monthlyRate).toFixed(2)}`,
+      action: 'salary_rate_updated',
+      entityType: 'salary_rate',
+      createdAt: entry.createdAt,
+      actorName: entry.actorName || 'Unknown',
+      actorAvatarUrl: entry.actorAvatarUrl || null,
+      effectiveDate: entry.effectiveDate,
+      note: entry.note,
+      beforeData: null,
+      afterData: { monthlyRate: entry.monthlyRate },
+      metadata: null,
+    }))
+
+    const history = [...normalizedLogs, ...normalizedRates].sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime()
+      const timeB = new Date(b.createdAt).getTime()
+      return timeB - timeA
+    })
+
+    res.json({
+      member: {
+        id: member.id,
+        name: member.name,
+        monthlyRate: member.monthlyRate,
+        monthlySalaryExtras: normalizeSalaryExtras(member.monthlySalaryExtras),
+      },
+      history,
+    })
+  } catch (error) {
+    console.error('Salary history error:', error)
+    res.status(500).json({ error: 'Failed to fetch salary history' })
   }
 })
 

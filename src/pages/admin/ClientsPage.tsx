@@ -48,7 +48,7 @@ import { Label } from '@/components/ui/label'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api, resolveApiAssetUrl } from '@/lib/api'
 import { parseLocalDate } from '@/lib/utils'
-import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, TableSkeleton } from '@/components/page-primitives'
 
 interface Client {
   id: number
@@ -513,8 +513,15 @@ export function ClientsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <PageHeroSkeleton />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+        <CardSkeleton titleWidth="w-44" lines={3} />
+        <TableSkeleton rows={6} columns={7} />
       </div>
     )
   }

@@ -32,11 +32,21 @@ import {
   ChevronDown,
   Clock3,
   Info,
+  FileText,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Tooltip as InfoTooltip } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLocation } from 'wouter'
-import { api, type FinanceCategory, type FinanceCategoryKind } from '@/lib/api'
+import { api, type FinanceCategory, type FinanceCategoryKind, type FinanceAuditLog, type SalaryHistoryEntry } from '@/lib/api'
+import { CardSkeleton, MetricTileSkeleton, TableSkeleton } from '@/components/page-primitives'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -622,9 +632,9 @@ type MergedRow = {
   teamMemberName?: string
 }
 
-type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories'
+type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories' | 'logs'
 
-const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'categories']
+const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'categories', 'logs']
 
 export function FinancesPage() {
   const currentYear = new Date().getFullYear()
@@ -709,6 +719,21 @@ export function FinancesPage() {
   const [rateSaving, setRateSaving] = useState(false)
   const [rateHistory, setRateHistory] = useState<RateHistoryEntry[]>([])
   const [rateHistoryLoading, setRateHistoryLoading] = useState(false)
+  const [financeLogs, setFinanceLogs] = useState<FinanceAuditLog[]>([])
+  const [financeLogsLoading, setFinanceLogsLoading] = useState(false)
+  const [financeLogFilters, setFinanceLogFilters] = useState({
+    action: '',
+    entityType: '',
+    teamMemberId: '',
+    entityId: '',
+    q: '',
+    startDate: '',
+    endDate: '',
+  })
+  const [showSalaryHistoryModal, setShowSalaryHistoryModal] = useState(false)
+  const [salaryHistoryMember, setSalaryHistoryMember] = useState<SalaryMember | null>(null)
+  const [salaryHistoryEntries, setSalaryHistoryEntries] = useState<SalaryHistoryEntry[]>([])
+  const [salaryHistoryLoading, setSalaryHistoryLoading] = useState(false)
 
 
   // Balances state
@@ -780,6 +805,16 @@ export function FinancesPage() {
       loadSalaries()
     }
   }, [activeTab, salariesYear])
+
+  // Load finance logs
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      if (!salariesData?.members?.length) {
+        loadSalaries()
+      }
+      loadFinanceLogs()
+    }
+  }, [activeTab])
 
   // Load categories on relevant pages
   useEffect(() => {
@@ -928,6 +963,46 @@ export function FinancesPage() {
     } finally {
       setSalariesLoading(false)
     }
+  }
+
+  const loadFinanceLogs = async (filters = financeLogFilters) => {
+    try {
+      setFinanceLogsLoading(true)
+      const data = await api.getFinanceLogs({
+        limit: 150,
+        action: filters.action || undefined,
+        entityType: filters.entityType || undefined,
+        teamMemberId: filters.teamMemberId ? Number(filters.teamMemberId) : undefined,
+        entityId: filters.entityId ? Number(filters.entityId) : undefined,
+        q: filters.q || undefined,
+        startDate: filters.startDate || undefined,
+        endDate: filters.endDate || undefined,
+      })
+      setFinanceLogs(data || [])
+    } catch (error) {
+      console.error('Failed to load finance logs:', error)
+      setFinanceLogs([])
+    } finally {
+      setFinanceLogsLoading(false)
+    }
+  }
+
+  const applyFinanceLogFilters = async () => {
+    await loadFinanceLogs(financeLogFilters)
+  }
+
+  const clearFinanceLogFilters = async () => {
+    const resetFilters = {
+      action: '',
+      entityType: '',
+      teamMemberId: '',
+      entityId: '',
+      q: '',
+      startDate: '',
+      endDate: '',
+    }
+    setFinanceLogFilters(resetFilters)
+    await loadFinanceLogs(resetFilters)
   }
 
   const loadCategories = async () => {
@@ -1446,6 +1521,23 @@ export function FinancesPage() {
     }
   }
 
+  const openSalaryHistory = async (member: SalaryMember) => {
+    setSalaryHistoryMember(member)
+    setSalaryHistoryEntries([])
+    setShowSalaryHistoryModal(true)
+    setSalaryHistoryLoading(true)
+
+    try {
+      const response = await api.getSalaryHistory(member.id)
+      setSalaryHistoryEntries(response.history || [])
+    } catch (error) {
+      console.error('Failed to load salary history:', error)
+      setSalaryHistoryEntries([])
+    } finally {
+      setSalaryHistoryLoading(false)
+    }
+  }
+
   const handleSaveRate = async () => {
     if (!rateMember || !rateForm.monthlyRate || parseFloat(rateForm.monthlyRate) < 0) return
     try {
@@ -1472,6 +1564,27 @@ export function FinancesPage() {
     } finally {
       setRateSaving(false)
     }
+  }
+
+  const formatHistoryValue = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return '—'
+    if (Array.isArray(value)) {
+      return value.map((item) => formatHistoryValue(item)).join(', ')
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>)
+      if (entries.length === 0) return '—'
+      return entries.map(([key, next]) => `${key}: ${formatHistoryValue(next)}`).join(' • ')
+    }
+    return String(value)
+  }
+
+  const formatHistoryAction = (action: string) => action.replace(/_/g, ' ')
+
+  const getHistoryBadgeVariant = (action: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    if (action.includes('deleted')) return 'destructive'
+    if (action.includes('updated')) return 'secondary'
+    return 'default'
   }
 
   // Months in selected range
@@ -1604,11 +1717,12 @@ export function FinancesPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setLocation(`/admin/finances/${value}`)} className="space-y-6">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto p-1 touch-scroll-x sm:grid sm:grid-cols-4 sm:justify-center sm:overflow-visible">
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto p-1 touch-scroll-x sm:grid sm:grid-cols-5 sm:justify-center sm:overflow-visible">
           <TabsTrigger value="overview" className="min-w-[6.5rem] flex-none sm:min-w-0 sm:flex-1">Overview</TabsTrigger>
           <TabsTrigger value="transactions" className="min-w-[8.25rem] flex-none sm:min-w-0 sm:flex-1">Transactions</TabsTrigger>
           <TabsTrigger value="salaries" className="min-w-[6.5rem] flex-none sm:min-w-0 sm:flex-1">Salaries</TabsTrigger>
           <TabsTrigger value="categories" className="min-w-[7rem] flex-none sm:min-w-0 sm:flex-1">Categories</TabsTrigger>
+          <TabsTrigger value="logs" className="min-w-[5.75rem] flex-none sm:min-w-0 sm:flex-1">Logs</TabsTrigger>
         </TabsList>
 
         {/* ========== TAB 1: OVERVIEW ========== */}
@@ -1694,14 +1808,23 @@ export function FinancesPage() {
                   Previous
                 </span>
                 <span>{formatDateRangeLabel(comparisonRange.start, comparisonRange.end)}</span>
-                {comparisonLoading && <div className="animate-spin rounded-full h-3 w-3 border-b border-[var(--stripe-primary)] ml-1" />}
+                {comparisonLoading && <div className="ml-1 inline-block h-3 w-14 animate-pulse rounded-full bg-[var(--stripe-primary)]/25" />}
               </div>
             )}
           </div>
 
           {overviewLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--stripe-primary)]"></div>
+            <div className="space-y-4 py-2">
+              <CardSkeleton titleWidth="w-44" lines={3} tall />
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <MetricTileSkeleton key={index} />
+                ))}
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <CardSkeleton titleWidth="w-40" lines={4} tall />
+                <CardSkeleton titleWidth="w-40" lines={4} tall />
+              </div>
             </div>
           ) : (
             <>
@@ -2173,9 +2296,7 @@ export function FinancesPage() {
           {/* Transactions Table */}
           <div className="stripe-card overflow-hidden">
             {txLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
+              <TableSkeleton rows={6} columns={6} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2313,8 +2434,10 @@ export function FinancesPage() {
           </div>
 
           {salariesLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <CardSkeleton key={index} titleWidth="w-36" lines={4} />
+              ))}
             </div>
           ) : (
             <>
@@ -2457,13 +2580,22 @@ export function FinancesPage() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => openRecordSalary(member)}
-                        className="w-full stripe-btn-primary flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
-                      >
-                        <Wallet className="w-4 h-4" />
-                        Record Payment
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => openRecordSalary(member)}
+                          className="stripe-btn-primary flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
+                        >
+                          <Wallet className="w-4 h-4" />
+                          Record Payment
+                        </button>
+                        <button
+                          onClick={() => openSalaryHistory(member)}
+                          className="flex items-center justify-center gap-2 rounded-lg border stripe-border px-4 py-2 text-sm font-medium stripe-text-primary hover:bg-gray-50 transition-colors"
+                        >
+                          <Clock3 className="w-4 h-4" />
+                          History
+                        </button>
+                      </div>
                     </div>
                   )
                 })}
@@ -2547,6 +2679,189 @@ export function FinancesPage() {
           )}
         </TabsContent>
 
+        {/* ========== TAB 4: LOGS ========== */}
+        <TabsContent value="logs" className="space-y-6">
+          <div className="stripe-card p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold stripe-text-primary">Finance Activity Logs</h3>
+                <p className="mt-1 text-sm stripe-text-muted">
+                  Audit trail for invoices, transactions, salary payments, and salary updates.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={applyFinanceLogFilters}
+                  className="inline-flex items-center gap-2 rounded-lg border stripe-border px-3 py-2 text-sm font-medium stripe-text-primary hover:bg-gray-50 transition-colors"
+                >
+                  <FileText className="h-4 w-4" />
+                  Apply filters
+                </button>
+                <button
+                  onClick={clearFinanceLogFilters}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="stripe-card p-4 sm:p-5">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">Search</span>
+                <input
+                  type="text"
+                  value={financeLogFilters.q}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, q: e.target.value }))}
+                  placeholder="Search summary or JSON details"
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                />
+              </label>
+
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">Action</span>
+                <select
+                  value={financeLogFilters.action}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, action: e.target.value }))}
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                >
+                  <option value="">All actions</option>
+                  <option value="invoice_created">Invoice created</option>
+                  <option value="invoice_updated">Invoice updated</option>
+                  <option value="invoice_deleted">Invoice deleted</option>
+                  <option value="transaction_created">Transaction created</option>
+                  <option value="transaction_updated">Transaction updated</option>
+                  <option value="transaction_deleted">Transaction deleted</option>
+                  <option value="salary_payment_created">Salary payment created</option>
+                  <option value="salary_payment_updated">Salary payment updated</option>
+                  <option value="salary_payment_deleted">Salary payment deleted</option>
+                  <option value="salary_rate_updated">Salary rate updated</option>
+                  <option value="salary_extras_updated">Salary extras updated</option>
+                </select>
+              </label>
+
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">Entity Type</span>
+                <select
+                  value={financeLogFilters.entityType}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, entityType: e.target.value }))}
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                >
+                  <option value="">All entities</option>
+                  <option value="invoice">Invoice</option>
+                  <option value="transaction">Transaction</option>
+                  <option value="salary_payment">Salary payment</option>
+                  <option value="salary_rate">Salary rate</option>
+                  <option value="salary_extras">Salary extras</option>
+                </select>
+              </label>
+
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">Team Member</span>
+                <select
+                  value={financeLogFilters.teamMemberId}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, teamMemberId: e.target.value }))}
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                >
+                  <option value="">All team members</option>
+                  {(salariesData?.members || []).map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">Entity ID</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={financeLogFilters.entityId}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, entityId: e.target.value }))}
+                  placeholder="Optional entity record id"
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                />
+              </label>
+
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">From</span>
+                <input
+                  type="date"
+                  value={financeLogFilters.startDate}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                />
+              </label>
+
+              <label className="space-y-1.5 text-sm">
+                <span className="block font-medium stripe-text-secondary">To</span>
+                <input
+                  type="date"
+                  value={financeLogFilters.endDate}
+                  onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
+                />
+              </label>
+            </div>
+          </div>
+
+          {financeLogsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-4 w-40 animate-pulse rounded-full bg-blue-200/50" />
+            </div>
+          ) : financeLogs.length === 0 ? (
+            <div className="stripe-card p-6 text-sm stripe-text-muted">
+              No finance activity has been logged yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {financeLogs.map((entry) => (
+                <div key={entry.id} className="stripe-card p-4 sm:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={getHistoryBadgeVariant(entry.action)}>
+                          {formatHistoryAction(entry.action)}
+                        </Badge>
+                        <span className="text-sm font-semibold stripe-text-primary">{entry.summary}</span>
+                      </div>
+                      <p className="text-xs stripe-text-muted">
+                        By {entry.actorName || 'Unknown'} • {formatDate(entry.createdAt)} • {entry.entityType} #{entry.entityId}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(entry.beforeData || entry.afterData || entry.metadata) && (
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      {entry.beforeData && (
+                        <div className="rounded-lg border stripe-border bg-gray-50/70 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stripe-text-muted">Before</p>
+                          <p className="text-sm stripe-text-primary">{formatHistoryValue(entry.beforeData)}</p>
+                        </div>
+                      )}
+                      {entry.afterData && (
+                        <div className="rounded-lg border stripe-border bg-gray-50/70 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stripe-text-muted">After</p>
+                          <p className="text-sm stripe-text-primary">{formatHistoryValue(entry.afterData)}</p>
+                        </div>
+                      )}
+                      {entry.metadata && (
+                        <div className="rounded-lg border stripe-border bg-gray-50/70 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stripe-text-muted">Details</p>
+                          <p className="text-sm stripe-text-primary">{formatHistoryValue(entry.metadata)}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
 
         {/* ========== TAB 5: CATEGORIES ========== */}
         <TabsContent value="categories" className="space-y-6">
@@ -2558,8 +2873,9 @@ export function FinancesPage() {
           </div>
 
           {categoriesLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <CardSkeleton titleWidth="w-40" lines={4} tall />
+              <CardSkeleton titleWidth="w-40" lines={4} tall />
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -3280,7 +3596,7 @@ export function FinancesPage() {
                 <h4 className="text-sm font-semibold stripe-text-primary mb-3">Rate History</h4>
                 {rateHistoryLoading ? (
                   <div className="flex justify-center py-4">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <div className="h-4 w-24 animate-pulse rounded-full bg-blue-200/50" />
                   </div>
                 ) : rateHistory.length === 0 ? (
                   <p className="text-xs stripe-text-muted italic py-2">No rate changes recorded yet.</p>
@@ -3311,6 +3627,117 @@ export function FinancesPage() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={showSalaryHistoryModal}
+        onOpenChange={(open) => {
+          setShowSalaryHistoryModal(open)
+          if (!open) {
+            setSalaryHistoryMember(null)
+            setSalaryHistoryEntries([])
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle>
+                  Salary History{salaryHistoryMember ? ` • ${salaryHistoryMember.name}` : ''}
+                </DialogTitle>
+                <DialogDescription>
+                  Audit trail for salary payments, salary rate changes, and default extras.
+                </DialogDescription>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSalaryHistoryModal(false)
+                  setLocation('/admin/finances/logs')
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border stripe-border px-3 py-2 text-xs font-medium stripe-text-primary hover:bg-gray-50 transition-colors"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Logs page
+              </button>
+            </div>
+          </DialogHeader>
+
+          {salaryHistoryLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-4 w-40 animate-pulse rounded-full bg-blue-200/50" />
+            </div>
+          ) : salaryHistoryEntries.length === 0 ? (
+            <div className="rounded-xl border stripe-border bg-gray-50/70 p-6 text-sm stripe-text-muted">
+              No salary history found for this team member yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {salaryHistoryEntries.map((entry) => (
+                <div key={entry.id} className="rounded-xl border stripe-border bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={getHistoryBadgeVariant(entry.action)}>
+                          {formatHistoryAction(entry.action)}
+                        </Badge>
+                        <span className="text-sm font-semibold stripe-text-primary">
+                          {entry.title}
+                        </span>
+                      </div>
+                      <p className="text-xs stripe-text-muted">
+                        By {entry.actorName || 'Unknown'} • {formatDate(entry.createdAt)}
+                        {entry.effectiveDate ? ` • Effective ${formatMonthLabel(entry.effectiveDate)}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {entry.note && (
+                    <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm stripe-text-secondary">
+                      {entry.note}
+                    </p>
+                  )}
+
+                  {(entry.beforeData || entry.afterData || entry.metadata) && (
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      {entry.beforeData && (
+                        <div className="rounded-lg border stripe-border bg-gray-50/70 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stripe-text-muted">
+                            Before
+                          </p>
+                          <p className="text-sm stripe-text-primary">
+                            {formatHistoryValue(entry.beforeData)}
+                          </p>
+                        </div>
+                      )}
+                      {entry.afterData && (
+                        <div className="rounded-lg border stripe-border bg-gray-50/70 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stripe-text-muted">
+                            After
+                          </p>
+                          <p className="text-sm stripe-text-primary">
+                            {formatHistoryValue(entry.afterData)}
+                          </p>
+                        </div>
+                      )}
+                      {entry.metadata && (
+                        <div className="rounded-lg border stripe-border bg-gray-50/70 p-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] stripe-text-muted">
+                            Details
+                          </p>
+                          <p className="text-sm stripe-text-primary">
+                            {formatHistoryValue(entry.metadata)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ========== INTEGRATION CONFIG MODAL ========== */}
       {showConfigModal && (

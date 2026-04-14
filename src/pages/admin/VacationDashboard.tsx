@@ -647,7 +647,7 @@ export default function VacationDashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-slate-700"></div>
+          <div className="h-16 w-16 animate-pulse rounded-full bg-slate-300/60"></div>
         </div>
       </div>
     )

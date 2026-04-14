@@ -35,7 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { getDatePreset, type DatePreset } from '@/lib/datePresets'
-import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, TableSkeleton } from '@/components/page-primitives'
 
 interface Client {
   id: number
@@ -357,8 +357,18 @@ export function ReportsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <PageHeroSkeleton />
+        <div className="grid gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <MetricTileSkeleton key={index} />
+          ))}
+        </div>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+          <CardSkeleton titleWidth="w-40" lines={4} tall />
+        </div>
+        <TableSkeleton rows={5} columns={5} />
       </div>
     )
   }

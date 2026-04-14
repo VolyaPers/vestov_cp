@@ -10,7 +10,7 @@ import { formatDate, parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { useCustomAlert } from '@/components/ui/custom-alert'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading } from '@/components/page-primitives'
 
 interface ServiceDeveloper {
   id: number
@@ -86,11 +86,15 @@ export function ClientPortal() {
   }
   const clientId = getRouteParam(params, 'clientId')
   const [client, setClient] = useState<ClientDetails | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isClientLoading, setIsClientLoading] = useState(true)
   const [serviceDevelopers, setServiceDevelopers] = useState<Record<number, ServiceDeveloper[]>>({})
+  const [isDevelopersLoading, setIsDevelopersLoading] = useState(true)
   const [documents, setDocuments] = useState<DocumentWithService[]>([])
+  const [isDocumentsLoading, setIsDocumentsLoading] = useState(true)
   const [contacts, setContacts] = useState<ClientContact[]>([])
+  const [isContactsLoading, setIsContactsLoading] = useState(true)
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [isInvoicesLoading, setIsInvoicesLoading] = useState(true)
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
   const [previewDocument, setPreviewDocument] = useState<DocumentWithService | null>(null)
 
@@ -102,76 +106,100 @@ export function ClientPortal() {
         // Load client details
         const clientResponse = await api.getClient(clientId)
         setClient(convertClientToClientDetails(clientResponse))
+        setIsClientLoading(false)
 
-        // Load service developers
-        if (clientResponse.services.length > 0) {
+        const activeServices = clientResponse.services.filter((service: any) => service.isActive)
+
+        // Load service developers, documents, contacts, and invoices independently so each
+        // section can reveal as soon as its own data is ready.
+        setIsDevelopersLoading(true)
+        setIsDocumentsLoading(true)
+        setIsContactsLoading(true)
+        setIsInvoicesLoading(true)
+
+        const developersPromise = (async () => {
           const developersData: Record<number, ServiceDeveloper[]> = {}
-          for (const service of clientResponse.services) {
-            try {
-              const developers = await api.getServiceDevelopers(parseInt(clientId), service.id)
-              developersData[service.id] = developers
-            } catch (error) {
-              console.error(`Failed to load developers for service ${service.id}:`, error)
-              developersData[service.id] = []
+
+          if (clientResponse.services.length > 0) {
+            for (const service of clientResponse.services) {
+              try {
+                const developers = await api.getServiceDevelopers(parseInt(clientId), service.id)
+                developersData[service.id] = developers
+              } catch (error) {
+                console.error(`Failed to load developers for service ${service.id}:`, error)
+                developersData[service.id] = []
+              }
             }
           }
+
           setServiceDevelopers(developersData)
-        }
+        })().finally(() => {
+          setIsDevelopersLoading(false)
+        })
 
-        // Load documents (visible to client) from all active services
-        try {
-          const allDocs: DocumentWithService[] = []
-          for (const service of clientResponse.services.filter((s: any) => s.isActive)) {
-            try {
-              const serviceDocsResponse = await api.getServiceDocumentsClientVisible(service.id)
-              const serviceName = service.serviceTypeName || service.serviceType?.name || 'Service'
-              const serviceTitle = service.serviceTitle
+        const documentsPromise = (async () => {
+          try {
+            const allDocs: DocumentWithService[] = []
+            for (const service of activeServices) {
+              try {
+                const serviceDocsResponse = await api.getServiceDocumentsClientVisible(service.id)
+                const serviceName = service.serviceTypeName || service.serviceType?.name || 'Service'
+                const serviceTitle = service.serviceTitle
 
-              // Add root documents with service info
-              if (serviceDocsResponse.rootDocuments) {
-                for (const doc of serviceDocsResponse.rootDocuments) {
-                  allDocs.push({ ...doc, serviceName, serviceTitle })
+                if (serviceDocsResponse.rootDocuments) {
+                  for (const doc of serviceDocsResponse.rootDocuments) {
+                    allDocs.push({ ...doc, serviceName, serviceTitle })
+                  }
                 }
-              }
-              // Add documents from folders with service info
-              if (serviceDocsResponse.folders) {
-                for (const folder of serviceDocsResponse.folders) {
-                  if (folder.documents) {
-                    for (const doc of folder.documents) {
-                      allDocs.push({ ...doc, serviceName, serviceTitle })
+                if (serviceDocsResponse.folders) {
+                  for (const folder of serviceDocsResponse.folders) {
+                    if (folder.documents) {
+                      for (const doc of folder.documents) {
+                        allDocs.push({ ...doc, serviceName, serviceTitle })
+                      }
                     }
                   }
                 }
+              } catch (error) {
+                console.error(`Failed to load documents for service ${service.id}:`, error)
               }
-            } catch (error) {
-              console.error(`Failed to load documents for service ${service.id}:`, error)
             }
+            setDocuments(allDocs)
+          } catch (error) {
+            console.error('Failed to load documents:', error)
           }
-          setDocuments(allDocs)
-        } catch (error) {
-          console.error('Failed to load documents:', error)
-        }
+        })().finally(() => {
+          setIsDocumentsLoading(false)
+        })
 
-        // Load contacts
-        try {
-          const contactsResponse = await api.request(`/client-contacts/client/${clientId}`)
-          setContacts(contactsResponse)
-        } catch (error) {
-          console.error('Failed to load contacts:', error)
-        }
+        const contactsPromise = (async () => {
+          try {
+            const contactsResponse = await api.request(`/client-contacts/client/${clientId}`)
+            setContacts(contactsResponse)
+          } catch (error) {
+            console.error('Failed to load contacts:', error)
+          }
+        })().finally(() => {
+          setIsContactsLoading(false)
+        })
 
-        // Load invoices
-        try {
-          const invoicesResponse = await api.request(`/invoices/client/${clientId}`)
-          setInvoices(invoicesResponse)
-        } catch (error) {
-          console.error('Failed to load invoices:', error)
-        }
+        const invoicesPromise = (async () => {
+          try {
+            const invoicesResponse = await api.request(`/invoices/client/${clientId}`)
+            setInvoices(invoicesResponse)
+          } catch (error) {
+            console.error('Failed to load invoices:', error)
+          }
+        })().finally(() => {
+          setIsInvoicesLoading(false)
+        })
 
+        await Promise.allSettled([developersPromise, documentsPromise, contactsPromise, invoicesPromise])
       } catch (error) {
         console.error('Failed to load client data:', error)
+        setIsClientLoading(false)
       } finally {
-        setIsLoading(false)
+        setIsClientLoading(false)
       }
     }
 
@@ -238,10 +266,26 @@ export function ClientPortal() {
     return uniqueDeveloperIds.size
   }
 
-  if (isLoading) {
+  if (isClientLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="space-y-4 sm:space-y-6">
+        <PageHeroSkeleton />
+
+        <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+              <MetricTileSkeleton />
+            </div>
+          ))}
+        </div>
+
+        <CardSkeleton titleWidth="w-40" lines={3} />
+        <CardSkeleton titleWidth="w-32" lines={4} />
+
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <CardSkeleton titleWidth="w-36" lines={4} tall />
+          <CardSkeleton titleWidth="w-44" lines={4} tall />
+        </div>
       </div>
     )
   }
@@ -273,25 +317,37 @@ export function ClientPortal() {
               </Badge>
             )}
             <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-            <span>{documents.length} shared documents</span>
+            <span>{isDocumentsLoading ? 'Loading documents...' : `${documents.length} shared documents`}</span>
             <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-            <span>{invoices.length} invoices</span>
+            <span>{isInvoicesLoading ? 'Loading invoices...' : `${invoices.length} invoices`}</span>
           </>
         }
       />
 
       <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible lg:grid-cols-4">
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <MetricTile label="Team Size" value={getUniqueTeamSize()} hint="Assigned delivery specialists" icon={<Users className="h-5 w-5" />} tone="primary" />
+          {isDevelopersLoading ? (
+            <MetricTileSkeleton />
+          ) : (
+            <MetricTile label="Team Size" value={getUniqueTeamSize()} hint="Assigned delivery specialists" icon={<Users className="h-5 w-5" />} tone="primary" />
+          )}
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
           <MetricTile label="Active Services" value={client.services.filter(s => s.isActive).length} hint="Current delivery lanes" icon={<Building className="h-5 w-5" />} tone="emerald" />
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <MetricTile label="Documents" value={documents.length} hint="Shared files and folders" icon={<FileText className="h-5 w-5" />} tone="violet" />
+          {isDocumentsLoading ? (
+            <MetricTileSkeleton />
+          ) : (
+            <MetricTile label="Documents" value={documents.length} hint="Shared files and folders" icon={<FileText className="h-5 w-5" />} tone="violet" />
+          )}
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <MetricTile label="Invoices" value={invoices.length} hint="Billing history in portal" icon={<DollarSign className="h-5 w-5" />} tone="amber" />
+          {isInvoicesLoading ? (
+            <MetricTileSkeleton />
+          ) : (
+            <MetricTile label="Invoices" value={invoices.length} hint="Billing history in portal" icon={<DollarSign className="h-5 w-5" />} tone="amber" />
+          )}
         </div>
       </div>
 
@@ -337,7 +393,9 @@ export function ClientPortal() {
           <SectionHeading title="Your Services" description="Services and team members assigned to your project" icon={<Building className="h-5 w-5" />} />
         </CardHeader>
         <CardContent>
-          {client.services.length > 0 ? (
+          {isDevelopersLoading ? (
+            <CardSkeleton titleWidth="w-32" lines={4} tall />
+          ) : client.services.length > 0 ? (
             <div className="space-y-6">
               {client.services.map((service) => (
                 <div key={service.id} className="overflow-hidden rounded-[1.25rem] border border-border/70 bg-white/70">
@@ -424,7 +482,9 @@ export function ClientPortal() {
       </Card>
 
       {/* Contact Information */}
-      {contacts.length > 0 && (
+      {isContactsLoading ? (
+        <CardSkeleton titleWidth="w-36" lines={4} tall />
+      ) : contacts.length > 0 && (
         <Card className="content-auto">
           <CardHeader>
             <SectionHeading title="Contact Information" description="Your main points of contact" icon={<Mail className="h-5 w-5" />} />
@@ -472,7 +532,22 @@ export function ClientPortal() {
           <SectionHeading title="Documents" description="Your project documents and files" icon={<FileText className="h-5 w-5" />} />
         </CardHeader>
         <CardContent>
-          {documents.length > 0 ? (
+          {isDocumentsLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="rounded-[1rem] border border-border/60 bg-white/75 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-5 w-5 rounded-md bg-slate-200/80 animate-pulse" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-2/5 rounded-full bg-slate-200/80 animate-pulse" />
+                      <div className="h-3 w-3/4 rounded-full bg-slate-200/80 animate-pulse" />
+                    </div>
+                    <div className="h-9 w-24 rounded-full bg-slate-200/80 animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : documents.length > 0 ? (
             <div className="space-y-3">
               {documents.map((doc) => (
                 <div key={doc.document.id} className="flex flex-col gap-3 rounded-[1rem] border border-border/60 bg-white/75 p-4 transition hover:bg-primary/5 sm:flex-row sm:items-center sm:justify-between">

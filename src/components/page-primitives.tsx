@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const heroThemes = {
@@ -162,5 +163,247 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
+  )
+}
+
+interface SkeletonLineProps {
+  className?: string
+}
+
+function SkeletonLine({ className }: SkeletonLineProps) {
+  return <Skeleton className={cn('h-4 w-full', className)} />
+}
+
+export function PageHeroSkeleton() {
+  return (
+    <Card className="overflow-hidden border bg-white text-foreground shadow-none border-blue-200/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.98),rgba(255,255,255,0.98))]">
+      <CardContent className="px-5 pb-5 pt-5 sm:px-7 sm:pb-7 sm:pt-6 lg:px-8 lg:pb-8 lg:pt-7">
+        <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-8">
+          <div className="max-w-3xl">
+            <SkeletonLine className="h-3 w-28 rounded-full" />
+            <SkeletonLine className="mt-3 h-10 w-3/5 rounded-xl sm:h-12" />
+            <div className="mt-3 space-y-2">
+              <SkeletonLine className="h-4 w-full max-w-2xl" />
+              <SkeletonLine className="h-4 w-5/6 max-w-xl" />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2.5 sm:mt-5 sm:gap-3">
+              <Skeleton className="h-5 w-24 rounded-full" />
+              <Skeleton className="h-5 w-28 rounded-full" />
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 xl:max-w-md xl:items-end xl:self-start">
+            <div className="grid w-full gap-2 sm:grid-cols-2 sm:gap-3 xl:justify-end">
+              <Skeleton className="h-11 w-full rounded-[1rem]" />
+              <Skeleton className="h-11 w-full rounded-[1rem]" />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+              <div className="rounded-[1.3rem] border border-border/80 bg-white/65 p-4">
+                <SkeletonLine className="h-3 w-24 rounded-full" />
+                <SkeletonLine className="mt-3 h-6 w-20 rounded-lg" />
+                <SkeletonLine className="mt-2 h-4 w-3/4 rounded-lg" />
+              </div>
+              <div className="rounded-[1.3rem] border border-border/80 bg-white/65 p-4">
+                <SkeletonLine className="h-3 w-24 rounded-full" />
+                <SkeletonLine className="mt-3 h-6 w-24 rounded-lg" />
+                <SkeletonLine className="mt-2 h-4 w-2/3 rounded-lg" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function MetricTileSkeleton() {
+  return (
+    <Card className="h-full border border-border/80 shadow-none">
+      <CardContent className="flex h-full flex-col gap-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5 sm:pt-5">
+        <div className="flex min-h-[2.75rem] items-start justify-between gap-3 sm:items-center">
+          <div className="min-w-0 flex-1">
+            <SkeletonLine className="h-3.5 w-24 rounded-full" />
+          </div>
+          <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
+        </div>
+
+        <div className="flex flex-1 flex-col justify-end">
+          <SkeletonLine className="h-8 w-28 rounded-xl" />
+          <SkeletonLine className="mt-2 h-4 w-32 rounded-full" />
+          <Skeleton className="mt-3 h-6 w-20 rounded-full" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function CardSkeleton({
+  titleWidth = 'w-40',
+  lines = 3,
+  tall = false,
+}: {
+  titleWidth?: string
+  lines?: number
+  tall?: boolean
+}) {
+  return (
+    <Card className="content-auto border border-border/80 shadow-none">
+      <CardContent className={cn('space-y-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5 sm:pt-5', tall && 'min-h-[18rem]')}>
+        <div className="space-y-2">
+          <SkeletonLine className={cn('h-5 rounded-full', titleWidth)} />
+          <SkeletonLine className="h-4 w-3/5 rounded-full" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: lines }).map((_, index) => (
+            <SkeletonLine
+              key={index}
+              className={cn('h-4 rounded-full', index === lines - 1 ? 'w-4/5' : 'w-full')}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export function WorkspaceShellSkeleton({
+  roleLabel,
+  title,
+  sidebarLines = 5,
+}: {
+  roleLabel: string
+  title: string
+  sidebarLines?: number
+}) {
+  return (
+    <div className="app-shell min-h-screen" aria-label={`${roleLabel} loading skeleton`}>
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-[220px] xl:w-[232px] lg:block">
+        <div className="flex h-full flex-col border-r border-slate-200 bg-white/90 px-4 py-5">
+          <Skeleton className="h-8 w-24 rounded-full" />
+          <Skeleton className="mt-5 h-10 w-full rounded-[1rem]" />
+          <div className="mt-6 space-y-2">
+            {Array.from({ length: sidebarLines }).map((_, index) => (
+              <Skeleton
+                key={index}
+                className={cn(
+                  'h-10 w-full rounded-[0.95rem]',
+                  index === 0 ? 'w-5/6' : index === 1 ? 'w-4/5' : ''
+                )}
+              />
+            ))}
+          </div>
+          <div className="mt-auto space-y-3 border-t border-slate-200 pt-4">
+            <Skeleton className="h-10 w-full rounded-[0.95rem]" />
+            <Skeleton className="h-10 w-full rounded-[0.95rem]" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-h-screen flex-col lg:pl-[220px] xl:pl-[232px]">
+        <header className="sticky top-0 z-20">
+          <div className="mobile-top-chrome lg:hidden">
+            <div className="mobile-top-chrome-main">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-3 w-28 rounded-full" />
+                <Skeleton className="h-6 w-44 rounded-full" />
+              </div>
+              <Skeleton className="h-8 w-24 rounded-full" />
+            </div>
+            <div className="px-4 pb-4">
+              <Skeleton className="h-11 w-full rounded-full" />
+            </div>
+          </div>
+
+          <div className="hidden workspace-topbar lg:block">
+            <div className="mx-auto flex w-full max-w-[1600px] items-center gap-4 px-6 py-3 xl:px-8">
+              <Skeleton className="h-11 max-w-[340px] flex-1 rounded-full" />
+              <div className="ml-auto flex items-center gap-2">
+                <Skeleton className="h-8 w-24 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1">
+          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-5 xl:px-10">
+            <div className="mx-auto max-w-[1500px] space-y-5 sm:space-y-6">
+              <Card className="overflow-hidden border bg-white text-foreground shadow-none border-blue-200/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.98),rgba(255,255,255,0.98))]">
+                <CardContent className="px-5 pb-5 pt-5 sm:px-7 sm:pb-7 sm:pt-6 lg:px-8 lg:pb-8 lg:pt-7">
+                  <div className="space-y-3">
+                    <Skeleton className="h-3 w-24 rounded-full" />
+                    <Skeleton className="h-9 w-2/5 rounded-xl" />
+                    <Skeleton className="h-4 w-3/5 rounded-full" />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2.5">
+                    <Skeleton className="h-5 w-24 rounded-full" />
+                    <Skeleton className="h-5 w-28 rounded-full" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <MetricTileSkeleton key={index} />
+                ))}
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                <CardSkeleton titleWidth="w-40" lines={4} tall />
+                <CardSkeleton titleWidth="w-44" lines={4} tall />
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-2">
+                <CardSkeleton titleWidth="w-36" lines={5} tall />
+                <CardSkeleton titleWidth="w-32" lines={4} tall />
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+export function TableSkeleton({
+  rows = 6,
+  columns = 5,
+}: {
+  rows?: number
+  columns?: number
+}) {
+  return (
+    <Card className="border border-border/80 shadow-none">
+      <CardContent className="px-0 pb-0 pt-0">
+        <div className="overflow-hidden">
+          <div className="grid gap-3 border-b border-border/70 px-4 py-4 sm:px-5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+            {Array.from({ length: columns }).map((_, index) => (
+              <Skeleton key={index} className="h-3 rounded-full" />
+            ))}
+          </div>
+          <div className="space-y-0">
+            {Array.from({ length: rows }).map((_, rowIndex) => (
+              <div
+                key={rowIndex}
+                className="grid gap-3 border-b border-border/60 px-4 py-4 last:border-b-0 sm:px-5"
+                style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+              >
+                {Array.from({ length: columns }).map((_, columnIndex) => (
+                  <Skeleton
+                    key={columnIndex}
+                    className={cn(
+                      'h-4 rounded-full',
+                      columnIndex === 0 ? 'w-4/5' : columnIndex === columns - 1 ? 'w-2/3' : 'w-full'
+                    )}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
