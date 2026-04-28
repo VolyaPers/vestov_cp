@@ -127,6 +127,7 @@ async function main() {
 
     // clients columns
     { table: 'clients', sql: `ALTER TABLE clients ADD COLUMN IF NOT EXISTS logo_url TEXT` },
+    { table: 'client_contacts', sql: `ALTER TABLE client_contacts ADD COLUMN IF NOT EXISTS avatar_url TEXT` },
 
     // document_folders table
     { table: 'document_folders', sql: `

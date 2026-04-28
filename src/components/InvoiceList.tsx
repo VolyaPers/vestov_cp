@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Edit, Trash2, DollarSign, Calendar, FileText, Calculator, Users, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -118,6 +118,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
         dueDate: data.dueDate,
         notes: data.notes,
         serviceIds: data.serviceIds,
+        useServicePricing: data.serviceIds !== undefined,
+        servicePrices: data.servicePrices,
       }
       return api.updateInvoice(id, commonData)
     },
@@ -159,6 +161,28 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       notes: invoice.notes || ''
     })
     setIsEditDialogOpen(true)
+  }
+
+  useEffect(() => {
+    if (!detailedInvoice || !editingInvoice) return
+
+    setEditInvoiceData(prev => ({
+      ...prev,
+      serviceIds: detailedInvoice.serviceIds || [],
+    }))
+  }, [detailedInvoice, editingInvoice])
+
+  const handleEditServiceToggle = (serviceId: number) => {
+    setEditInvoiceData(prev => {
+      const serviceIds = prev.serviceIds || []
+      const isSelected = serviceIds.includes(serviceId)
+      return {
+        ...prev,
+        serviceIds: isSelected
+          ? serviceIds.filter(id => id !== serviceId)
+          : [...serviceIds, serviceId],
+      }
+    })
   }
 
   const handleUpdateInvoice = () => {
@@ -536,16 +560,28 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                   </div>
                   
                   <div className="space-y-4">
-                    {serviceOptions.clientServices.map((service: any) => (
+                    {serviceOptions.clientServices.map((service: any) => {
+                      const displayServiceName = service.serviceTitle || service.serviceName
+                      const isConnected = (editInvoiceData.serviceIds || []).includes(service.id)
+
+                      return (
                       <div key={service.id} className="border rounded-lg p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isConnected}
+                              onChange={() => handleEditServiceToggle(service.id)}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              aria-label={`Connect ${displayServiceName}`}
+                            />
                             <div className="p-2 bg-primary/10 rounded-lg">
                               <Settings className="h-4 w-4 text-primary" />
                             </div>
                             <div>
-                              <h4 className="font-medium">{service.serviceName}</h4>
+                              <h4 className="font-medium">{displayServiceName}</h4>
                               <p className="text-sm text-gray-600">
+                                {service.serviceTitle && `${service.serviceName} • `}
                                 {service.serviceCategory} • {service.billingModel} billing
                               </p>
                             </div>
@@ -579,7 +615,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                           </div>
                         )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {/* Total Summary */}

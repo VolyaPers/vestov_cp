@@ -29,12 +29,14 @@ interface EnhancedInvoiceFormProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  initialServiceId?: number | null
 }
 
 interface ClientServiceOption {
   id: number
   serviceId: number
   serviceName: string
+  serviceTitle?: string
   serviceCategory: string
   billingModel: string
   serviceLevelPrice?: number
@@ -43,6 +45,7 @@ interface ClientServiceOption {
     id: number
     developerId: number
     developerName: string
+    developerAvatarUrl?: string
     hourlyRate?: string
     fixedPrice?: string
     employmentType: string
@@ -62,7 +65,8 @@ export function EnhancedInvoiceForm({
   clientName, 
   isOpen, 
   onClose, 
-  onSuccess 
+  onSuccess,
+  initialServiceId = null
 }: EnhancedInvoiceFormProps) {
   const { showAlert } = useCustomAlert()
   const queryClient = useQueryClient()
@@ -119,6 +123,9 @@ export function EnhancedInvoiceForm({
   useEffect(() => {
     if (serviceOptions?.clientServices) {
       setLocalClientServices(serviceOptions.clientServices)
+      if (initialServiceId && serviceOptions.clientServices.some(service => service.id === initialServiceId)) {
+        setSelectedServices([initialServiceId])
+      }
       
       // Initialize developer rates for all existing developers
       const initialRates: any = {}
@@ -141,7 +148,7 @@ export function EnhancedInvoiceForm({
         developerRates: { ...prev.developerRates, ...initialRates }
       }))
     }
-  }, [serviceOptions?.clientServices])
+  }, [serviceOptions?.clientServices, initialServiceId])
 
   // Calculate pricing mutation
   const calculatePricingMutation = useMutation({
@@ -150,6 +157,7 @@ export function EnhancedInvoiceForm({
       periodStart: string
       periodEnd: string
       developerRates?: { [key: number]: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } }
+      servicePrices?: { [key: number]: number }
     }) => api.calculateServicePricing(clientId, data),
     onSuccess: (data) => {
       setPricingCalculation(data.services)
@@ -251,7 +259,8 @@ export function EnhancedInvoiceForm({
         serviceIds: selectedServices,
         periodStart: invoiceData.periodStart,
         periodEnd: invoiceData.periodEnd,
-        developerRates: activeDeveloperRates
+        developerRates: activeDeveloperRates,
+        servicePrices: customServicePrices
       })
     }
   }, [selectedServices, invoiceData.periodStart, invoiceData.periodEnd, invoiceData.developerRates, localClientServices, activeTab])
@@ -455,6 +464,13 @@ export function EnhancedInvoiceForm({
   }
 
   const getFinalTotal = () => {
+    if (activeTab === 'service-based' && pricingCalculation && selectedServices.length > 0) {
+      return pricingCalculation.reduce((total, calc) => {
+        const customPrice = customServicePrices[calc.serviceId]
+        return total + (customPrice !== undefined ? customPrice : calc.finalAmount)
+      }, 0)
+    }
+
     // First try to use the server-calculated total
     if (calculatedTotal > 0) {
       return calculatedTotal
@@ -506,6 +522,7 @@ export function EnhancedInvoiceForm({
       ...invoiceData,
       serviceIds: activeTab === 'service-based' ? selectedServices : undefined,
       useServicePricing: activeTab === 'service-based',
+      servicePrices: activeTab === 'service-based' ? customServicePrices : undefined,
       amount: activeTab === 'manual' ? invoiceData.amount : getFinalTotal()
     }
 
@@ -605,7 +622,10 @@ export function EnhancedInvoiceForm({
                   {/* Client's Active Services */}
                   <div className="space-y-3">
                     <h4 className="font-medium text-sm text-gray-700">Active Services</h4>
-                    {clientServices.map((service: ClientServiceOption) => (
+                    {clientServices.map((service: ClientServiceOption) => {
+                      const displayServiceName = service.serviceTitle || service.serviceName
+
+                      return (
                       <Card key={service.id} className="border-2 border-dashed border-gray-200">
                         <CardHeader className="pb-3">
                           <div className="flex items-center justify-between">
@@ -615,8 +635,9 @@ export function EnhancedInvoiceForm({
                                 onCheckedChange={() => handleServiceToggle(service.id)}
                               />
                               <div>
-                                <CardTitle className="text-base">{service.serviceName}</CardTitle>
+                                <CardTitle className="text-base">{displayServiceName}</CardTitle>
                                 <CardDescription>
+                                  {service.serviceTitle && `${service.serviceName} • `}
                                   {service.serviceCategory} • {service.billingModel} billing
                                   {service.serviceLevelPrice && (
                                     <span className="ml-2 text-green-600 font-medium">
@@ -828,7 +849,8 @@ export function EnhancedInvoiceForm({
                           </CardContent>
                         )}
                       </Card>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {/* Available Services to Add */}
@@ -868,7 +890,7 @@ export function EnhancedInvoiceForm({
                   {pricingCalculation.map((calc, index) => (
                     <div key={index} className="border-b pb-2 last:border-b-0">
                       <div className="flex justify-between items-center">
-                        <span className="font-medium">{calc.serviceName}</span>
+                        <span className="font-medium">{calc.serviceTitle || calc.serviceName}</span>
                         <span className="font-bold">
                           ${(() => {
                             const customPrice = customServicePrices[calc.serviceId]

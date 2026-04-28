@@ -104,6 +104,14 @@ export async function ensureUserColumns(pool: Pool): Promise<void> {
   }
 }
 
+export async function ensureClientContactColumns(pool: Pool): Promise<void> {
+  const hasAvatarUrl = await checkColumnExists(pool, 'client_contacts', 'avatar_url')
+  if (!hasAvatarUrl) {
+    console.log('[MIGRATIONS] Adding missing column: client_contacts.avatar_url')
+    await pool.query('ALTER TABLE "client_contacts" ADD COLUMN IF NOT EXISTS "avatar_url" text;')
+  }
+}
+
 export async function ensureFinanceTables(pool: Pool): Promise<void> {
   try {
     const hasMonthlySalaryExtras = await checkColumnExists(pool, 'team_members', 'monthly_salary_extras')

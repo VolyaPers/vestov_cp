@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, type MouseEvent } from 'react'
 import {
   BarChart,
   Bar,
@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tooltip as InfoTooltip } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DateRangePicker } from '@/components/ui/advanced-date-picker'
 import { useLocation } from 'wouter'
 import { api, type FinanceCategory, type FinanceCategoryKind, type FinanceAuditLog, type SalaryHistoryEntry } from '@/lib/api'
 import { CardSkeleton, MetricTileSkeleton, TableSkeleton } from '@/components/page-primitives'
@@ -65,6 +66,7 @@ type ParsedSalaryPayment = {
 }
 
 type DatePreset = 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter' | 'ytd' | 'last_year' | 'custom'
+type TransactionDatePreset = 'this_month' | 'last_month' | 'this_year' | 'last_year' | 'all' | 'custom'
 
 const DATE_PRESETS: { key: DatePreset; label: string }[] = [
   { key: 'this_month', label: 'This Month' },
@@ -73,6 +75,15 @@ const DATE_PRESETS: { key: DatePreset; label: string }[] = [
   { key: 'last_quarter', label: 'Last Quarter' },
   { key: 'ytd', label: 'YTD' },
   { key: 'last_year', label: 'Last Year' },
+  { key: 'custom', label: 'Custom' },
+]
+
+const TRANSACTION_DATE_PRESETS: { key: TransactionDatePreset; label: string }[] = [
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_month', label: 'Last Month' },
+  { key: 'this_year', label: 'This Year' },
+  { key: 'last_year', label: 'Last Year' },
+  { key: 'all', label: 'All' },
   { key: 'custom', label: 'Custom' },
 ]
 
@@ -256,6 +267,31 @@ function getDateRangeForPreset(preset: DatePreset, today: Date = new Date()): { 
     case 'custom':
       return { start: `${y}-01-01`, end: fmt(today) }
   }
+}
+
+function getDateRangeForTransactionPreset(preset: TransactionDatePreset, today: Date = new Date()): { start: string; end: string } {
+  const y = today.getFullYear()
+  const m = today.getMonth()
+
+  switch (preset) {
+    case 'this_month':
+      return { start: fmt(new Date(y, m, 1)), end: fmt(today) }
+    case 'last_month':
+      return { start: fmt(new Date(y, m - 1, 1)), end: fmt(new Date(y, m, 0)) }
+    case 'this_year':
+      return { start: `${y}-01-01`, end: fmt(today) }
+    case 'last_year':
+      return { start: `${y - 1}-01-01`, end: `${y - 1}-12-31` }
+    case 'all':
+      return { start: '', end: '' }
+    case 'custom':
+      return { start: '', end: '' }
+  }
+}
+
+function openNativeDatePicker(event: MouseEvent<HTMLInputElement>) {
+  const input = event.currentTarget
+  input.showPicker?.()
 }
 
 function getComparisonRange(start: string, end: string): { start: string; end: string } {
@@ -661,9 +697,25 @@ export function FinancesPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>([])
   const [txLoading, setTxLoading] = useState(true)
-  const [txTypeFilter, setTxTypeFilter] = useState('all')
-  const [txStartDate, setTxStartDate] = useState('')
-  const [txEndDate, setTxEndDate] = useState('')
+  const [txTypeFilter, setTxTypeFilter] = useState(() => new URLSearchParams(window.location.search).get('type') ?? 'all')
+  const [txDatePreset, setTxDatePreset] = useState<TransactionDatePreset>(() => {
+    const preset = new URLSearchParams(window.location.search).get('period') as TransactionDatePreset | null
+    return preset && TRANSACTION_DATE_PRESETS.some(item => item.key === preset) ? preset : 'this_month'
+  })
+  const [txStartDate, setTxStartDate] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const period = params.get('period') as TransactionDatePreset | null
+    const defaultPreset = period && TRANSACTION_DATE_PRESETS.some(item => item.key === period) ? period : 'this_month'
+    const defaultRange = getDateRangeForTransactionPreset(defaultPreset)
+    return params.get('startDate') ?? defaultRange.start
+  })
+  const [txEndDate, setTxEndDate] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const period = params.get('period') as TransactionDatePreset | null
+    const defaultPreset = period && TRANSACTION_DATE_PRESETS.some(item => item.key === period) ? period : 'this_month'
+    const defaultRange = getDateRangeForTransactionPreset(defaultPreset)
+    return params.get('endDate') ?? defaultRange.end
+  })
   const [txSearch, setTxSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [showTxModal, setShowTxModal] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
@@ -771,6 +823,20 @@ export function FinancesPage() {
     const nextQuery = new URLSearchParams(window.location.search).get('q') ?? ''
     setTxSearch(nextQuery)
   }, [location])
+
+  useEffect(() => {
+    if (activeTab !== 'transactions') return
+
+    const params = new URLSearchParams()
+    if (txTypeFilter !== 'all') params.set('type', txTypeFilter)
+    if (txDatePreset) params.set('period', txDatePreset)
+    if (txStartDate) params.set('startDate', txStartDate)
+    if (txEndDate) params.set('endDate', txEndDate)
+    if (txSearch) params.set('q', txSearch)
+
+    const nextUrl = `/admin/finances/transactions${params.toString() ? `?${params.toString()}` : ''}`
+    window.history.replaceState(null, '', nextUrl)
+  }, [activeTab, txTypeFilter, txDatePreset, txStartDate, txEndDate, txSearch])
 
   // Load balances on mount
   useEffect(() => {
@@ -927,6 +993,16 @@ export function FinancesPage() {
       setDateRange({ start: customStart, end: customEnd })
     }
   }, [customStart, customEnd])
+
+  const handleTransactionPresetChange = useCallback((preset: TransactionDatePreset) => {
+    setTxDatePreset(preset)
+
+    if (preset !== 'custom') {
+      const range = getDateRangeForTransactionPreset(preset)
+      setTxStartDate(range.start)
+      setTxEndDate(range.end)
+    }
+  }, [])
 
   const loadTransactions = async () => {
     try {
@@ -1215,11 +1291,13 @@ export function FinancesPage() {
 
   const handleDeleteTransaction = async (id: number) => {
     if (!confirm('Are you sure you want to delete this transaction?')) return
+    const previousTransactions = transactions
+    setTransactions((current) => current.filter((transaction) => transaction.id !== id))
     try {
       await api.deleteFinancialTransaction(id)
-      await loadTransactions()
       loadOverview()
     } catch (error) {
+      setTransactions(previousTransactions)
       console.error('Failed to delete transaction:', error)
     }
   }
@@ -1753,6 +1831,7 @@ export function FinancesPage() {
                   <input
                     type="date"
                     value={customStart}
+                    onClick={openNativeDatePicker}
                     onChange={(e) => setCustomStart(e.target.value)}
                     className="px-2.5 py-1.5 border rounded-lg border-gray-200 bg-white text-xs text-gray-900"
                   />
@@ -1760,6 +1839,7 @@ export function FinancesPage() {
                   <input
                     type="date"
                     value={customEnd}
+                    onClick={openNativeDatePicker}
                     onChange={(e) => setCustomEnd(e.target.value)}
                     className="px-2.5 py-1.5 border rounded-lg border-gray-200 bg-white text-xs text-gray-900"
                   />
@@ -2237,22 +2317,24 @@ export function FinancesPage() {
               </select>
 
               {/* Date range */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={txStartDate}
-                  onChange={(e) => setTxStartDate(e.target.value)}
+              <div className="grid gap-2 sm:grid-cols-[180px_280px]">
+                <select
+                  value={txDatePreset}
+                  onChange={(e) => handleTransactionPresetChange(e.target.value as TransactionDatePreset)}
                   className="px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                  placeholder="Start date"
-                />
-                <span className="stripe-text-muted text-sm">to</span>
-                <input
-                  type="date"
-                  value={txEndDate}
-                  onChange={(e) => setTxEndDate(e.target.value)}
-                  className="px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
-                  placeholder="End date"
-                />
+                >
+                  {TRANSACTION_DATE_PRESETS.map((preset) => (
+                    <option key={preset.key} value={preset.key}>{preset.label}</option>
+                  ))}
+                </select>
+                {txDatePreset === 'custom' && (
+                  <DateRangePicker
+                    startDate={txStartDate}
+                    endDate={txEndDate}
+                    onStartDateChange={(date) => setTxStartDate(date || '')}
+                    onEndDateChange={(date) => setTxEndDate(date || '')}
+                  />
+                )}
               </div>
 
               {/* Search */}
@@ -2791,6 +2873,7 @@ export function FinancesPage() {
                 <input
                   type="date"
                   value={financeLogFilters.startDate}
+                  onClick={openNativeDatePicker}
                   onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, startDate: e.target.value }))}
                   className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
                 />
@@ -2801,6 +2884,7 @@ export function FinancesPage() {
                 <input
                   type="date"
                   value={financeLogFilters.endDate}
+                  onClick={openNativeDatePicker}
                   onChange={(e) => setFinanceLogFilters((prev) => ({ ...prev, endDate: e.target.value }))}
                   className="w-full rounded-lg border stripe-border bg-white px-3 py-2 stripe-text-primary"
                 />
@@ -3148,6 +3232,7 @@ export function FinancesPage() {
                 <input
                   type="date"
                   value={txForm.transactionDate}
+                  onClick={openNativeDatePicker}
                   onChange={(e) => setTxForm({ ...txForm, transactionDate: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 />
@@ -3409,6 +3494,7 @@ export function FinancesPage() {
                 <input
                   type="date"
                   value={salaryForm.transactionDate}
+                  onClick={openNativeDatePicker}
                   onChange={(e) => setSalaryForm({ ...salaryForm, transactionDate: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 />
@@ -3499,6 +3585,7 @@ export function FinancesPage() {
                 <input
                   type="date"
                   value={rateForm.effectiveDate}
+                  onClick={openNativeDatePicker}
                   onChange={(e) => setRateForm({ ...rateForm, effectiveDate: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 />

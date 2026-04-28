@@ -140,6 +140,7 @@ export const clientContacts = pgTable('client_contacts', {
   position: text('position'),
   email: varchar('email', { length: 255 }),
   phone: varchar('phone', { length: 20 }),
+  avatarUrl: text('avatar_url'),
   notes: text('notes'),
   isPrimary: boolean('is_primary').default(false),
   isActive: boolean('is_active').default(true),

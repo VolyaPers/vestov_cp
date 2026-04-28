@@ -607,6 +607,7 @@ class ApiClient {
     periodStart: string
     periodEnd: string
     developerRates?: { [key: number]: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } }
+    servicePrices?: { [key: number]: number }
   }) {
     return this.request(`/invoices/calculate-pricing/${clientId}`, {
       method: 'POST',
@@ -993,6 +994,12 @@ class ApiClient {
     const formData = new FormData()
     formData.append('logo', file)
     return this.requestFormData(`/admin/clients/${clientId}/logo`, formData)
+  }
+
+  async uploadClientContactAvatar(contactId: number, file: File) {
+    const formData = new FormData()
+    formData.append('avatar', file)
+    return this.requestFormData(`/client-contacts/${contactId}/avatar`, formData)
   }
 
   // Shift Management

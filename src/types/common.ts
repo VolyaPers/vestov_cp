@@ -431,6 +431,8 @@ export interface CreateInvoiceData {
   dueDate?: string
   notes?: string
   serviceIds?: number[]
+  useServicePricing?: boolean
+  servicePrices?: { [key: number]: number }
 }
 
 export interface UpdateInvoiceData extends Partial<CreateInvoiceData> { }

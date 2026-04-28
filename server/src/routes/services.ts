@@ -760,6 +760,7 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
         developerId: clientServiceTeamMembers.teamMemberId,
         name: teamMembers.name,
         email: teamMembers.email,
+        avatarUrl: teamMembers.avatarUrl,
         skills: teamMembers.skills,
         hourlyRate: clientServiceTeamMembers.hourlyRate,
         fixedPrice: clientServiceTeamMembers.fixedPrice,

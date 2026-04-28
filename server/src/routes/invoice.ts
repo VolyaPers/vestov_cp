@@ -207,7 +207,31 @@ router.get('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' })
     }
 
-    res.json(invoice)
+    const services = await db
+      .select({
+        id: invoiceServices.id,
+        serviceId: invoiceServices.clientServiceId,
+        serviceName: serviceTypes.name,
+        serviceTitle: clientServices.serviceTitle,
+        serviceCategory: serviceTypes.category,
+        billingModel: serviceTypes.billingModel,
+        serviceLevelPrice: invoiceServices.serviceLevelPrice,
+        calculatedAmount: invoiceServices.calculatedAmount,
+      })
+      .from(invoiceServices)
+      .leftJoin(clientServices, eq(invoiceServices.clientServiceId, clientServices.id))
+      .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
+      .where(eq(invoiceServices.invoiceId, invoiceId))
+
+    res.json({
+      ...invoice,
+      serviceIds: services.map((service) => service.serviceId),
+      services: services.map((service) => ({
+        ...service,
+        serviceName: service.serviceTitle || service.serviceName,
+        serviceTypeName: service.serviceName,
+      })),
+    })
   } catch (error) {
     console.error('Get invoice error:', error)
     res.status(500).json({ error: 'Failed to fetch invoice' })
@@ -234,6 +258,7 @@ router.post('/', async (req, res) => {
       serviceIds,
       useServicePricing,
       developerRates,
+      servicePrices = {},
       paidAt,
       status
     } = req.body
@@ -291,7 +316,7 @@ router.post('/', async (req, res) => {
       }).returning()
 
       // If service-based pricing is used, create invoice_services and invoice_developers records
-      if (useServicePricing && serviceIds && serviceIds.length > 0) {
+      if (useServicePricing && serviceIds) {
         for (const serviceId of serviceIds) {
           // Get service details
           const [serviceDetail] = await tx
@@ -326,13 +351,16 @@ router.post('/', async (req, res) => {
           const [invoiceService] = await tx.insert(invoiceServices).values({
             invoiceId: newInvoice.id,
             clientServiceId: serviceId,
+            serviceLevelPrice: servicePrices[serviceId] !== undefined
+              ? Number(servicePrices[serviceId]).toString()
+              : serviceDetail.serviceLevelPrice || null,
             calculatedAmount: '0', // Will be updated after calculating developers
           }).returning()
 
           // Create invoice_developers records and calculate total
           let developerTotal = 0
           for (const developer of assignedDevelopers) {
-            const devRates = developerRates?.[developer.teamMemberId] || {}
+            const devRates = developerRates?.[developer.teamMemberId] || developerRates?.[developer.id] || {}
             const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
             const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
             const hoursWorked = devRates.hoursWorked || 0
@@ -358,7 +386,9 @@ router.post('/', async (req, res) => {
           }
 
           // Use service-level price if available, otherwise use developer total
-          serviceAmount = parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
+          serviceAmount = servicePrices[serviceId] !== undefined
+            ? Number(servicePrices[serviceId])
+            : parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
 
           // Update invoice_services with calculated amount
           await tx
@@ -402,7 +432,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const invoiceId = parseInt(req.params.id)
-    const { serviceIds, useServicePricing, developerRates } = req.body
+    const { serviceIds, useServicePricing, developerRates, servicePrices = {} } = req.body
     const updateData: any = {}
 
     // Only update fields that are provided
@@ -509,13 +539,16 @@ router.put('/:id', async (req, res) => {
           const [invoiceService] = await tx.insert(invoiceServices).values({
             invoiceId: invoiceId,
             clientServiceId: serviceId,
+            serviceLevelPrice: servicePrices[serviceId] !== undefined
+              ? Number(servicePrices[serviceId]).toString()
+              : serviceDetail.serviceLevelPrice || null,
             calculatedAmount: '0', // Will be updated after calculating developers
           }).returning()
 
           // Create invoice_developers records and calculate total
           let developerTotal = 0
           for (const developer of assignedDevelopers) {
-            const devRates = developerRates?.[developer.teamMemberId] || {}
+            const devRates = developerRates?.[developer.teamMemberId] || developerRates?.[developer.id] || {}
             const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
             const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
             const hoursWorked = devRates.hoursWorked || 0
@@ -543,7 +576,9 @@ router.put('/:id', async (req, res) => {
           }
 
           // Use service-level price if available, otherwise use developer total
-          const serviceAmount = parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
+          const serviceAmount = servicePrices[serviceId] !== undefined
+            ? Number(servicePrices[serviceId])
+            : parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
 
           // Update invoice_services with calculated amount
           await tx
@@ -677,6 +712,7 @@ router.get('/client-service-options/:clientId', async (req, res) => {
         id: clientServices.id,
         serviceId: clientServices.serviceTypeId,
         serviceName: serviceTypes.name,
+        serviceTitle: clientServices.serviceTitle,
         serviceCategory: serviceTypes.category,
         billingModel: serviceTypes.billingModel,
         serviceLevelPrice: clientServices.serviceLevelPrice,
@@ -694,6 +730,7 @@ router.get('/client-service-options/:clientId', async (req, res) => {
             id: clientServiceTeamMembers.id,
             teamMemberId: clientServiceTeamMembers.teamMemberId,
             developerName: teamMembers.name,
+            developerAvatarUrl: teamMembers.avatarUrl,
             hourlyRate: clientServiceTeamMembers.hourlyRate,
             fixedPrice: clientServiceTeamMembers.fixedPrice,
             employmentType: clientServiceTeamMembers.employmentType,
@@ -747,7 +784,7 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
     }
 
     const clientId = parseInt(req.params.clientId)
-    const { serviceIds, periodStart, periodEnd, developerRates = {} } = req.body
+    const { serviceIds, periodStart, periodEnd, developerRates = {}, servicePrices = {} } = req.body
 
     console.log('Calculate pricing request:', {
       clientId,
@@ -772,6 +809,7 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
           id: clientServices.id,
           serviceId: clientServices.serviceTypeId,
           serviceName: serviceTypes.name,
+          serviceTitle: clientServices.serviceTitle,
           serviceCategory: serviceTypes.category,
           billingModel: serviceTypes.billingModel,
           serviceLevelPrice: clientServices.serviceLevelPrice,
@@ -902,13 +940,22 @@ router.post('/calculate-pricing/:clientId', async (req, res) => {
 
       // Use service-level price if available, otherwise use developer total
       const serviceLevelPrice = parseFloat(serviceDetail.serviceLevelPrice || '0')
-      const finalAmount = serviceLevelPrice > 0 ? serviceLevelPrice : developerTotal
+      const customServicePrice = servicePrices[serviceId] !== undefined
+        ? Number(servicePrices[serviceId])
+        : undefined
+      const finalAmount = customServicePrice !== undefined
+        ? customServicePrice
+        : serviceLevelPrice > 0
+          ? serviceLevelPrice
+          : developerTotal
 
       totalAmount += finalAmount
 
       calculations.push({
         serviceId,
-        serviceName: serviceDetail.serviceName,
+        serviceName: serviceDetail.serviceTitle || serviceDetail.serviceName,
+        serviceTypeName: serviceDetail.serviceName,
+        serviceTitle: serviceDetail.serviceTitle,
         serviceLevelPrice: serviceLevelPrice > 0 ? serviceLevelPrice : undefined,
         developerTotal,
         finalAmount,

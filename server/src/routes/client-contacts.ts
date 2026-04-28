@@ -1,10 +1,37 @@
 import { Router } from 'express'
+import multer from 'multer'
+import path from 'path'
+import fs from 'fs'
 import { db } from '../db/index.js'
 import { clientContacts, clients } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
 import { eq, and, desc } from 'drizzle-orm'
 
 const router = Router()
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const uploadPath = path.join(process.cwd(), 'uploads', 'contacts')
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true })
+      }
+      cb(null, uploadPath)
+    },
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+      cb(null, `contact-${uniqueSuffix}${path.extname(file.originalname)}`)
+    },
+  }),
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('Only image files are allowed'))
+      return
+    }
+    cb(null, true)
+  },
+  limits: { fileSize: 5 * 1024 * 1024 },
+})
 
 // Get all contacts for a client
 router.get('/client/:clientId', requireAuth, async (req, res) => {
@@ -41,7 +68,7 @@ router.post('/client/:clientId', requireAuth, async (req, res) => {
     }
 
     const { clientId } = req.params
-    const { fullName, position, email, phone, notes, isPrimary } = req.body
+    const { fullName, position, email, phone, avatarUrl, notes, isPrimary } = req.body
 
     if (!fullName) {
       return res.status(400).json({ error: 'Full name is required' })
@@ -75,6 +102,7 @@ router.post('/client/:clientId', requireAuth, async (req, res) => {
         position: position || null,
         email: email || null,
         phone: phone || null,
+        avatarUrl: avatarUrl || null,
         notes: notes || null,
         isPrimary: isPrimary || false,
       })
@@ -96,7 +124,7 @@ router.put('/:contactId', requireAuth, async (req, res) => {
     }
 
     const { contactId } = req.params
-    const { fullName, position, email, phone, notes, isPrimary } = req.body
+    const { fullName, position, email, phone, avatarUrl, notes, isPrimary } = req.body
 
     if (!fullName) {
       return res.status(400).json({ error: 'Full name is required' })
@@ -122,17 +150,23 @@ router.put('/:contactId', requireAuth, async (req, res) => {
     }
 
     // Update contact
+    const updateData: Record<string, unknown> = {
+      fullName,
+      position: position || null,
+      email: email || null,
+      phone: phone || null,
+      notes: notes || null,
+      isPrimary: isPrimary || false,
+      updatedAt: new Date(),
+    }
+
+    if (avatarUrl !== undefined) {
+      updateData.avatarUrl = avatarUrl || null
+    }
+
     const [updatedContact] = await db
       .update(clientContacts)
-      .set({
-        fullName,
-        position: position || null,
-        email: email || null,
-        phone: phone || null,
-        notes: notes || null,
-        isPrimary: isPrimary || false,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(clientContacts.id, parseInt(contactId)))
       .returning()
 
@@ -174,6 +208,71 @@ router.delete('/:contactId', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error deleting contact:', error)
     res.status(500).json({ error: 'Failed to delete contact' })
+  }
+})
+
+// Upload or replace a contact avatar
+router.post('/:contactId/avatar', requireAuth, avatarUpload.single('avatar'), async (req, res) => {
+  try {
+    const user = (req as any).user
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' })
+    }
+
+    const { contactId } = req.params
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' })
+    }
+
+    const currentContact = await db
+      .select()
+      .from(clientContacts)
+      .where(eq(clientContacts.id, parseInt(contactId)))
+      .limit(1)
+
+    if (currentContact.length === 0) {
+      fs.unlinkSync(req.file.path)
+      return res.status(404).json({ error: 'Contact not found' })
+    }
+
+    if (currentContact[0].avatarUrl) {
+      const oldAvatarPath = path.join(process.cwd(), 'uploads', 'contacts', path.basename(currentContact[0].avatarUrl))
+      try {
+        if (fs.existsSync(oldAvatarPath)) {
+          fs.unlinkSync(oldAvatarPath)
+        }
+      } catch (error) {
+        console.error('Error deleting old contact avatar:', error)
+      }
+    }
+
+    const avatarUrl = `/api/uploads/contacts/${req.file.filename}`
+    const [updatedContact] = await db
+      .update(clientContacts)
+      .set({
+        avatarUrl,
+        updatedAt: new Date(),
+      })
+      .where(eq(clientContacts.id, parseInt(contactId)))
+      .returning()
+
+    res.json({
+      ...updatedContact,
+      message: 'Contact avatar uploaded successfully',
+    })
+  } catch (error) {
+    console.error('Error uploading contact avatar:', error)
+
+    if (req.file) {
+      try {
+        fs.unlinkSync(req.file.path)
+      } catch (cleanupError) {
+        console.error('Error cleaning up contact avatar:', cleanupError)
+      }
+    }
+
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to upload contact avatar' })
   }
 })
 

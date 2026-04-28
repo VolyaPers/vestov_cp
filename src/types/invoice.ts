@@ -23,6 +23,8 @@ export interface InvoiceService {
   id: number
   serviceId: number
   serviceName: string
+  serviceTitle?: string
+  serviceTypeName?: string
   serviceCategory: string
   billingModel: string
   serviceLevelPrice?: number
@@ -54,6 +56,7 @@ export interface CreateInvoiceData {
   serviceIds?: number[] // Services to include
   useServicePricing?: boolean // Whether to calculate from services
   developerRates?: { [key: number]: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } }
+  servicePrices?: { [key: number]: number }
 }
 
 export interface UpdateInvoiceData {
@@ -68,6 +71,7 @@ export interface UpdateInvoiceData {
   notes?: string
   serviceIds?: number[]
   developerRates?: { [key: number]: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } }
+  servicePrices?: { [key: number]: number }
 }
 
 export interface InvoiceListItem extends Omit<Invoice, 'createdBy'> {
@@ -77,6 +81,8 @@ export interface InvoiceListItem extends Omit<Invoice, 'createdBy'> {
 export interface ServicePricingCalculation {
   serviceId: number
   serviceName: string
+  serviceTitle?: string
+  serviceTypeName?: string
   serviceLevelPrice?: number
   developerTotal: number
   finalAmount: number

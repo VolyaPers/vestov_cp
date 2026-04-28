@@ -51,6 +51,7 @@ interface ServiceDeveloper {
   developerId: number
   name: string
   email: string
+  avatarUrl?: string
   skills: string[]
   hourlyRate?: number
   fixedPrice?: number
@@ -92,6 +93,7 @@ interface ClientContact {
   position?: string
   email?: string
   phone?: string
+  avatarUrl?: string
   notes?: string
   isPrimary: boolean
   isActive: boolean
@@ -152,6 +154,7 @@ export function ClientDetailsPage() {
     teamSize: ''
   })
   const [isInvoiceFormOpen, setIsInvoiceFormOpen] = useState(false)
+  const [initialInvoiceServiceId, setInitialInvoiceServiceId] = useState<number | null>(null)
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([])
   const [developers, setDevelopers] = useState<Developer[]>([])
   const [serviceDevelopers, setServiceDevelopers] = useState<Record<number, ServiceDeveloper[]>>({})
@@ -230,6 +233,9 @@ export function ClientDetailsPage() {
     notes: '',
     isPrimary: false
   })
+  const [contactAvatarFile, setContactAvatarFile] = useState<File | null>(null)
+  const [isUploadingContactAvatar, setIsUploadingContactAvatar] = useState(false)
+  const [showAllServiceAssignments, setShowAllServiceAssignments] = useState(false)
 
   // User management state
   const [clientUsers, setClientUsers] = useState<ClientUser[]>([])
@@ -807,12 +813,19 @@ export function ClientDetailsPage() {
         body: JSON.stringify(contactFormData),
       })
 
+      if (contactAvatarFile) {
+        setIsUploadingContactAvatar(true)
+        await api.uploadClientContactAvatar(response.id, contactAvatarFile)
+        setIsUploadingContactAvatar(false)
+      }
+
       // Refresh contacts list
       await loadContacts()
       setIsContactDialogOpen(false)
       resetContactForm()
       showAlert({ message: 'Contact created successfully!', type: 'success' })
     } catch (error: any) {
+      setIsUploadingContactAvatar(false)
       console.error('Failed to create contact:', error)
       showAlert({ message: error.message || 'Failed to create contact', type: 'error' })
     }
@@ -830,12 +843,19 @@ export function ClientDetailsPage() {
         body: JSON.stringify(contactFormData),
       })
 
+      if (contactAvatarFile) {
+        setIsUploadingContactAvatar(true)
+        await api.uploadClientContactAvatar(editingContact.id, contactAvatarFile)
+        setIsUploadingContactAvatar(false)
+      }
+
       // Refresh contacts list
       await loadContacts()
       setIsContactDialogOpen(false)
       resetContactForm()
       showAlert({ message: 'Contact updated successfully!', type: 'success' })
     } catch (error: any) {
+      setIsUploadingContactAvatar(false)
       console.error('Failed to update contact:', error)
       showAlert({ message: error.message || 'Failed to update contact', type: 'error' })
     }
@@ -877,6 +897,7 @@ export function ClientDetailsPage() {
       notes: contact.notes || '',
       isPrimary: contact.isPrimary,
     })
+    setContactAvatarFile(null)
     setIsContactDialogOpen(true)
   }
 
@@ -889,6 +910,8 @@ export function ClientDetailsPage() {
       notes: '',
       isPrimary: false,
     })
+    setContactAvatarFile(null)
+    setIsUploadingContactAvatar(false)
     setEditingContact(null)
   }
 
@@ -1037,6 +1060,11 @@ export function ClientDetailsPage() {
     }
   }
 
+  const openInvoiceForService = (serviceId: number) => {
+    setInitialInvoiceServiceId(serviceId)
+    setIsInvoiceFormOpen(true)
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1056,6 +1084,10 @@ export function ClientDetailsPage() {
       </div>
     )
   }
+
+  const visibleServiceAssignments = showAllServiceAssignments
+    ? client.services || []
+    : (client.services || []).filter(service => service.isActive)
 
   return (
     <div className="space-y-6">
@@ -1205,33 +1237,46 @@ export function ClientDetailsPage() {
                       <div className="space-y-3">
                         {contacts.map((contact) => (
                           <div key={contact.id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-sm font-medium text-gray-900 truncate">{contact.fullName}</p>
-                                {contact.isPrimary && (
-                                  <Star className="h-3 w-3 text-yellow-500 fill-current" aria-label="Primary Contact" />
+                            <div className="flex flex-1 min-w-0 items-start gap-3">
+                              {contact.avatarUrl ? (
+                                <img
+                                  src={resolveApiAssetUrl(contact.avatarUrl)}
+                                  alt={contact.fullName}
+                                  className="h-10 w-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                                  {contact.fullName.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{contact.fullName}</p>
+                                  {contact.isPrimary && (
+                                    <Star className="h-3 w-3 text-yellow-500 fill-current" aria-label="Primary Contact" />
+                                  )}
+                                </div>
+                                {contact.position && (
+                                  <p className="text-xs text-gray-600 mb-1">{contact.position}</p>
+                                )}
+                                <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                                  {contact.email && (
+                                    <div className="flex items-center gap-1">
+                                      <Mail className="h-3 w-3" />
+                                      <span className="truncate max-w-[120px]">{contact.email}</span>
+                                    </div>
+                                  )}
+                                  {contact.phone && (
+                                    <div className="flex items-center gap-1">
+                                      <Phone className="h-3 w-3" />
+                                      <span>{contact.phone}</span>
+                                    </div>
+                                  )}
+                                </div>
+                                {contact.notes && (
+                                  <p className="text-xs text-gray-600 mt-1 italic truncate">"{contact.notes}"</p>
                                 )}
                               </div>
-                              {contact.position && (
-                                <p className="text-xs text-gray-600 mb-1">{contact.position}</p>
-                              )}
-                              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-                                {contact.email && (
-                                  <div className="flex items-center gap-1">
-                                    <Mail className="h-3 w-3" />
-                                    <span className="truncate max-w-[120px]">{contact.email}</span>
-                                  </div>
-                                )}
-                                {contact.phone && (
-                                  <div className="flex items-center gap-1">
-                                    <Phone className="h-3 w-3" />
-                                    <span>{contact.phone}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {contact.notes && (
-                                <p className="text-xs text-gray-600 mt-1 italic truncate">"{contact.notes}"</p>
-                              )}
                             </div>
                             <div className="flex items-center gap-1 ml-2">
                               <Button
@@ -1438,7 +1483,10 @@ export function ClientDetailsPage() {
               Invoice Management
             </CardTitle>
             <Button
-              onClick={() => setIsInvoiceFormOpen(true)}
+              onClick={() => {
+                setInitialInvoiceServiceId(null)
+                setIsInvoiceFormOpen(true)
+              }}
               size="sm"
               className="gap-2"
               title="Create a new invoice"
@@ -1459,18 +1507,32 @@ export function ClientDetailsPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Service Assignments</CardTitle>
-              <CardDescription>All services provided to this client</CardDescription>
+              <CardDescription>Active Services</CardDescription>
             </div>
-            <Button onClick={() => setIsServiceDialogOpen(true)} title="Add a new service assignment">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Service
-            </Button>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={showAllServiceAssignments}
+                  onChange={(event) => setShowAllServiceAssignments(event.target.checked)}
+                  className="rounded"
+                />
+                Show All
+              </label>
+              <Button onClick={() => setIsServiceDialogOpen(true)} title="Add a new service assignment">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Service
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {client.services?.length > 0 ? (
+          {visibleServiceAssignments.length > 0 ? (
             <div className="space-y-4">
-              {client.services?.map((service) => (
+              {visibleServiceAssignments.map((service) => {
+                const serviceDisplayTitle = service.serviceTitle || service.serviceTypeName
+
+                return (
                 <div key={service.id} className="border rounded-lg overflow-hidden">
                   {/* Service Header */}
                   <div className="flex items-center justify-between p-4 bg-gray-50 border-b">
@@ -1478,13 +1540,13 @@ export function ClientDetailsPage() {
                       <div className="flex flex-col gap-2 mb-3">
                         <div className="flex items-center gap-3">
                           <h4 className="font-bold text-xl text-blue-800 tracking-tight">
-                            {service.serviceTypeName}
+                            {serviceDisplayTitle}
                           </h4>
                           <div className="flex items-center gap-2">
                             {service.serviceTitle && (
                               <Badge className="bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm px-3 border-none flex items-center gap-1">
                                 <Building2 className="w-3 h-3" />
-                                {service.serviceTitle}
+                                {service.serviceTypeName}
                               </Badge>
                             )}
                             <Badge className={service.serviceCategory === 'outstaffing' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-green-100 text-green-800 border-green-200'}>
@@ -1547,6 +1609,18 @@ export function ClientDetailsPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => openInvoiceForService(service.id)}
+                          className="text-emerald-600 hover:text-emerald-700"
+                          title="Create invoice for this service"
+                        >
+                          <FileText className="h-4 w-4 mr-1" />
+                          Invoice
+                        </Button>
+                      )}
+                      {service.isActive && (
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleAddDeveloperToService(service.id)}
                           className="text-blue-600 hover:text-blue-700"
                           title="Add developer to service"
@@ -1594,7 +1668,19 @@ export function ClientDetailsPage() {
                       <div className="space-y-2">
                         {serviceDevelopers[service.id].map((developer) => (
                           <div key={developer.id} className="flex items-center justify-between p-3 bg-white border rounded">
-                            <div className="flex-1">
+                            <div className="flex flex-1 items-start gap-3">
+                              {developer.avatarUrl ? (
+                                <img
+                                  src={resolveApiAssetUrl(developer.avatarUrl)}
+                                  alt={developer.name}
+                                  className="h-10 w-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
+                                  {developer.name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="flex-1">
                               <div className="flex items-center gap-3 mb-1">
                                 <p className="text-sm font-medium text-gray-900">{developer.name}</p>
                                 <Badge variant={developer.employmentType === 'fulltime' ? 'default' : 'secondary'} className="text-xs">
@@ -1647,6 +1733,7 @@ export function ClientDetailsPage() {
                                   )}
                                 </div>
                               )}
+                              </div>
                             </div>
                             <div className="flex items-center gap-1">
                               <Button
@@ -1691,13 +1778,18 @@ export function ClientDetailsPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
               <Building className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Services Assigned</h3>
-              <p>This client doesn't have any service assignments yet.</p>
+              <h3 className="text-lg font-medium mb-2">
+                {client.services?.length ? 'No Active Services' : 'No Services Assigned'}
+              </h3>
+              <p>
+                {client.services?.length ? 'Turn on Show All to view ended services.' : "This client doesn't have any service assignments yet."}
+              </p>
             </div>
           )}
         </CardContent>
@@ -2617,6 +2709,28 @@ export function ClientDetailsPage() {
             </div>
 
             <div>
+              <Label htmlFor="contactAvatar">Contact Image</Label>
+              <div className="mt-2 flex items-center gap-3">
+                {editingContact?.avatarUrl && !contactAvatarFile && (
+                  <img
+                    src={resolveApiAssetUrl(editingContact.avatarUrl)}
+                    alt={editingContact.fullName}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                )}
+                <Input
+                  id="contactAvatar"
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={(event) => setContactAvatarFile(event.target.files?.[0] || null)}
+                />
+              </div>
+              {contactAvatarFile && (
+                <p className="mt-1 text-xs text-gray-500">{contactAvatarFile.name}</p>
+              )}
+            </div>
+
+            <div>
               <Label htmlFor="contactNotes">Notes</Label>
               <Textarea
                 id="contactNotes"
@@ -2656,8 +2770,11 @@ export function ClientDetailsPage() {
             >
               Cancel
             </Button>
-            <Button onClick={editingContact ? handleUpdateContact : handleCreateContact}>
-              {editingContact ? 'Update Contact' : 'Add Contact'}
+            <Button
+              onClick={editingContact ? handleUpdateContact : handleCreateContact}
+              disabled={isUploadingContactAvatar}
+            >
+              {isUploadingContactAvatar ? 'Uploading...' : editingContact ? 'Update Contact' : 'Add Contact'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2748,7 +2865,11 @@ export function ClientDetailsPage() {
           clientId={client.id}
           clientName={client.name}
           isOpen={isInvoiceFormOpen}
-          onClose={() => setIsInvoiceFormOpen(false)}
+          initialServiceId={initialInvoiceServiceId}
+          onClose={() => {
+            setIsInvoiceFormOpen(false)
+            setInitialInvoiceServiceId(null)
+          }}
           onSuccess={() => {
             // Refresh the page data after successful invoice creation
             window.location.reload()

@@ -32,7 +32,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
-import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureFinanceTables, ensureClickUpTables } from './utils/migrations.js'
+import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureClientContactColumns, ensureFinanceTables, ensureClickUpTables } from './utils/migrations.js'
 import { initializeSocket } from './socket.js'
 import { startClickUpScheduler } from './services/clickup.js'
 
@@ -104,6 +104,7 @@ async function runMigrations() {
     }
     
     await ensureUserColumns(pool)
+    await ensureClientContactColumns(pool)
     await ensureFinanceTables(pool)
     await ensureClickUpTables(pool)
     const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
@@ -127,6 +128,7 @@ async function runMigrations() {
 
     try {
       await ensureUserColumns(pool)
+      await ensureClientContactColumns(pool)
       await ensureFinanceTables(pool)
       await ensureClickUpTables(pool)
       console.log('[MIGRATIONS] ✓ Added missing user columns, finance tables, and ClickUp tables as fallback')
