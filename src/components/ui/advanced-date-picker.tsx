@@ -1,7 +1,5 @@
-import React from 'react'
-import { DatePicker, DateRangePicker as RSuiteDateRangePicker } from 'rsuite'
 import { Label } from '@/components/ui/label'
-import 'rsuite/dist/rsuite.min.css'
+import { Input } from '@/components/ui/input'
 
 interface AdvancedDatePickerProps {
   value?: string
@@ -22,42 +20,40 @@ interface DateRangePickerProps {
   className?: string
 }
 
-export function AdvancedDatePicker({ 
-  value, 
-  onChange, 
-  label, 
-  placeholder = "Select date",
+function ClearDateButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      Clear
+    </button>
+  )
+}
+
+export function AdvancedDatePicker({
+  value,
+  onChange,
+  label,
+  placeholder,
   id,
-  className = ""
+  className = '',
 }: AdvancedDatePickerProps) {
-  const handleDateChange = (date: Date | null) => {
-    if (date) {
-      // Use local date to avoid timezone issues
-      const dateStr = date.getFullYear() + '-' + 
-                     String(date.getMonth() + 1).padStart(2, '0') + '-' + 
-                     String(date.getDate()).padStart(2, '0')
-      onChange(dateStr)
-    } else {
-      onChange(undefined)
-    }
-  }
-
-  const dateValue = value ? new Date(value) : null
-
   return (
     <div className={className}>
-      {label && <Label htmlFor={id}>{label}</Label>}
-      <DatePicker
+      {(label || value) && (
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          {label ? <Label htmlFor={id}>{label}</Label> : <span />}
+          {value ? <ClearDateButton onClick={() => onChange(undefined)} /> : null}
+        </div>
+      )}
+      <Input
         id={id}
-        value={dateValue}
-        onChange={handleDateChange}
+        type="date"
+        value={value || ''}
+        onChange={(event) => onChange(event.target.value || undefined)}
         placeholder={placeholder}
-        format="MMM dd, yyyy"
-        size="lg"
-        block
-        cleanable
-        style={{ marginTop: label ? '6px' : '0' }}
-        menuStyle={{ zIndex: 9999 }}
       />
     </div>
   )
@@ -68,58 +64,45 @@ export function DateRangePicker({
   endDate,
   onStartDateChange,
   onEndDateChange,
-  startLabel = "Start Date",
-  endLabel = "End Date", 
-  className = ""
+  startLabel = 'Start Date',
+  endLabel = 'End Date',
+  className = '',
 }: DateRangePickerProps) {
-  const handleRangeChange = (range: any) => {
-    if (Array.isArray(range) && range.length === 2) {
-      const [start, end] = range
-      
-      if (start && end) {
-        // Both dates selected - use local date to avoid timezone issues
-        const startStr = start.getFullYear() + '-' + 
-                         String(start.getMonth() + 1).padStart(2, '0') + '-' + 
-                         String(start.getDate()).padStart(2, '0')
-        const endStr = end.getFullYear() + '-' + 
-                      String(end.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(end.getDate()).padStart(2, '0')
-        onStartDateChange(startStr)
-        onEndDateChange(endStr)
-      } else if (start && !end) {
-        // Only start date selected
-        const startStr = start.getFullYear() + '-' + 
-                         String(start.getMonth() + 1).padStart(2, '0') + '-' + 
-                         String(start.getDate()).padStart(2, '0')
-        onStartDateChange(startStr)
-        onEndDateChange('')
-      }
-    } else if (!range || range === null) {
-      // Range was cleared
-      onStartDateChange('')
-      onEndDateChange('')
-    }
-  }
-
-  const rangeValue: [Date, Date] | null = 
-    startDate && startDate !== '' && endDate && endDate !== ''
-      ? [new Date(startDate), new Date(endDate)]
-      : null
+  const hasValue = Boolean(startDate || endDate)
 
   return (
     <div className={className}>
-      <Label>Date Range</Label>
-      <RSuiteDateRangePicker
-        value={rangeValue}
-        onChange={handleRangeChange}
-        placeholder="Select date range"
-        format="MMM dd, yyyy"
-        size="lg"
-        block
-        cleanable
-        style={{ marginTop: '6px' }}
-        menuStyle={{ zIndex: 9999 }}
-      />
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <Label>Date Range</Label>
+        {hasValue ? (
+          <ClearDateButton
+            onClick={() => {
+              onStartDateChange(undefined)
+              onEndDateChange(undefined)
+            }}
+          />
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <div className="min-w-[11rem] flex-1">
+          <Label className="mb-1.5 block text-xs text-muted-foreground">{startLabel}</Label>
+          <Input
+            type="date"
+            value={startDate || ''}
+            onChange={(event) => onStartDateChange(event.target.value || undefined)}
+          />
+        </div>
+
+        <div className="min-w-[11rem] flex-1">
+          <Label className="mb-1.5 block text-xs text-muted-foreground">{endLabel}</Label>
+          <Input
+            type="date"
+            value={endDate || ''}
+            onChange={(event) => onEndDateChange(event.target.value || undefined)}
+          />
+        </div>
+      </div>
     </div>
   )
 }
