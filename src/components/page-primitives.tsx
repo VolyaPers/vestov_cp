@@ -367,6 +367,25 @@ export function WorkspaceShellSkeleton({
   )
 }
 
+export function WorkspaceRouteSkeleton() {
+  return (
+    <div className="mx-auto max-w-[1500px] space-y-5 sm:space-y-6">
+      <PageHeroSkeleton />
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <MetricTileSkeleton key={index} />
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <CardSkeleton titleWidth="w-40" lines={4} tall />
+        <CardSkeleton titleWidth="w-44" lines={4} tall />
+      </div>
+    </div>
+  )
+}
+
 export function TableSkeleton({
   rows = 6,
   columns = 5,

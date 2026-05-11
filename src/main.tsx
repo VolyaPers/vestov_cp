@@ -1,11 +1,17 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { ClerkProvider } from '@clerk/react'
 import { AlertProvider } from './components/ui/custom-alert'
 import App from './App'
 import './index.css'
+
+const ReactQueryDevtools = import.meta.env.DEV
+  ? React.lazy(async () => {
+      const module = await import('@tanstack/react-query-devtools')
+      return { default: module.ReactQueryDevtools }
+    })
+  : null
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
@@ -32,7 +38,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <AlertProvider>
           <App />
         </AlertProvider>
-        <ReactQueryDevtools initialIsOpen={false} />
+        {ReactQueryDevtools ? (
+          <React.Suspense fallback={null}>
+            <ReactQueryDevtools initialIsOpen={false} />
+          </React.Suspense>
+        ) : null}
       </QueryClientProvider>
     </ClerkProvider>
   </React.StrictMode>,

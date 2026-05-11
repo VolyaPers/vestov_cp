@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
+import type { ComponentType, LazyExoticComponent } from 'react'
 import { UserButton } from '@clerk/react'
 import { Route, Switch, Link, useLocation } from 'wouter'
 import {
@@ -6,26 +7,10 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { AdminDashboard } from '@/pages/admin/AdminDashboard'
-import { ReportsPage } from '@/pages/admin/ReportsPage'
-import { ClientsPage } from '@/pages/admin/ClientsPage'
-import { ClientDetailsPage } from '@/pages/admin/ClientDetailsPage'
-import { InvoicesPage } from '@/pages/admin/InvoicesPage'
-import { UsersPage } from '@/pages/admin/UsersPage'
-import { TeamOverview } from '@/pages/admin/TeamOverview'
-import { TeamMemberDetails } from '@/pages/admin/TeamMemberDetails'
-import { EmployeeDetailsPage } from '@/pages/admin/EmployeeDetailsPage'
-import { VacationPage } from '@/pages/admin/VacationPage'
-import { ServicesPage } from '@/pages/admin/ServicesPage'
-import { AdminReimbursements } from '@/pages/admin/AdminReimbursements'
-import { AdminShifts } from '@/pages/admin/AdminShifts'
-import { AdminDocumentsPage } from '@/pages/admin/AdminDocumentsPage'
-import { AdminFeedbackPage } from '@/pages/admin/AdminFeedbackPage'
-import { FinancesPage } from '@/pages/admin/FinancesPage'
-import { TimeTrackingPage } from '@/pages/admin/TimeTrackingPage'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
+import { WorkspaceRouteSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { getActiveNavigationLabel } from '@/lib/navigation'
@@ -35,6 +20,119 @@ import type { User } from '@/types/common'
 interface AdminLayoutProps {
   user?: User
 }
+
+const AdminDashboard = lazy(async () => {
+  const module = await import('@/pages/admin/AdminDashboard')
+  return { default: module.AdminDashboard }
+})
+
+const ReportsPage = lazy(async () => {
+  const module = await import('@/pages/admin/ReportsPage')
+  return { default: module.ReportsPage }
+})
+
+const ClientsPage = lazy(async () => {
+  const module = await import('@/pages/admin/ClientsPage')
+  return { default: module.ClientsPage }
+})
+
+const ClientDetailsPage = lazy(async () => {
+  const module = await import('@/pages/admin/ClientDetailsPage')
+  return { default: module.ClientDetailsPage }
+})
+
+const InvoicesPage = lazy(async () => {
+  const module = await import('@/pages/admin/InvoicesPage')
+  return { default: module.InvoicesPage }
+})
+
+const UsersPage = lazy(async () => {
+  const module = await import('@/pages/admin/UsersPage')
+  return { default: module.UsersPage }
+})
+
+const TeamOverview = lazy(async () => {
+  const module = await import('@/pages/admin/TeamOverview')
+  return { default: module.TeamOverview }
+})
+
+const TeamMemberDetails = lazy(async () => {
+  const module = await import('@/pages/admin/TeamMemberDetails')
+  return { default: module.TeamMemberDetails }
+})
+
+const EmployeeDetailsPage = lazy(async () => {
+  const module = await import('@/pages/admin/EmployeeDetailsPage')
+  return { default: module.EmployeeDetailsPage }
+})
+
+const VacationPage = lazy(async () => {
+  const module = await import('@/pages/admin/VacationPage')
+  return { default: module.VacationPage }
+})
+
+const ServicesPage = lazy(async () => {
+  const module = await import('@/pages/admin/ServicesPage')
+  return { default: module.ServicesPage }
+})
+
+const AdminReimbursements = lazy(async () => {
+  const module = await import('@/pages/admin/AdminReimbursements')
+  return { default: module.AdminReimbursements }
+})
+
+const AdminShifts = lazy(async () => {
+  const module = await import('@/pages/admin/AdminShifts')
+  return { default: module.AdminShifts }
+})
+
+const AdminDocumentsPage = lazy(async () => {
+  const module = await import('@/pages/admin/AdminDocumentsPage')
+  return { default: module.AdminDocumentsPage }
+})
+
+const AdminFeedbackPage = lazy(async () => {
+  const module = await import('@/pages/admin/AdminFeedbackPage')
+  return { default: module.AdminFeedbackPage }
+})
+
+const FinancesPage = lazy(async () => {
+  const module = await import('@/pages/admin/FinancesPage')
+  return { default: module.FinancesPage }
+})
+
+const TimeTrackingPage = lazy(async () => {
+  const module = await import('@/pages/admin/TimeTrackingPage')
+  return { default: module.TimeTrackingPage }
+})
+
+function createLazyRoute(PageComponent: LazyExoticComponent<ComponentType<any>>) {
+  return function LazyRoute() {
+    return (
+      <Suspense fallback={<WorkspaceRouteSkeleton />}>
+        <PageComponent />
+      </Suspense>
+    )
+  }
+}
+
+const AdminDashboardRoute = createLazyRoute(AdminDashboard)
+const ReportsPageRoute = createLazyRoute(ReportsPage)
+const ServicesPageRoute = createLazyRoute(ServicesPage)
+const ClientDetailsPageRoute = createLazyRoute(ClientDetailsPage)
+const ClientsPageRoute = createLazyRoute(ClientsPage)
+const InvoicesPageRoute = createLazyRoute(InvoicesPage)
+const UsersPageRoute = createLazyRoute(UsersPage)
+const TeamMemberDetailsRoute = createLazyRoute(TeamMemberDetails)
+const TeamOverviewRoute = createLazyRoute(TeamOverview)
+const EmployeeDetailsPageRoute = createLazyRoute(EmployeeDetailsPage)
+const VacationPageRoute = createLazyRoute(VacationPage)
+const AdminReimbursementsRoute = createLazyRoute(AdminReimbursements)
+const AdminShiftsRoute = createLazyRoute(AdminShifts)
+const AdminDocumentsPageRoute = createLazyRoute(AdminDocumentsPage)
+const AdminFeedbackPageRoute = createLazyRoute(AdminFeedbackPage)
+const FinancesPageRoute = createLazyRoute(FinancesPage)
+const TimeTrackingPageRoute = createLazyRoute(TimeTrackingPage)
 
 export function AdminLayout({ user }: AdminLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -106,29 +204,25 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
           <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-5 xl:px-10">
             <div className="mx-auto max-w-[1500px]">
               <Switch>
-                <Route path="/admin/dashboard" component={AdminDashboard} />
-                <Route path="/admin/reports" component={ReportsPage} />
-                <Route path="/admin/services" component={ServicesPage} />
-                <Route path="/admin/clients/:id">
-                  {() => <ClientDetailsPage />}
-                </Route>
-                <Route path="/admin/clients" component={ClientsPage} />
-                <Route path="/admin/invoices" component={InvoicesPage} />
-                <Route path="/admin/users" component={UsersPage} />
-                <Route path="/admin/team-detail/:id">
-                  {() => <TeamMemberDetails />}
-                </Route>
-                <Route path="/admin/team" component={TeamOverview} />
-                <Route path="/admin/employees/:id" component={EmployeeDetailsPage} />
-                <Route path="/admin/vacation" component={VacationPage} />
-                <Route path="/admin/reimbursements" component={AdminReimbursements} />
-                <Route path="/admin/shifts" component={AdminShifts} />
-                <Route path="/admin/documents" component={AdminDocumentsPage} />
-                <Route path="/admin/feedback" component={AdminFeedbackPage} />
-                <Route path="/admin/finances/:section" component={FinancesPage} />
-                <Route path="/admin/finances" component={FinancesPage} />
-                <Route path="/admin/time-tracking" component={TimeTrackingPage} />
-                <Route path="/admin" component={AdminDashboard} />
+                <Route path="/admin/dashboard" component={AdminDashboardRoute} />
+                <Route path="/admin/reports" component={ReportsPageRoute} />
+                <Route path="/admin/services" component={ServicesPageRoute} />
+                <Route path="/admin/clients/:id" component={ClientDetailsPageRoute} />
+                <Route path="/admin/clients" component={ClientsPageRoute} />
+                <Route path="/admin/invoices" component={InvoicesPageRoute} />
+                <Route path="/admin/users" component={UsersPageRoute} />
+                <Route path="/admin/team-detail/:id" component={TeamMemberDetailsRoute} />
+                <Route path="/admin/team" component={TeamOverviewRoute} />
+                <Route path="/admin/employees/:id" component={EmployeeDetailsPageRoute} />
+                <Route path="/admin/vacation" component={VacationPageRoute} />
+                <Route path="/admin/reimbursements" component={AdminReimbursementsRoute} />
+                <Route path="/admin/shifts" component={AdminShiftsRoute} />
+                <Route path="/admin/documents" component={AdminDocumentsPageRoute} />
+                <Route path="/admin/feedback" component={AdminFeedbackPageRoute} />
+                <Route path="/admin/finances/:section" component={FinancesPageRoute} />
+                <Route path="/admin/finances" component={FinancesPageRoute} />
+                <Route path="/admin/time-tracking" component={TimeTrackingPageRoute} />
+                <Route path="/admin" component={AdminDashboardRoute} />
                 <Route path="*">
                   {() => (
                     <div className="flex min-h-[60vh] items-center justify-center">

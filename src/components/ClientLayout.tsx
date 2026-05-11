@@ -1,28 +1,75 @@
-import { useState, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
+import type { ComponentType, LazyExoticComponent } from 'react'
 import { useLocation, Route, Switch, Redirect } from 'wouter'
 import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ClientDashboard } from '@/pages/client/ClientDashboard'
-import { ClientPortal } from '@/pages/client/ClientPortal'
-import { ClientTeamStatus } from '@/pages/client/ClientTeamStatus'
-import { ClientDocuments } from '@/pages/client/ClientDocuments'
-import { ClientInvoices } from '@/pages/client/ClientInvoices'
-import { ClientProfile } from '@/pages/client/ClientProfile'
-import { ClientFeedbackPage } from '@/pages/client/ClientFeedbackPage'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
+import { WorkspaceRouteSkeleton, WorkspaceShellSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { api } from '@/lib/api'
 import { getActiveNavigationLabel } from '@/lib/navigation'
-import { WorkspaceShellSkeleton } from '@/components/page-primitives'
 import type { User, Client } from '@/types/common'
 
 interface ClientLayoutProps {
   user: User
 }
+
+const ClientDashboard = lazy(async () => {
+  const module = await import('@/pages/client/ClientDashboard')
+  return { default: module.ClientDashboard }
+})
+
+const ClientPortal = lazy(async () => {
+  const module = await import('@/pages/client/ClientPortal')
+  return { default: module.ClientPortal }
+})
+
+const ClientTeamStatus = lazy(async () => {
+  const module = await import('@/pages/client/ClientTeamStatus')
+  return { default: module.ClientTeamStatus }
+})
+
+const ClientDocuments = lazy(async () => {
+  const module = await import('@/pages/client/ClientDocuments')
+  return { default: module.ClientDocuments }
+})
+
+const ClientInvoices = lazy(async () => {
+  const module = await import('@/pages/client/ClientInvoices')
+  return { default: module.ClientInvoices }
+})
+
+const ClientProfile = lazy(async () => {
+  const module = await import('@/pages/client/ClientProfile')
+  return { default: module.ClientProfile }
+})
+
+const ClientFeedbackPage = lazy(async () => {
+  const module = await import('@/pages/client/ClientFeedbackPage')
+  return { default: module.ClientFeedbackPage }
+})
+
+function createLazyRoute(PageComponent: LazyExoticComponent<ComponentType<any>>) {
+  return function LazyRoute() {
+    return (
+      <Suspense fallback={<WorkspaceRouteSkeleton />}>
+        <PageComponent />
+      </Suspense>
+    )
+  }
+}
+
+const ClientDashboardRoute = createLazyRoute(ClientDashboard)
+const ClientTeamStatusRoute = createLazyRoute(ClientTeamStatus)
+const ClientDocumentsRoute = createLazyRoute(ClientDocuments)
+const ClientInvoicesRoute = createLazyRoute(ClientInvoices)
+const ClientFeedbackPageRoute = createLazyRoute(ClientFeedbackPage)
+const ClientProfileRoute = createLazyRoute(ClientProfile)
+const ClientPortalRoute = createLazyRoute(ClientPortal)
 
 export function ClientLayout({ user }: ClientLayoutProps) {
   const [location, setLocation] = useLocation()
@@ -179,13 +226,13 @@ export function ClientLayout({ user }: ClientLayoutProps) {
               </div>
             ) : (
               <Switch>
-                <Route path="/client/dashboard" component={ClientDashboard} />
-                <Route path="/client/team-status" component={ClientTeamStatus} />
-                <Route path="/client/documents/:id" component={ClientDocuments} />
-                <Route path="/client/invoices/:id" component={ClientInvoices} />
-                <Route path="/client/feedback" component={ClientFeedbackPage} />
-                <Route path="/client/profile" component={ClientProfile} />
-                <Route path="/client/portal/:id" component={ClientPortal} />
+                <Route path="/client/dashboard" component={ClientDashboardRoute} />
+                <Route path="/client/team-status" component={ClientTeamStatusRoute} />
+                <Route path="/client/documents/:id" component={ClientDocumentsRoute} />
+                <Route path="/client/invoices/:id" component={ClientInvoicesRoute} />
+                <Route path="/client/feedback" component={ClientFeedbackPageRoute} />
+                <Route path="/client/profile" component={ClientProfileRoute} />
+                <Route path="/client/portal/:id" component={ClientPortalRoute} />
                 <Route path="/client/*">
                   {currentClient ? (
                     <Redirect to={`/client/portal/${currentClient.id}`} />

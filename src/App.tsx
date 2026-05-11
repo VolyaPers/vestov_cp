@@ -1,14 +1,34 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useAuth, useUser } from '@clerk/react'
-import { AdminLayout } from './components/AdminLayout'
-import { ClientLayout } from './components/ClientLayout'
-import { TeamMemberLayout } from './components/TeamMemberLayout'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { GlobalSearch } from './components/GlobalSearch'
-import { AuthPage } from './pages/AuthPage'
 import { api } from './lib/api'
 import { WorkspaceShellSkeleton } from './components/page-primitives'
 import type { User } from './types/common'
+
+const AdminLayout = lazy(async () => {
+  const module = await import('./components/AdminLayout')
+  return { default: module.AdminLayout }
+})
+
+const ClientLayout = lazy(async () => {
+  const module = await import('./components/ClientLayout')
+  return { default: module.ClientLayout }
+})
+
+const TeamMemberLayout = lazy(async () => {
+  const module = await import('./components/TeamMemberLayout')
+  return { default: module.TeamMemberLayout }
+})
+
+const GlobalSearch = lazy(async () => {
+  const module = await import('./components/GlobalSearch')
+  return { default: module.GlobalSearch }
+})
+
+const AuthPage = lazy(async () => {
+  const module = await import('./pages/AuthPage')
+  return { default: module.AuthPage }
+})
 
 // Helper component for catch-all redirect
 function DefaultRedirect({ user }: { user: User }) {
@@ -137,31 +157,47 @@ function App() {
   }
 
   if (!isSignedIn || !user) {
-    return <AuthPage errorMessage={authError} />
+    return (
+      <Suspense fallback={<WorkspaceShellSkeleton roleLabel="Access Portal" title="Loading sign-in" />}>
+        <AuthPage errorMessage={authError} />
+      </Suspense>
+    )
   }
 
   const withSearch = (content: JSX.Element) => (
     <>
       {content}
-      <GlobalSearch user={user} />
+      <Suspense fallback={null}>
+        <GlobalSearch user={user} />
+      </Suspense>
     </>
   )
 
   // Direct rendering based on path - bypassing wouter Router issues
   if (user.role === 'admin' && window.location.pathname.startsWith('/admin')) {
-    return withSearch(<AdminLayout user={user} />)
+    return withSearch(
+      <Suspense fallback={<WorkspaceShellSkeleton roleLabel="Admin Workspace" title="Loading admin workspace" />}>
+        <AdminLayout user={user} />
+      </Suspense>
+    )
   }
 
   if (user.role === 'client' && window.location.pathname.startsWith('/client')) {
     return withSearch(
-      <ErrorBoundary>
-        <ClientLayout user={user} />
-      </ErrorBoundary>
+      <Suspense fallback={<WorkspaceShellSkeleton roleLabel="Client Workspace" title="Loading client workspace" />}>
+        <ErrorBoundary>
+          <ClientLayout user={user} />
+        </ErrorBoundary>
+      </Suspense>
     )
   }
 
   if (user.role === 'team_member' && window.location.pathname.startsWith('/employee')) {
-    return withSearch(<TeamMemberLayout user={user} />)
+    return withSearch(
+      <Suspense fallback={<WorkspaceShellSkeleton roleLabel="Employee Workspace" title="Loading employee workspace" />}>
+        <TeamMemberLayout user={user} />
+      </Suspense>
+    )
   }
 
   // Default redirect based on role

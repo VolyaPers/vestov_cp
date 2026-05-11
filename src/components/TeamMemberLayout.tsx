@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
+import type { ComponentType, LazyExoticComponent } from 'react'
 import { Route, Switch, Link, useLocation } from 'wouter'
 import {
   FileText,
@@ -6,14 +7,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
-import { EmployeeDashboard } from '@/pages/employee/EmployeeDashboard'
-import { EmployeeProfile } from '@/pages/employee/EmployeeProfile'
-import { EmployeeVacations } from '@/pages/employee/EmployeeVacations'
-import { EmployeeReimbursements } from '@/pages/employee/EmployeeReimbursements'
-import { EmployeeRoadmap } from '@/pages/employee/EmployeeRoadmap'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
+import { WorkspaceRouteSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { ShiftReminderModal } from '@/components/ShiftReminderModal'
 import { getActiveNavigationLabel } from '@/lib/navigation'
@@ -21,6 +18,47 @@ import { getActiveNavigationLabel } from '@/lib/navigation'
 interface TeamMemberLayoutProps {
   user?: any
 }
+
+const EmployeeDashboard = lazy(async () => {
+  const module = await import('@/pages/employee/EmployeeDashboard')
+  return { default: module.EmployeeDashboard }
+})
+
+const EmployeeProfile = lazy(async () => {
+  const module = await import('@/pages/employee/EmployeeProfile')
+  return { default: module.EmployeeProfile }
+})
+
+const EmployeeVacations = lazy(async () => {
+  const module = await import('@/pages/employee/EmployeeVacations')
+  return { default: module.EmployeeVacations }
+})
+
+const EmployeeReimbursements = lazy(async () => {
+  const module = await import('@/pages/employee/EmployeeReimbursements')
+  return { default: module.EmployeeReimbursements }
+})
+
+const EmployeeRoadmap = lazy(async () => {
+  const module = await import('@/pages/employee/EmployeeRoadmap')
+  return { default: module.EmployeeRoadmap }
+})
+
+function createLazyRoute(PageComponent: LazyExoticComponent<ComponentType<any>>) {
+  return function LazyRoute() {
+    return (
+      <Suspense fallback={<WorkspaceRouteSkeleton />}>
+        <PageComponent />
+      </Suspense>
+    )
+  }
+}
+
+const EmployeeDashboardRoute = createLazyRoute(EmployeeDashboard)
+const EmployeeProfileRoute = createLazyRoute(EmployeeProfile)
+const EmployeeVacationsRoute = createLazyRoute(EmployeeVacations)
+const EmployeeReimbursementsRoute = createLazyRoute(EmployeeReimbursements)
+const EmployeeRoadmapRoute = createLazyRoute(EmployeeRoadmap)
 
 export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -109,12 +147,12 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
           <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
             <div className="mx-auto max-w-[1500px]">
               <Switch>
-                <Route path="/employee/dashboard" component={EmployeeDashboard} />
-                <Route path="/employee/profile" component={EmployeeProfile} />
-                <Route path="/employee/roadmap" component={EmployeeRoadmap} />
-                <Route path="/employee/vacations" component={EmployeeVacations} />
-                <Route path="/employee/reimbursements" component={EmployeeReimbursements} />
-                <Route path="/employee" component={EmployeeDashboard} />
+                <Route path="/employee/dashboard" component={EmployeeDashboardRoute} />
+                <Route path="/employee/profile" component={EmployeeProfileRoute} />
+                <Route path="/employee/roadmap" component={EmployeeRoadmapRoute} />
+                <Route path="/employee/vacations" component={EmployeeVacationsRoute} />
+                <Route path="/employee/reimbursements" component={EmployeeReimbursementsRoute} />
+                <Route path="/employee" component={EmployeeDashboardRoute} />
                 <Route path="*">
                   {() => (
                     <div className="flex min-h-[60vh] items-center justify-center">
