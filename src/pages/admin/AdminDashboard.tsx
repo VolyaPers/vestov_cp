@@ -102,6 +102,15 @@ interface FinanceBalances {
   fetchedAt: string
 }
 
+interface AdminDashboardSummaryResponse extends DashboardStatsResponse {
+  clients: ClientDashboard[]
+  teamMembers: TeamMemberDashboard[]
+  leaveRequests: LeaveDashboard[]
+  invoices: InvoiceDashboard[]
+  financesOverview?: FinanceOverview
+  reimbursements: ReimbursementDashboard[]
+}
+
 interface AdminLateShifts {
   lateShifts?: Array<{
     shift?: {
@@ -250,60 +259,12 @@ export function AdminDashboard() {
   })
 
   const {
-    data: dashboardData,
-    refetch: refetchDashboard,
-    isLoading: isLoadingDashboard,
-  } = useQuery<DashboardStatsResponse>({
-    queryKey: ['adminDashboard'],
-    queryFn: () => api.getAdminDashboard(),
-  })
-
-  const {
-    data: clients = [],
-    refetch: refetchClients,
-    isLoading: isLoadingClients,
-  } = useQuery<ClientDashboard[]>({
-    queryKey: ['clients'],
-    queryFn: () => api.getClients(),
-  })
-
-  const {
-    data: teamMembers = [],
-    refetch: refetchTeamMembers,
-    isLoading: isLoadingTeamMembers,
-  } = useQuery<TeamMemberDashboard[]>({
-    queryKey: ['teamMembersDashboard'],
-    queryFn: () => api.getTeamMembers(),
-  })
-
-  const {
-    data: leaveRequests = [],
-    refetch: refetchLeaveRequests,
-  } = useQuery<LeaveDashboard[]>({
-    queryKey: ['leaveRequestsDashboard'],
-    queryFn: () => api.getLeaveRequests(),
-  })
-
-  const {
-    data: allInvoices = [],
-    refetch: refetchInvoices,
-    isLoading: isLoadingInvoices,
-  } = useQuery<InvoiceDashboard[]>({
-    queryKey: ['allInvoicesDashboard'],
-    queryFn: () => api.getAllInvoices(),
-  })
-
-  const currentYear = new Date().getFullYear()
-  const {
-    data: financesOverview,
-    refetch: refetchFinances,
-    isLoading: isLoadingFinances,
-  } = useQuery<FinanceOverview>({
-    queryKey: ['financesOverviewDashboard', currentYear],
-    queryFn: () => api.getFinancesOverview({
-      startDate: `${currentYear}-01-01`,
-      endDate: `${currentYear}-12-31`,
-    }),
+    data: dashboardSummary,
+    refetch: refetchDashboardSummary,
+    isLoading: isLoadingDashboardSummary,
+  } = useQuery<AdminDashboardSummaryResponse>({
+    queryKey: ['adminDashboardSummary'],
+    queryFn: () => api.getAdminDashboardSummary(),
   })
 
   const {
@@ -314,15 +275,16 @@ export function AdminDashboard() {
     queryFn: () => api.getFinancesBalances(),
     retry: 1,
     staleTime: 5 * 60 * 1000,
+    enabled: Boolean(dashboardSummary),
   })
 
-  const {
-    data: reimbursements = [],
-    refetch: refetchReimbursements,
-  } = useQuery<ReimbursementDashboard[]>({
-    queryKey: ['reimbursementsDashboard'],
-    queryFn: () => api.request('/reimbursements') as Promise<ReimbursementDashboard[]>,
-  })
+  const dashboardData = dashboardSummary
+  const clients = dashboardSummary?.clients ?? []
+  const teamMembers = dashboardSummary?.teamMembers ?? []
+  const leaveRequests = dashboardSummary?.leaveRequests ?? []
+  const allInvoices = dashboardSummary?.invoices ?? []
+  const financesOverview = dashboardSummary?.financesOverview
+  const reimbursements = dashboardSummary?.reimbursements ?? []
 
   const activeShifts = activeShiftsData?.shifts ?? []
   const shiftRefetchRef = useRef({
@@ -375,14 +337,8 @@ export function AdminDashboard() {
       await Promise.allSettled([
         refetchActiveShifts(),
         refetchLateShifts(),
-        refetchDashboard(),
-        refetchClients(),
-        refetchTeamMembers(),
-        refetchLeaveRequests(),
-        refetchInvoices(),
-        refetchFinances(),
+        refetchDashboardSummary(),
         refetchBalances(),
-        refetchReimbursements(),
       ])
     } finally {
       setIsRefreshing(false)
@@ -645,7 +601,7 @@ export function AdminDashboard() {
     return summaryParts.join(' • ')
   }, [currentMonthFinance, overdueInvoices.length, topClientShare])
 
-  const isLoadingCore = isLoadingDashboard || isLoadingClients || isLoadingInvoices || isLoadingFinances || isLoadingTeamMembers
+  const isLoadingCore = isLoadingDashboardSummary
 
   return (
     <div className="space-y-5">

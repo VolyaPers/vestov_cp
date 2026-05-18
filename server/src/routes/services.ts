@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { Pool } from 'pg'
-import { eq, desc, and, sql } from 'drizzle-orm'
+import { eq, desc, and, sql, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { serviceTypes, clientServices, clients, teamMembers, users, clientServiceTeamMembers, clientUsers } from '../db/schema.js'
 import * as schema from '../db/schema.js'
@@ -384,12 +384,12 @@ router.get('/clients', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' })
     }
 
-    // Get service assignments for each client
-    const clientsWithServiceData = await Promise.all(
-      clientsWithServices.map(async (client) => {
-        const services = await db
+    const clientIds = clientsWithServices.map((client) => client.id)
+    const allServices = clientIds.length > 0
+      ? await db
           .select({
             id: clientServices.id,
+            clientId: clientServices.clientId,
             serviceTypeId: clientServices.serviceTypeId,
             serviceTypeName: serviceTypes.name,
             serviceCategory: serviceTypes.category,
@@ -403,48 +403,138 @@ router.get('/clients', requireAuth, async (req, res) => {
           })
           .from(clientServices)
           .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-          .where(eq(clientServices.clientId, client.id))
+          .where(inArray(clientServices.clientId, clientIds))
+      : []
 
-        // Calculate if client is active based on services
-        // Active = has at least one service where endDate is NULL or >= today
-        const today = new Date()
-        today.setHours(0, 0, 0, 0) // Set to start of day for comparison
+    const servicesByClient = new Map<number, typeof allServices>()
+    for (const service of allServices) {
+      const existing = servicesByClient.get(service.clientId) ?? []
+      existing.push(service)
+      servicesByClient.set(service.clientId, existing)
+    }
 
-        const hasActiveService = services.some(service => {
-          if (!service.endDate) {
-            // No end date means ongoing service
-            return true
-          }
-          const endDate = new Date(service.endDate)
-          endDate.setHours(0, 0, 0, 0)
-          // Service is active if end date is today or later
-          return endDate >= today
-        })
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
 
-        // Determine client status based on services
-        const calculatedStatus = services.length === 0
-          ? 'inactive'  // No services = inactive
-          : hasActiveService
-            ? 'active'    // Has active services = active
-            : 'inactive'  // All services expired = inactive
+    const clientsWithServiceData = clientsWithServices.map((client) => {
+      const services = servicesByClient.get(client.id) ?? []
 
-        return {
-          ...client,
-          status: calculatedStatus, // Override status with calculated value
-          services,
-          activeServicesCount: services.filter(s => s.isActive).length,
-          totalMonthlyRevenue: services
-            .filter(s => s.isActive)
-            .reduce((sum, s) => sum + (parseFloat(s.rate?.toString() || '0') || 0), 0)
+      const hasActiveService = services.some((service) => {
+        if (!service.endDate) {
+          return true
         }
+
+        const endDate = new Date(service.endDate)
+        endDate.setHours(0, 0, 0, 0)
+        return endDate >= today
       })
-    )
+
+      const calculatedStatus = services.length === 0
+        ? 'inactive'
+        : hasActiveService
+          ? 'active'
+          : 'inactive'
+
+      return {
+        ...client,
+        status: calculatedStatus,
+        services,
+        activeServicesCount: services.filter((service) => service.isActive).length,
+        totalMonthlyRevenue: services
+          .filter((service) => service.isActive)
+          .reduce((sum, service) => sum + (parseFloat(service.rate?.toString() || '0') || 0), 0),
+      }
+    })
 
     console.log(`Found ${clientsWithServiceData.length} clients`)
     res.json(clientsWithServiceData)
   } catch (error) {
     console.error('Error fetching clients:', error)
     res.status(500).json({ error: 'Failed to fetch clients' })
+  }
+})
+
+router.get('/service-developer-assignments', requireAuth, async (req, res) => {
+  try {
+    const rawClientId = typeof req.query.clientId === 'string' ? Number.parseInt(req.query.clientId, 10) : NaN
+    const rawClientIds = typeof req.query.clientIds === 'string'
+      ? req.query.clientIds
+          .split(',')
+          .map((value) => Number.parseInt(value.trim(), 10))
+          .filter((value) => Number.isFinite(value))
+      : []
+
+    const requestedClientIds = Array.from(new Set([
+      ...rawClientIds,
+      ...(Number.isFinite(rawClientId) ? [rawClientId] : []),
+    ]))
+
+    let visibleClientIds = requestedClientIds
+
+    if (req.user?.role === 'client') {
+      const assignments = await db
+        .select({ clientId: clientUsers.clientId })
+        .from(clientUsers)
+        .where(and(
+          eq(clientUsers.userId, req.user.id),
+          eq(clientUsers.isActive, true),
+        ))
+
+      const allowedClientIds = assignments.map((assignment) => assignment.clientId)
+      visibleClientIds = requestedClientIds.length > 0
+        ? requestedClientIds.filter((clientId) => allowedClientIds.includes(clientId))
+        : allowedClientIds
+
+      if (requestedClientIds.length > 0 && visibleClientIds.length !== requestedClientIds.length) {
+        return res.status(403).json({ error: 'Access denied' })
+      }
+    }
+
+    if (req.user?.role === 'client' && visibleClientIds.length === 0) {
+      return res.json({})
+    }
+
+    const conditions = []
+    if (visibleClientIds.length > 0) {
+      conditions.push(inArray(clientServices.clientId, visibleClientIds))
+    }
+
+    const rows = await db
+      .select({
+        id: clientServiceTeamMembers.id,
+        clientId: clientServices.clientId,
+        serviceId: clientServices.id,
+        developerId: clientServiceTeamMembers.teamMemberId,
+        name: teamMembers.name,
+        email: teamMembers.email,
+        avatarUrl: teamMembers.avatarUrl,
+        skills: teamMembers.skills,
+        hourlyRate: clientServiceTeamMembers.hourlyRate,
+        fixedPrice: clientServiceTeamMembers.fixedPrice,
+        workSchedule: clientServiceTeamMembers.workSchedule,
+        employmentType: clientServiceTeamMembers.employmentType,
+        isActive: clientServiceTeamMembers.isActive,
+        startDate: clientServiceTeamMembers.startDate,
+        endDate: clientServiceTeamMembers.endDate,
+      })
+      .from(clientServiceTeamMembers)
+      .leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
+      .leftJoin(clientServices, eq(clientServiceTeamMembers.clientServiceId, clientServices.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(clientServiceTeamMembers.createdAt))
+
+    const assignmentsByService: Record<number, typeof rows> = {}
+    for (const row of rows) {
+      if (!assignmentsByService[row.serviceId]) {
+        assignmentsByService[row.serviceId] = []
+      }
+      assignmentsByService[row.serviceId].push(row)
+    }
+
+    res.json(assignmentsByService)
+  } catch (error) {
+    console.error('Error fetching batched service developers:', error)
+    res.status(500).json({ error: 'Failed to fetch batched service developers' })
   }
 })
 

@@ -481,6 +481,10 @@ class ApiClient {
     return this.request('/admin/dashboard')
   }
 
+  async getAdminDashboardSummary() {
+    return this.request('/admin/dashboard/summary')
+  }
+
   async getClientDashboard() {
     return this.request('/client/dashboard')
   }
@@ -492,6 +496,14 @@ class ApiClient {
 
   async getServiceDevelopers(clientId: number, serviceId: number) {
     return this.request(`/services/clients/${clientId}/services/${serviceId}/developers`)
+  }
+
+  async getServiceDeveloperAssignments(params?: { clientId?: number; clientIds?: number[] }) {
+    const searchParams = new URLSearchParams()
+    if (params?.clientId) searchParams.append('clientId', params.clientId.toString())
+    if (params?.clientIds?.length) searchParams.append('clientIds', params.clientIds.join(','))
+    const query = searchParams.toString()
+    return this.request(`/services/service-developer-assignments${query ? `?${query}` : ''}`) as Promise<Record<number, any[]>>
   }
 
   async addDeveloperToService(clientId: number, serviceId: number, data: {
@@ -581,6 +593,17 @@ class ApiClient {
 
   async getClientInvoiceTotals(clientId: number) {
     return this.request(`/invoices/client/${clientId}/totals`)
+  }
+
+  async getClientInvoiceTotalsBatch(clientIds?: number[]) {
+    const searchParams = new URLSearchParams()
+    if (clientIds?.length) searchParams.append('clientIds', clientIds.join(','))
+    const query = searchParams.toString()
+    return this.request(`/invoices/totals${query ? `?${query}` : ''}`) as Promise<Array<{
+      clientId: number
+      totalInvoiced: number
+      totalPaid: number
+    }>>
   }
 
   async getClientInvoices(clientId: number) {
@@ -698,8 +721,35 @@ class ApiClient {
     return this.request(`/finances/logs${q ? `?${q}` : ''}`) as Promise<FinanceAuditLog[]>
   }
 
-  async recordSalaryPayment(data: { teamMemberId: number; amount: number; transactionDate: string; description?: string }) {
-    return this.request('/finances/salaries/record', { method: 'POST', body: JSON.stringify(data) })
+  async recordSalaryPayment(data: {
+    teamMemberId: number
+    amount: number
+    transactionDate: string
+    description?: string
+    salaryMonth?: string
+    baseSalary?: number
+    salaryPaidNow?: number
+    remainingSalary?: number
+    extras?: Array<{ label: string; amount: string | number }>
+    note?: string
+  }): Promise<{
+    id: number
+    email?: {
+      delivered: boolean
+      skipped?: boolean
+      provider?: string
+      error?: string
+    }
+  }> {
+    return this.request('/finances/salaries/record', { method: 'POST', body: JSON.stringify(data) }) as Promise<{
+      id: number
+      email?: {
+        delivered: boolean
+        skipped?: boolean
+        provider?: string
+        error?: string
+      }
+    }>
   }
 
   async updateSalaryRate(teamMemberId: number, data: { monthlyRate: number; effectiveDate?: string; note?: string }) {

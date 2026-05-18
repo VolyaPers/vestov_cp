@@ -166,49 +166,31 @@ export function ClientsPage() {
 
   const loadClients = async () => {
     try {
-      const response = await api.request('/services/clients', {
-        method: 'GET',
+      const [response, invoiceTotalsRows, developersByService] = await Promise.all([
+        api.getClients() as unknown as Promise<Client[]>,
+        api.getClientInvoiceTotalsBatch(),
+        api.getServiceDeveloperAssignments(),
+      ])
+
+      const invoiceTotalsByClient = new Map(
+        invoiceTotalsRows.map((row) => [row.clientId, row]),
+      )
+
+      const clientsWithInvoiceData = response.map((client) => {
+        const invoiceTotals = invoiceTotalsByClient.get(client.id)
+        return {
+          ...client,
+          invoiceTotals: {
+            totalInvoiced: invoiceTotals?.totalInvoiced || 0,
+            totalPaid: invoiceTotals?.totalPaid || 0,
+          },
+        }
       })
 
-      const clientsWithInvoiceData = await Promise.all(
-        response.map(async (client: Client) => {
-          try {
-            const invoiceTotals = await api.getClientInvoiceTotals(client.id)
-            return { ...client, invoiceTotals }
-          } catch (error) {
-            console.error(`Failed to load invoice data for client ${client.id}:`, error)
-            return client
-          }
-        })
-      )
-
       setClients(clientsWithInvoiceData)
-      await loadServiceDevelopers(clientsWithInvoiceData)
+      setServiceDevelopers(developersByService)
     } catch (error) {
       console.error('Failed to load clients:', error)
-    }
-  }
-
-  const loadServiceDevelopers = async (clientsData: Client[]) => {
-    try {
-      const developersData: { [serviceId: number]: any[] } = {}
-      const allServices = clientsData.flatMap(client =>
-        client.services.map(service => ({ ...service, clientId: client.id }))
-      )
-
-      for (const service of allServices) {
-        try {
-          const developers = await api.getServiceDevelopers(service.clientId, service.id)
-          developersData[service.id] = developers
-        } catch (error) {
-          console.error(`Failed to load developers for service ${service.id}:`, error)
-          developersData[service.id] = []
-        }
-      }
-
-      setServiceDevelopers(developersData)
-    } catch (error) {
-      console.error('Failed to load service developers:', error)
     }
   }
 

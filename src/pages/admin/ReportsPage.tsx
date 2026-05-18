@@ -110,14 +110,7 @@ export function ReportsPage() {
 
   const { data: allInvoices = [], isLoading: isLoadingInvoices } = useQuery<Invoice[]>({
     queryKey: ['allInvoices'],
-    queryFn: async () => {
-      const clientsList = await api.getClients()
-      const invoicePromises = clientsList.map((client: Client) =>
-        api.getClientInvoices(client.id).catch(() => [])
-      )
-      const invoicesByClient = await Promise.all(invoicePromises)
-      return invoicesByClient.flat()
-    },
+    queryFn: () => api.getAllInvoices(),
     staleTime: 5 * 60 * 1000,
   })
 

@@ -19,6 +19,7 @@ import {
   pickInvoiceSnapshot,
   pickTransactionSnapshot,
 } from '../lib/financeAudit.js'
+import { buildSalaryPaymentEmail, sendEmail } from '../services/email.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -83,6 +84,13 @@ async function ensureCategoryExists(kind: FinanceCategoryKind, rawName: string, 
 type SalaryExtraPayload = {
   label: string
   amount: number
+}
+
+type SalaryPaymentEmailStatus = {
+  delivered: boolean
+  skipped?: boolean
+  provider?: string
+  error?: string
 }
 
 function normalizeSalaryExtras(value: unknown): SalaryExtraPayload[] {
@@ -687,9 +695,29 @@ router.post('/salaries/record', async (req, res) => {
   if (!isAdmin(req, res)) return
   try {
     const { teamMemberId, amount, transactionDate, description } = req.body
+    const salaryMonth = typeof req.body?.salaryMonth === 'string' ? req.body.salaryMonth : ''
+    const baseSalary = Number(req.body?.baseSalary)
+    const salaryPaidNow = Number(req.body?.salaryPaidNow)
+    const remainingSalary = Number(req.body?.remainingSalary)
+    const note = typeof req.body?.note === 'string' ? req.body.note : ''
+    const extras = normalizeSalaryExtras(req.body?.extras)
 
     if (!teamMemberId || !amount || !transactionDate) {
       return res.status(400).json({ error: 'teamMemberId, amount, and transactionDate are required' })
+    }
+
+    const [member] = await db
+      .select({
+        id: teamMembers.id,
+        name: teamMembers.name,
+        email: teamMembers.email,
+      })
+      .from(teamMembers)
+      .where(eq(teamMembers.id, teamMemberId))
+      .limit(1)
+
+    if (!member) {
+      return res.status(404).json({ error: 'Team member not found' })
     }
 
     const [created] = await db.transaction(async (tx) => {
@@ -721,7 +749,47 @@ router.post('/salaries/record', async (req, res) => {
       return [row]
     })
 
-    res.status(201).json(created)
+    let email: SalaryPaymentEmailStatus = {
+      delivered: false,
+      skipped: true,
+      provider: 'none',
+    }
+
+    const totalAmount = Number(amount)
+    if (member.email && salaryMonth && Number.isFinite(baseSalary) && Number.isFinite(salaryPaidNow) && Number.isFinite(remainingSalary) && Number.isFinite(totalAmount)) {
+      try {
+        const payload = buildSalaryPaymentEmail({
+          to: member.email,
+          employeeName: member.name,
+          salaryMonth,
+          paymentDate: transactionDate,
+          baseSalary,
+          salaryPaidNow,
+          remainingSalary,
+          extras,
+          totalPayout: totalAmount,
+          note,
+        })
+        email = await sendEmail(payload)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error('Salary payment email error:', message)
+        email = {
+          delivered: false,
+          provider: 'sendgrid',
+          error: message,
+        }
+      }
+    } else if (!member.email) {
+      email = {
+        delivered: false,
+        skipped: true,
+        provider: 'none',
+        error: 'Team member has no email address configured.',
+      }
+    }
+
+    res.status(201).json({ ...created, email })
   } catch (error) {
     console.error('Record salary error:', error)
     res.status(500).json({ error: 'Failed to record salary payment' })

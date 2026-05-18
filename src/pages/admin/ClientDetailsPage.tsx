@@ -289,10 +289,11 @@ export function ClientDetailsPage() {
   // Load developers for service when client data changes
   useEffect(() => {
     if (client && client.services?.length > 0) {
-      client.services?.forEach(service => {
-        loadServiceDevelopers(service.id)
-      })
+      loadServiceDevelopers()
+      return
     }
+
+    setServiceDevelopers({})
   }, [client])
 
   const loadServiceTypes = async () => {
@@ -315,14 +316,21 @@ export function ClientDetailsPage() {
     }
   }
 
-  const loadServiceDevelopers = async (serviceId: number) => {
+  const loadServiceDevelopers = async (serviceId?: number) => {
     if (!clientId) return
     try {
-      const response = await api.getServiceDevelopers(parseInt(clientId), serviceId)
-      setServiceDevelopers(prev => ({
-        ...prev,
-        [serviceId]: response
-      }))
+      const response = await api.getServiceDeveloperAssignments({ clientId: parseInt(clientId) })
+      const nextAssignments = response as Record<number, ServiceDeveloper[]>
+
+      if (typeof serviceId === 'number') {
+        setServiceDevelopers((prev) => ({
+          ...prev,
+          [serviceId]: nextAssignments[serviceId] || [],
+        }))
+        return
+      }
+
+      setServiceDevelopers(nextAssignments)
     } catch (error) {
       console.error('Failed to load service developers:', error)
     }

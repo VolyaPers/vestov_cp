@@ -1502,12 +1502,23 @@ export function FinancesPage() {
           description,
         })
       } else {
-        await api.recordSalaryPayment({
+        const response = await api.recordSalaryPayment({
           teamMemberId: selectedMember.id,
           amount: salaryTotal,
           transactionDate: salaryForm.transactionDate,
           description,
+          salaryMonth: salaryForm.salaryMonth,
+          baseSalary: plannedSalaryAmount,
+          salaryPaidNow: salaryPaymentAmount,
+          remainingSalary,
+          extras: salaryForm.extras,
+          note: salaryForm.note,
         })
+
+        if (response.email && !response.email.delivered) {
+          const reason = response.email.error ? ` ${response.email.error}` : ''
+          window.alert(`Salary was recorded, but the email was not sent.${reason}`)
+        }
       }
       setShowSalaryModal(false)
       setSelectedMember(null)

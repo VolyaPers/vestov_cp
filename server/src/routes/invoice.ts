@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq, desc, and, sql, ne } from 'drizzle-orm'
+import { eq, desc, and, sql, ne, inArray } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
   invoices,
@@ -167,6 +167,52 @@ router.get('/client/:clientId', async (req, res) => {
   } catch (error) {
     console.error('Get client invoices error:', error)
     res.status(500).json({ error: 'Failed to fetch client invoices' })
+  }
+})
+
+router.get('/totals', async (req, res) => {
+  try {
+    const requestedClientIds = typeof req.query.clientIds === 'string'
+      ? req.query.clientIds
+          .split(',')
+          .map((value) => Number.parseInt(value.trim(), 10))
+          .filter((value) => Number.isFinite(value))
+      : []
+
+    let visibleClientIds = requestedClientIds
+
+    if (req.user!.role === 'client') {
+      if (!req.user!.clientId) {
+        return res.json([])
+      }
+
+      if (requestedClientIds.length > 0 && !requestedClientIds.includes(req.user!.clientId)) {
+        return res.status(403).json({ error: 'Access denied' })
+      }
+
+      visibleClientIds = [req.user!.clientId]
+    } else if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' })
+    }
+
+    const totals = await db
+      .select({
+        clientId: invoices.clientId,
+        totalInvoiced: sql<number>`COALESCE(SUM(CAST(${invoices.amount} as DECIMAL)), 0)`,
+        totalPaid: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.paidAt} IS NOT NULL THEN CAST(${invoices.amount} as DECIMAL) ELSE 0 END), 0)`,
+      })
+      .from(invoices)
+      .where(visibleClientIds.length > 0 ? inArray(invoices.clientId, visibleClientIds) : undefined)
+      .groupBy(invoices.clientId)
+
+    res.json(totals.map((row) => ({
+      clientId: row.clientId,
+      totalInvoiced: parseFloat(row.totalInvoiced.toString()),
+      totalPaid: parseFloat(row.totalPaid.toString()),
+    })))
+  } catch (error) {
+    console.error('Get batched client invoice totals error:', error)
+    res.status(500).json({ error: 'Failed to fetch batched client invoice totals' })
   }
 })
 

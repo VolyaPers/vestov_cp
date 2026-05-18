@@ -118,21 +118,8 @@ export function ClientPortal() {
         setIsInvoicesLoading(true)
 
         const developersPromise = (async () => {
-          const developersData: Record<number, ServiceDeveloper[]> = {}
-
-          if (clientResponse.services.length > 0) {
-            for (const service of clientResponse.services) {
-              try {
-                const developers = await api.getServiceDevelopers(parseInt(clientId), service.id)
-                developersData[service.id] = developers
-              } catch (error) {
-                console.error(`Failed to load developers for service ${service.id}:`, error)
-                developersData[service.id] = []
-              }
-            }
-          }
-
-          setServiceDevelopers(developersData)
+          const developersData = await api.getServiceDeveloperAssignments({ clientId: parseInt(clientId) })
+          setServiceDevelopers(developersData as Record<number, ServiceDeveloper[]>)
         })().finally(() => {
           setIsDevelopersLoading(false)
         })

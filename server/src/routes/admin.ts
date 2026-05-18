@@ -16,7 +16,11 @@ import {
   serviceRequests,
   documents,
   timeEntries,
-  feedback
+  feedback,
+  reimbursementRequests,
+  invoices,
+  financialTransactions,
+  clientServices,
 } from '../db/schema.js'
 import { requireAdmin, requireAuth } from '../middleware/auth.js'
 import { calculateDays } from '../utils/dateUtils.js'
@@ -160,17 +164,23 @@ const logoUpload = multer({
 // Dashboard
 router.get('/dashboard', async (req, res) => {
   try {
-    const [clientCount] = await db.select({ count: sql`count(*)` }).from(clients)
-    const [teamMemberCount] = await db.select({ count: sql`count(*)` }).from(teamMembers)
-    const [pendingLeaveRequests] = await db
-      .select({ count: sql`count(*)` })
-      .from(leaveRequests)
-      .where(eq(leaveRequests.status, 'pending'))
-
-    const activeTeamMembers = await db
-      .select({ count: sql`count(*)` })
-      .from(teamMembers)
-      .where(eq(teamMembers.status, 'active'))
+    const [
+      [clientCount],
+      [teamMemberCount],
+      [pendingLeaveRequests],
+      [activeTeamMembers],
+    ] = await Promise.all([
+      db.select({ count: sql`count(*)` }).from(clients),
+      db.select({ count: sql`count(*)` }).from(teamMembers),
+      db
+        .select({ count: sql`count(*)` })
+        .from(leaveRequests)
+        .where(eq(leaveRequests.status, 'pending')),
+      db
+        .select({ count: sql`count(*)` })
+        .from(teamMembers)
+        .where(eq(teamMembers.status, 'active')),
+    ])
 
     res.json({
       stats: {
@@ -183,6 +193,240 @@ router.get('/dashboard', async (req, res) => {
   } catch (error) {
     console.error('Dashboard error:', error)
     res.status(500).json({ error: 'Failed to load dashboard data' })
+  }
+})
+
+router.get('/dashboard/summary', async (req, res) => {
+  try {
+    const currentYear = new Date().getFullYear()
+    const startDate = `${currentYear}-01-01`
+    const endDate = `${currentYear}-12-31`
+
+    const txDateConditions = [
+      sql`${financialTransactions.transactionDate} >= ${startDate}`,
+      sql`${financialTransactions.transactionDate} <= ${endDate}`,
+    ]
+    const invoiceDateConditions = [
+      sql`${invoices.invoiceDate} >= ${startDate}`,
+      sql`${invoices.invoiceDate} <= ${endDate}`,
+    ]
+    const paidInvoiceConditions = [
+      sql`${invoices.status} = 'paid'`,
+      sql`${invoices.paidAt} IS NOT NULL`,
+      ...invoiceDateConditions,
+    ]
+
+    const [
+      [clientCount],
+      [teamMemberCount],
+      [pendingLeaveCount],
+      [activeTeamMemberCount],
+      clientRows,
+      teamMemberRows,
+      leaveRequestRows,
+      invoiceRows,
+      reimbursementRows,
+      txSums,
+      monthlyTx,
+      [invSum],
+      monthlyInv,
+    ] = await Promise.all([
+      db.select({ count: sql`count(*)` }).from(clients),
+      db.select({ count: sql`count(*)` }).from(teamMembers),
+      db
+        .select({ count: sql`count(*)` })
+        .from(leaveRequests)
+        .where(eq(leaveRequests.status, 'pending')),
+      db
+        .select({ count: sql`count(*)` })
+        .from(teamMembers)
+        .where(eq(teamMembers.status, 'active')),
+      db
+        .select({
+          id: clients.id,
+          name: clients.name,
+          status: clients.status,
+          createdAt: clients.createdAt,
+          activeServicesCount: sql<number>`
+            COUNT(${clientServices.id}) FILTER (
+              WHERE ${clientServices.isActive} = true
+                AND (${clientServices.endDate} IS NULL OR ${clientServices.endDate} >= CURRENT_DATE)
+            )
+          `,
+        })
+        .from(clients)
+        .leftJoin(clientServices, eq(clients.id, clientServices.clientId))
+        .groupBy(clients.id, clients.name, clients.status, clients.createdAt)
+        .orderBy(desc(clients.createdAt)),
+      db
+        .select({
+          id: teamMembers.id,
+          name: teamMembers.name,
+          status: teamMembers.status,
+          isBillable: teamMembers.isBillable,
+        })
+        .from(teamMembers),
+      db
+        .select({
+          id: leaveRequests.id,
+          status: leaveRequests.status,
+        })
+        .from(leaveRequests),
+      db
+        .select({
+          id: invoices.id,
+          clientId: invoices.clientId,
+          clientName: clients.name,
+          invoiceNumber: invoices.invoiceNumber,
+          amount: invoices.amount,
+          status: invoices.status,
+          invoiceDate: invoices.invoiceDate,
+          dueDate: invoices.dueDate,
+          paidAt: invoices.paidAt,
+        })
+        .from(invoices)
+        .leftJoin(clients, eq(invoices.clientId, clients.id))
+        .orderBy(desc(invoices.createdAt)),
+      db
+        .select({
+          id: reimbursementRequests.id,
+          status: reimbursementRequests.status,
+          evidenceUrl: reimbursementRequests.evidenceUrl,
+        })
+        .from(reimbursementRequests),
+      db
+        .select({
+          type: financialTransactions.type,
+          total: sql<string>`COALESCE(SUM(CAST(${financialTransactions.amount} AS DECIMAL)), 0)`,
+        })
+        .from(financialTransactions)
+        .where(and(...txDateConditions))
+        .groupBy(financialTransactions.type),
+      db
+        .select({
+          month: sql<number>`EXTRACT(MONTH FROM ${financialTransactions.transactionDate})::int`,
+          year: sql<number>`EXTRACT(YEAR FROM ${financialTransactions.transactionDate})::int`,
+          type: financialTransactions.type,
+          total: sql<string>`COALESCE(SUM(CAST(${financialTransactions.amount} AS DECIMAL)), 0)`,
+        })
+        .from(financialTransactions)
+        .where(and(...txDateConditions))
+        .groupBy(
+          sql`EXTRACT(MONTH FROM ${financialTransactions.transactionDate})`,
+          sql`EXTRACT(YEAR FROM ${financialTransactions.transactionDate})`,
+          financialTransactions.type,
+        )
+        .orderBy(
+          sql`EXTRACT(YEAR FROM ${financialTransactions.transactionDate})`,
+          sql`EXTRACT(MONTH FROM ${financialTransactions.transactionDate})`,
+        ),
+      db
+        .select({
+          total: sql<string>`COALESCE(SUM(CAST(${invoices.amount} AS DECIMAL)), 0)`,
+        })
+        .from(invoices)
+        .where(and(...paidInvoiceConditions)),
+      db
+        .select({
+          month: sql<number>`EXTRACT(MONTH FROM ${invoices.invoiceDate})::int`,
+          year: sql<number>`EXTRACT(YEAR FROM ${invoices.invoiceDate})::int`,
+          total: sql<string>`COALESCE(SUM(CAST(${invoices.amount} AS DECIMAL)), 0)`,
+        })
+        .from(invoices)
+        .where(and(...paidInvoiceConditions))
+        .groupBy(
+          sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
+          sql`EXTRACT(YEAR FROM ${invoices.invoiceDate})`,
+        )
+        .orderBy(
+          sql`EXTRACT(YEAR FROM ${invoices.invoiceDate})`,
+          sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
+        ),
+    ])
+
+    const totals: Record<string, number> = {
+      income: 0,
+      expense: 0,
+      salary: 0,
+      extra_payment: 0,
+      client_payments: parseFloat(invSum?.total || '0'),
+    }
+    for (const row of txSums) {
+      totals[row.type] = parseFloat(row.total)
+    }
+
+    const monthlyMap = new Map<string, {
+      month: number
+      year: number
+      income: number
+      expense: number
+      salary: number
+      extra_payment: number
+      client_payments: number
+    }>()
+
+    for (const row of monthlyTx) {
+      const key = `${row.year}-${row.month}`
+      if (!monthlyMap.has(key)) {
+        monthlyMap.set(key, {
+          month: row.month,
+          year: row.year,
+          income: 0,
+          expense: 0,
+          salary: 0,
+          extra_payment: 0,
+          client_payments: 0,
+        })
+      }
+
+      monthlyMap.get(key)![row.type as 'income' | 'expense' | 'salary' | 'extra_payment'] = parseFloat(row.total)
+    }
+
+    for (const row of monthlyInv) {
+      const key = `${row.year}-${row.month}`
+      if (!monthlyMap.has(key)) {
+        monthlyMap.set(key, {
+          month: row.month,
+          year: row.year,
+          income: 0,
+          expense: 0,
+          salary: 0,
+          extra_payment: 0,
+          client_payments: 0,
+        })
+      }
+
+      monthlyMap.get(key)!.client_payments = parseFloat(row.total)
+    }
+
+    res.json({
+      stats: {
+        totalClients: clientCount.count,
+        totalTeamMembers: teamMemberCount.count,
+        activeTeamMembers: activeTeamMemberCount.count,
+        pendingLeaveRequests: pendingLeaveCount.count,
+      },
+      clients: clientRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        status: row.activeServicesCount > 0 ? 'active' : 'inactive',
+        isActive: row.activeServicesCount > 0,
+        createdAt: row.createdAt,
+      })),
+      teamMembers: teamMemberRows,
+      leaveRequests: leaveRequestRows,
+      invoices: invoiceRows,
+      reimbursements: reimbursementRows,
+      financesOverview: {
+        totals,
+        monthlyBreakdown: Array.from(monthlyMap.values()).sort((a, b) => (
+          a.year === b.year ? a.month - b.month : a.year - b.year
+        )),
+      },
+    })
+  } catch (error) {
+    console.error('Dashboard summary error:', error)
+    res.status(500).json({ error: 'Failed to load dashboard summary' })
   }
 })
 
