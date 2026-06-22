@@ -1,6 +1,7 @@
 import { Suspense, lazy, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 import { UserButton } from '@clerk/react'
+import { useQuery } from '@tanstack/react-query'
 import { Route, Switch, Link, useLocation } from 'wouter'
 import {
   FileText,
@@ -13,6 +14,7 @@ import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
 import { WorkspaceRouteSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
+import { api } from '@/lib/api'
 import { getActiveNavigationLabel } from '@/lib/navigation'
 
 import type { User } from '@/types/common'
@@ -138,6 +140,12 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const signOut = useAppSignOut()
   const [location] = useLocation()
+  const { data: navigationIndicators } = useQuery({
+    queryKey: ['adminNavigationIndicators'],
+    queryFn: () => api.getAdminNavigationIndicators(),
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
+  })
   const todayLabel = new Date().toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'long',
@@ -157,11 +165,11 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
         title="Admin workspace"
         subtitle="Operations, reporting and team controls in one menu."
       >
-        <Sidebar role="admin" user={user} onLogout={handleLogout} />
+        <Sidebar role="admin" user={user} onLogout={handleLogout} navigationIndicators={navigationIndicators} />
       </MobileSidebarSheet>
 
       <div className="fixed inset-y-0 left-0 z-30 hidden w-[220px] xl:w-[232px] lg:flex">
-        <Sidebar role="admin" user={user} onLogout={handleLogout} />
+        <Sidebar role="admin" user={user} onLogout={handleLogout} navigationIndicators={navigationIndicators} />
       </div>
 
       <div className="flex min-h-screen flex-col lg:pl-[220px] xl:pl-[232px]">

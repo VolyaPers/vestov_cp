@@ -4,6 +4,7 @@ import { reimbursementRequests, teamMembers, users } from '../db/schema.js'
 import { eq, and, or, sql, desc, like } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from '../utils/employment.js'
 import { notifyReimbursementRequest } from '../utils/slack.js'
+import { buildReimbursementRequestEmail, REQUEST_NOTIFICATION_EMAIL, sendEmail } from '../services/email.js'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
@@ -48,6 +49,36 @@ function getYearlyLimit(yearsAtCompany: number): number {
   if (yearsAtCompany >= 3) return 500
   if (yearsAtCompany >= 2) return 400
   return 300 // 1 year
+}
+
+function notifyNewReimbursementRequest(options: {
+  member: { name?: string | null; email?: string | null }
+  requestId: number
+  description: string
+  category?: string | null
+  expenseAmount: number | string
+  reimbursementAmount: number | string
+  year: number
+}) {
+  notifyReimbursementRequest({
+    employeeName: options.member.name || null,
+    employeeEmail: options.member.email || 'unknown',
+    requestId: options.requestId,
+    description: options.description,
+    amount: String(options.reimbursementAmount)
+  }).catch((err) => console.error('[SLACK] reimbursement notify failed:', err))
+
+  sendEmail(buildReimbursementRequestEmail({
+    to: REQUEST_NOTIFICATION_EMAIL,
+    employeeName: options.member.name || null,
+    employeeEmail: options.member.email || null,
+    requestId: options.requestId,
+    description: options.description,
+    category: options.category || null,
+    expenseAmount: options.expenseAmount,
+    reimbursementAmount: options.reimbursementAmount,
+    year: options.year,
+  })).catch((err) => console.error('[email] reimbursement request notify failed:', err))
 }
 
 // GET /api/reimbursements/limits/:year - Get available limit for current employee
@@ -359,14 +390,15 @@ router.post('/', async (req, res) => {
         })
       const request = result[0]
 
-      // Notify Slack about new reimbursement request (fire and forget)
-      notifyReimbursementRequest({
-        employeeName: member.name || null,
-        employeeEmail: member.email,
+      notifyNewReimbursementRequest({
+        member,
         requestId: request.id,
         description,
-        amount: reimbursementAmount.toFixed(2)
-      }).catch((err) => console.error('[SLACK] reimbursement notify failed:', err))
+        category: category || null,
+        expenseAmount: expense.toFixed(2),
+        reimbursementAmount: reimbursementAmount.toFixed(2),
+        year,
+      })
 
       res.status(201).json({
         request,
@@ -399,14 +431,15 @@ router.post('/', async (req, res) => {
 
         const request = result.rows[0]
 
-        // Notify Slack about new reimbursement request (fire and forget)
-        notifyReimbursementRequest({
-          employeeName: member.name || null,
-          employeeEmail: member.email,
+        notifyNewReimbursementRequest({
+          member,
           requestId: request.id,
           description,
-          amount: reimbursementAmount.toFixed(2)
-        }).catch((err) => console.error('[SLACK] reimbursement notify failed:', err))
+          category: category || null,
+          expenseAmount: expense.toFixed(2),
+          reimbursementAmount: reimbursementAmount.toFixed(2),
+          year,
+        })
 
         res.status(201).json({
           request,

@@ -33,6 +33,7 @@ export interface NavItem {
   section?: string
   external?: boolean
   children?: NavItemChild[]
+  indicatorKey?: 'pendingLeaveRequests' | 'openReimbursements'
 }
 
 export interface MobileNavItem {
@@ -64,8 +65,8 @@ export const adminNavigation: NavItem[] = [
   { name: 'Team', href: '/admin/team', icon: Users, section: 'People' },
   { name: 'Users', href: '/admin/users', icon: UserCog, section: 'People' },
   { name: 'Shifts', href: '/admin/shifts', icon: Clock, section: 'People' },
-  { name: 'Calendar', href: '/admin/vacation', icon: Calendar, section: 'People' },
-  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt, section: 'Shortcuts' },
+  { name: 'Calendar', href: '/admin/vacation', icon: Calendar, section: 'People', indicatorKey: 'pendingLeaveRequests' },
+  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt, section: 'Shortcuts', indicatorKey: 'openReimbursements' },
   { name: 'Documents', href: '/admin/documents', icon: FileText, section: 'Shortcuts' },
   { name: 'Feedback', href: '/admin/feedback', icon: Star, section: 'Shortcuts' },
 ]

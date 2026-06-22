@@ -16,6 +16,7 @@ import { UserImpersonation } from '@/components/UserImpersonation'
 import { ShiftWidget } from '@/components/ShiftWidget'
 import vestovLogo from '@/assets/vestov-logo.png'
 import { getNavigation } from '@/lib/navigation'
+import type { NavigationIndicators } from '@/lib/api'
 import type { User as UserType, Client } from '@/types/common'
 
 // Role subtitles
@@ -31,6 +32,7 @@ export interface SidebarProps {
   user?: UserType
   onLogout: () => void
   currentClient?: Client | null
+  navigationIndicators?: Partial<NavigationIndicators>
 }
 
 const roleThemes = {
@@ -48,7 +50,7 @@ const roleThemes = {
   },
 } as const
 
-export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
+export function Sidebar({ role, user, onLogout, currentClient, navigationIndicators }: SidebarProps) {
   const [location] = useLocation()
   const theme = roleThemes[role]
   const ThemeIcon = theme.icon
@@ -102,6 +104,9 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
               </div>
               <nav className="space-y-0.5">
                 {group.items.map((item) => {
+                  const indicatorValue = item.indicatorKey ? navigationIndicators?.[item.indicatorKey] ?? 0 : 0
+                  const indicatorLabel = indicatorValue > 99 ? '99+' : String(indicatorValue)
+
                   if (item.external) {
                     return (
                       <a
@@ -116,6 +121,11 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                           aria-hidden="true"
                         />
                         <span className="flex-1">{item.name}</span>
+                        {indicatorValue > 0 && (
+                          <span className="stripe-nav-indicator" aria-label={`${indicatorValue} open ${item.name.toLowerCase()} requests`}>
+                            {indicatorLabel}
+                          </span>
+                        )}
                         <ExternalLink className="h-4 w-4 text-[var(--stripe-text-tertiary)] opacity-70" />
                       </a>
                     )
@@ -134,7 +144,12 @@ export function Sidebar({ role, user, onLogout, currentClient }: SidebarProps) {
                         )}>
                           <item.icon className="h-4 w-4" />
                         </div>
-                        <span className="flex-1 font-medium">{item.name}</span>
+                        <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
+                        {indicatorValue > 0 && (
+                          <span className="stripe-nav-indicator" aria-label={`${indicatorValue} open ${item.name.toLowerCase()} requests`}>
+                            {indicatorLabel}
+                          </span>
+                        )}
                       </div>
                     </Link>
                   )

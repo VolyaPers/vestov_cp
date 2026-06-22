@@ -128,6 +128,11 @@ export interface SalaryHistoryResponse {
   history: SalaryHistoryEntry[]
 }
 
+export interface NavigationIndicators {
+  pendingLeaveRequests: number
+  openReimbursements: number
+}
+
 class ApiError extends Error {
   status: number
 
@@ -483,6 +488,10 @@ class ApiClient {
 
   async getAdminDashboardSummary() {
     return this.request('/admin/dashboard/summary')
+  }
+
+  async getAdminNavigationIndicators(): Promise<NavigationIndicators> {
+    return this.request('/admin/navigation-indicators') as Promise<NavigationIndicators>
   }
 
   async getClientDashboard() {

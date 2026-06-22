@@ -27,6 +27,31 @@ import { calculateDays } from '../utils/dateUtils.js'
 
 const router = Router()
 
+router.get('/navigation-indicators', requireAdmin, async (req, res) => {
+  try {
+    const [pendingLeaveCount, openReimbursementCount] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leaveRequests)
+        .where(eq(leaveRequests.status, 'pending')),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(reimbursementRequests)
+        .where(
+          sql`${reimbursementRequests.status} = 'pending' OR (${reimbursementRequests.status} = 'approved' AND ${reimbursementRequests.evidenceUrl} IS NULL)`
+        ),
+    ])
+
+    res.json({
+      pendingLeaveRequests: pendingLeaveCount[0]?.count ?? 0,
+      openReimbursements: openReimbursementCount[0]?.count ?? 0,
+    })
+  } catch (error) {
+    console.error('Navigation indicators error:', error)
+    res.status(500).json({ error: 'Failed to load navigation indicators' })
+  }
+})
+
 // PUT /team-members/:id - Allow users to update their own profile OR admins to update any profile
 router.put('/team-members/:id', requireAuth, async (req, res) => {
   try {

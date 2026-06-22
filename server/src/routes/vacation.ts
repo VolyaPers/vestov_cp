@@ -20,8 +20,43 @@ import { requireAuth as auth } from '../middleware/auth.js'
 import { calculateVacationBalance, validateVacationRequest } from '../utils/vacationBalanceCalculator.js'
 import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator.js'
 import { notifyVacationRequest } from '../utils/slack.js'
+import { buildVacationRequestEmail, REQUEST_NOTIFICATION_EMAIL, sendEmail } from '../services/email.js'
 
 const router = Router()
+
+function notifyNewVacationRequest(options: {
+  employeeName?: string | null
+  employeeEmail?: string | null
+  requestId: number
+  leaveTypeName: string
+  startDate: string
+  endDate: string
+  daysCount: number | string
+  reason?: string | null
+}) {
+  notifyVacationRequest({
+    employeeName: options.employeeName || null,
+    employeeEmail: options.employeeEmail || 'unknown',
+    requestId: options.requestId,
+    leaveTypeName: options.leaveTypeName,
+    startDate: options.startDate,
+    endDate: options.endDate,
+    daysCount: String(options.daysCount),
+    reason: options.reason || null
+  }).catch((err) => console.error('[SLACK] vacation notify failed:', err))
+
+  sendEmail(buildVacationRequestEmail({
+    to: REQUEST_NOTIFICATION_EMAIL,
+    employeeName: options.employeeName || null,
+    employeeEmail: options.employeeEmail || null,
+    requestId: options.requestId,
+    leaveTypeName: options.leaveTypeName,
+    startDate: options.startDate,
+    endDate: options.endDate,
+    daysCount: options.daysCount,
+    reason: options.reason || null,
+  })).catch((err) => console.error('[email] vacation request notify failed:', err))
+}
 
 // Helper function to calculate working days between dates (including weekends for v1)
 function calculateDays(startDate: Date, endDate: Date, halfDayStart: boolean, halfDayEnd: boolean): number {
@@ -1291,9 +1326,8 @@ router.post('/requests', auth, async (req, res) => {
       .where(eq(teamMembers.id, employeeId))
       .limit(1)
 
-    // Notify Slack about new vacation request
     if (leaveType.length > 0 && employee.length > 0) {
-      notifyVacationRequest({
+      notifyNewVacationRequest({
         employeeName: employee[0].name || null,
         employeeEmail: employee[0].email,
         requestId: newRequest.id,
@@ -1302,7 +1336,7 @@ router.post('/requests', auth, async (req, res) => {
         endDate,
         daysCount: daysCount.toString(),
         reason: reason || null
-      }).catch((err) => console.error('[SLACK] vacation notify failed:', err))
+      })
     }
 
     res.json(newRequest)
@@ -1396,6 +1430,31 @@ router.post('/admin/create-and-approve', auth, async (req, res) => {
       actorId: user.id,
       note: autoApprove ? 'Auto-approved by admin from calendar' : 'Request submitted',
     })
+
+    const leaveType = await db
+      .select({ name: leaveTypes.name })
+      .from(leaveTypes)
+      .where(eq(leaveTypes.id, leaveTypeId))
+      .limit(1)
+
+    const employee = await db
+      .select({ name: teamMembers.name, email: teamMembers.email })
+      .from(teamMembers)
+      .where(eq(teamMembers.id, employeeId))
+      .limit(1)
+
+    if (leaveType.length > 0 && employee.length > 0) {
+      notifyNewVacationRequest({
+        employeeName: employee[0].name || null,
+        employeeEmail: employee[0].email,
+        requestId: newRequest.id,
+        leaveTypeName: leaveType[0].name,
+        startDate,
+        endDate,
+        daysCount: daysCount.toString(),
+        reason: reason || null
+      })
+    }
 
     res.json(newRequest)
   } catch (error) {

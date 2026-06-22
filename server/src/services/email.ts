@@ -23,6 +23,30 @@ interface SalaryPaymentEmailPayload {
   note?: string
 }
 
+interface ReimbursementRequestEmailPayload {
+  to: string
+  employeeName?: string | null
+  employeeEmail?: string | null
+  requestId: number
+  description: string
+  category?: string | null
+  expenseAmount: number | string
+  reimbursementAmount: number | string
+  year: number
+}
+
+interface VacationRequestEmailPayload {
+  to: string
+  employeeName?: string | null
+  employeeEmail?: string | null
+  requestId: number
+  leaveTypeName: string
+  startDate: string
+  endDate: string
+  daysCount: number | string
+  reason?: string | null
+}
+
 const EMAIL_WEBHOOK =
   process.env.INVITE_EMAIL_WEBHOOK_URL ||
   process.env.EMAIL_WEBHOOK_URL ||
@@ -33,6 +57,7 @@ const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Vestov Hub'
 const SENDGRID_REPLY_TO_EMAIL = process.env.SENDGRID_REPLY_TO_EMAIL
 
 const APP_BASE_URL = process.env.PUBLIC_APP_URL || 'http://localhost:5173'
+export const REQUEST_NOTIFICATION_EMAIL = process.env.REQUEST_NOTIFICATION_EMAIL || 'v@vestov.com'
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-US', {
@@ -41,6 +66,15 @@ function formatCurrency(amount: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function formatSalaryMonth(value: string) {
@@ -53,6 +87,16 @@ function formatSalaryMonth(value: string) {
 }
 
 function formatPaymentDate(value: string) {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function formatRequestDate(value: string) {
   const date = new Date(`${value}T00:00:00`)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleDateString('en-US', {
@@ -128,6 +172,89 @@ export async function sendEmail(payload: EmailPayload) {
   }
 
   return { delivered: true, provider: 'webhook' }
+}
+
+export function buildReimbursementRequestEmail(payload: ReimbursementRequestEmailPayload) {
+  const adminUrl = `${APP_BASE_URL}/admin/reimbursements`
+  const employeeLabel = payload.employeeName || payload.employeeEmail || 'A team member'
+  const subject = `New reimbursement request from ${employeeLabel}`
+  const category = payload.category?.trim() || 'Uncategorized'
+  const expenseAmount = typeof payload.expenseAmount === 'number'
+    ? payload.expenseAmount
+    : parseFloat(payload.expenseAmount)
+  const reimbursementAmount = typeof payload.reimbursementAmount === 'number'
+    ? payload.reimbursementAmount
+    : parseFloat(payload.reimbursementAmount)
+
+  const text = [
+    `${employeeLabel} submitted a reimbursement request.`,
+    '',
+    `Employee email: ${payload.employeeEmail || 'Not provided'}`,
+    `Request ID: ${payload.requestId}`,
+    `Category: ${category}`,
+    `Expense amount: ${formatCurrency(Number.isFinite(expenseAmount) ? expenseAmount : 0)}`,
+    `Reimbursement amount: ${formatCurrency(Number.isFinite(reimbursementAmount) ? reimbursementAmount : 0)}`,
+    `Year: ${payload.year}`,
+    '',
+    'Description:',
+    payload.description,
+    '',
+    `Review it in Vestov Hub: ${adminUrl}`,
+  ].join('\n')
+
+  const html = `
+    <p><strong>${escapeHtml(employeeLabel)}</strong> submitted a reimbursement request.</p>
+    <table style="border-collapse:collapse; width:100%; max-width:560px; margin:16px 0;">
+      <tbody>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Employee email</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${escapeHtml(payload.employeeEmail || 'Not provided')}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Request ID</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${payload.requestId}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Category</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${escapeHtml(category)}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Expense amount</td><td style="padding:8px 12px; border:1px solid #e5e7eb;"><strong>${formatCurrency(Number.isFinite(expenseAmount) ? expenseAmount : 0)}</strong></td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Reimbursement amount</td><td style="padding:8px 12px; border:1px solid #e5e7eb;"><strong>${formatCurrency(Number.isFinite(reimbursementAmount) ? reimbursementAmount : 0)}</strong></td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Year</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${payload.year}</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Description:</strong><br>${escapeHtml(payload.description)}</p>
+    <p><a href="${adminUrl}" target="_blank" rel="noopener noreferrer">Review in Vestov Hub</a></p>
+  `
+
+  return { to: payload.to, subject, text, html }
+}
+
+export function buildVacationRequestEmail(payload: VacationRequestEmailPayload) {
+  const adminUrl = `${APP_BASE_URL}/admin/vacation`
+  const employeeLabel = payload.employeeName || payload.employeeEmail || 'A team member'
+  const subject = `New ${payload.leaveTypeName} request from ${employeeLabel}`
+  const text = [
+    `${employeeLabel} submitted a ${payload.leaveTypeName} request.`,
+    '',
+    `Employee email: ${payload.employeeEmail || 'Not provided'}`,
+    `Request ID: ${payload.requestId}`,
+    `Dates: ${formatRequestDate(payload.startDate)} - ${formatRequestDate(payload.endDate)}`,
+    `Days: ${payload.daysCount}`,
+    '',
+    'Reason:',
+    payload.reason?.trim() || 'No reason provided',
+    '',
+    `Review it in Vestov Hub: ${adminUrl}`,
+  ].join('\n')
+
+  const html = `
+    <p><strong>${escapeHtml(employeeLabel)}</strong> submitted a ${escapeHtml(payload.leaveTypeName)} request.</p>
+    <table style="border-collapse:collapse; width:100%; max-width:560px; margin:16px 0;">
+      <tbody>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Employee email</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${escapeHtml(payload.employeeEmail || 'Not provided')}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Request ID</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${payload.requestId}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Leave type</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${escapeHtml(payload.leaveTypeName)}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Dates</td><td style="padding:8px 12px; border:1px solid #e5e7eb;">${formatRequestDate(payload.startDate)} - ${formatRequestDate(payload.endDate)}</td></tr>
+        <tr><td style="padding:8px 12px; border:1px solid #e5e7eb;">Days</td><td style="padding:8px 12px; border:1px solid #e5e7eb;"><strong>${payload.daysCount}</strong></td></tr>
+      </tbody>
+    </table>
+    <p><strong>Reason:</strong><br>${escapeHtml(payload.reason?.trim() || 'No reason provided')}</p>
+    <p><a href="${adminUrl}" target="_blank" rel="noopener noreferrer">Review in Vestov Hub</a></p>
+  `
+
+  return { to: payload.to, subject, text, html }
 }
 
 export function buildInviteEmail(token: string, email: string) {
@@ -232,4 +359,3 @@ export function buildSalaryPaymentEmail(payload: SalaryPaymentEmailPayload) {
     html,
   }
 }
-
