@@ -9,6 +9,7 @@ import {
   date,
   jsonb,
   varchar,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 // Users table
@@ -99,11 +100,69 @@ export const clientServices = pgTable('client_services', {
   serviceLevelPrice: decimal('service_level_price', { precision: 10, scale: 2 }), // Optional service-level pricing
   serviceTitle: text('service_title'), // Optional friendly name for the service
   slackChannelId: varchar('slack_channel_id', { length: 255 }), // Slack channel ID for shift notifications
+  clickupListId: varchar('clickup_list_id', { length: 100 }),
+  clickupListName: text('clickup_list_name'),
+  projectBotEnabled: boolean('project_bot_enabled').default(false).notNull(),
+  projectBotDailyUpdateEnabled: boolean('project_bot_daily_update_enabled').default(true).notNull(),
+  projectBotDailyUpdateTime: varchar('project_bot_daily_update_time', { length: 5 }).default('09:00').notNull(),
+  projectBotTimezone: varchar('project_bot_timezone', { length: 100 }).default('Europe/Kyiv').notNull(),
+  projectBotAuthorizedSlackUserIds: jsonb('project_bot_authorized_slack_user_ids').$type<string[]>().default([]).notNull(),
+  projectBotLastDailyUpdateAt: timestamp('project_bot_last_daily_update_at'),
   startDate: date('start_date').notNull(),
   endDate: date('end_date'),
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
+
+export const projectBotSlackRequests = pgTable('project_bot_slack_requests', {
+  id: serial('id').primaryKey(),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
+  slackChannelId: varchar('slack_channel_id', { length: 255 }).notNull(),
+  slackMessageTs: varchar('slack_message_ts', { length: 50 }).notNull(),
+  slackThreadTs: varchar('slack_thread_ts', { length: 50 }),
+  slackUserId: varchar('slack_user_id', { length: 50 }).notNull(),
+  requestText: text('request_text').notNull(),
+  classification: varchar('classification', { length: 50 }).notNull(),
+  status: varchar('status', { length: 20 }).default('pending').notNull(),
+  matchedTaskId: varchar('matched_task_id', { length: 100 }),
+  matchedTaskName: text('matched_task_name'),
+  matchedTaskUrl: text('matched_task_url'),
+  similarityScore: decimal('similarity_score', { precision: 5, scale: 4 }),
+  clickupTaskId: varchar('clickup_task_id', { length: 100 }),
+  clickupTaskUrl: text('clickup_task_url'),
+  regressionCount: integer('regression_count').default(0).notNull(),
+  resolvedBySlackUserId: varchar('resolved_by_slack_user_id', { length: 50 }),
+  resolvedAt: timestamp('resolved_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  channelMessageUnique: uniqueIndex('project_bot_slack_requests_channel_message_unique')
+    .on(table.slackChannelId, table.slackMessageTs),
+}))
+
+export const projectBotTaskSnapshots = pgTable('project_bot_task_snapshots', {
+  id: serial('id').primaryKey(),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
+  clickupTaskId: varchar('clickup_task_id', { length: 100 }).notNull(),
+  clickupListId: varchar('clickup_list_id', { length: 100 }).notNull(),
+  taskName: text('task_name').notNull(),
+  currentStatus: varchar('current_status', { length: 50 }).notNull(),
+  previousStatus: varchar('previous_status', { length: 50 }),
+  lastReportedStatus: varchar('last_reported_status', { length: 50 }),
+  ownerNames: jsonb('owner_names').$type<string[]>().default([]).notNull(),
+  priority: varchar('priority', { length: 30 }),
+  sourceUpdatedAt: timestamp('source_updated_at'),
+  sourceDoneAt: timestamp('source_done_at'),
+  firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+  lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+  lastStatusChangedAt: timestamp('last_status_changed_at').defaultNow().notNull(),
+  lastReportedAt: timestamp('last_reported_at'),
+  carryoverCount: integer('carryover_count').default(0).notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  serviceTaskUnique: uniqueIndex('project_bot_task_snapshots_service_task_unique')
+    .on(table.clientServiceId, table.clickupTaskId),
+}))
 
 // Document Folders table (for organizing documents by service)
 export const documentFolders = pgTable('document_folders', {

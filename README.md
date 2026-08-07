@@ -116,6 +116,52 @@ npm run dev:client
 npm run dev:server
 ```
 
+## Project Updates Slack Bot
+
+The project bot is configured per client service, which is the project boundary in Vestov Hub. Each enabled project has exactly one Slack channel and one ClickUp List. Reports never fall back to a different channel or List.
+
+### 1. Connect ClickUp
+
+Open **Admin → Time Tracking**, connect the ClickUp workspace, and keep the integration active. The saved ClickUp token must be able to read every List assigned to a project bot and create tasks when Slack request capture is enabled.
+
+### 2. Create the Slack app
+
+Import [`server/slack-app-manifest.yml`](server/slack-app-manifest.yml) in Slack app settings after replacing `YOUR_PUBLIC_DOMAIN` with the deployed backend domain. Install the app to the workspace and invite it to every configured project channel, including private channels.
+
+The manifest configures:
+
+- `/project` slash command
+- App mentions and channel-message events
+- Interactive request-to-task buttons
+- `chat:write`, `commands`, `app_mentions:read`, `channels:history`, and `groups:history` bot scopes
+
+### 3. Configure server secrets
+
+```env
+PROJECT_BOT_ENABLED=true
+SLACK_BOT_TOKEN=xoxb-your-token
+SLACK_SIGNING_SECRET=your-signing-secret
+```
+
+`SLACK_BOT_TOKEN` is shared with the existing Slack notification integration. The project bot does not require `SLACK_NOTIFICATIONS_ENABLED`.
+
+### 4. Configure each project
+
+Open **Admin → Clients → Client → Service Assignments**, choose the project settings button, and complete the **Project updates bot** section:
+
+- Slack Channel ID
+- ClickUp List ID
+- Authorized Slack user IDs for task creation/linking
+- Daily update time and IANA timezone
+
+Saving validates the ClickUp List and prevents two enabled projects from sharing one Slack channel. An empty authorized-user list makes the bot read-only while preserving reports.
+
+### Commands and behavior
+
+Supported commands include `/project now`, `/project sprint`, `/project done`, `/project review`, `/project remaining`, `/project <team member>`, `/project needs-me`, `/project blocked`, `/project carryover`, `/project untracked`, and `/project changes-today`. Equivalent questions work when the bot is mentioned.
+
+The bot only treats the explicit ClickUp **Completed** workflow status as production verified. Generic closed or unknown statuses remain unfinished and are called out as unmapped. Request-like Slack messages are matched against the configured List; ambiguous matches and task creation always require a button click from an allowlisted Slack user.
+
 ## 🔑 Default Login Credentials
 
 After seeding the database, you can log in with:

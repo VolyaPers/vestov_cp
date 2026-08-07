@@ -433,7 +433,12 @@ function formatPeriodLabel(startDate: string, endDate: string): string {
   return `${start.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })} - ${end.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}`
 }
 
-async function clickupRequest<T>(path: string, token: string, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+export async function clickupRequest<T>(
+  path: string,
+  token: string,
+  query?: Record<string, string | number | boolean | undefined>,
+  init?: { method?: 'GET' | 'POST'; body?: unknown },
+): Promise<T> {
   const url = new URL(`${CLICKUP_API_BASE}${path}`)
 
   if (query) {
@@ -445,10 +450,12 @@ async function clickupRequest<T>(path: string, token: string, query?: Record<str
   }
 
   const response = await fetch(url, {
+    method: init?.method ?? 'GET',
     headers: {
       Authorization: token,
       'Content-Type': 'application/json',
     },
+    body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   })
 
   const text = await response.text()

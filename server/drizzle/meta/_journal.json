@@ -190,6 +190,13 @@
       "when": 1765560000000,
       "tag": "0036_add_finance_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1786107600000,
+      "tag": "0037_add_project_updates_bot",
+      "breakpoints": true
     }
   ]
 }

@@ -24,6 +24,7 @@
     "test:total-calc:open": "cypress open --e2e --spec \"cypress/e2e/total-calculation-verification.cy.ts\"",
     "test:pricing-fixes": "cypress run --spec \"cypress/e2e/invoice-pricing-fixes.cy.ts\"",
     "test:pricing-fixes:open": "cypress open --e2e --spec \"cypress/e2e/invoice-pricing-fixes.cy.ts\"",
+    "test:project-bot": "node --import tsx --test server/src/services/projectBot.test.ts",
     "test:navigation": "cypress run --spec \"cypress/e2e/admin-navigation.cy.ts\"",
     "test:navigation:open": "cypress open --e2e --spec \"cypress/e2e/admin-navigation.cy.ts\"",
     "test:page-load": "cypress run --spec \"cypress/e2e/simple-page-load-test.cy.ts\"",

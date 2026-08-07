@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRoute } from 'wouter'
-import { ArrowLeft, Edit, Save, X, Building, Mail, Phone, MapPin, Calendar, DollarSign, Users, Plus, Trash2, Settings, FileText, Upload, Download, Eye, UserPlus, Star, Building2, HelpCircle } from 'lucide-react'
+import { ArrowLeft, Edit, Save, X, Building, Mail, Phone, MapPin, Calendar, DollarSign, Users, Plus, Trash2, Settings, FileText, Upload, Download, Eye, UserPlus, Star, Building2, HelpCircle, Bot, ListTodo } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -173,13 +173,26 @@ export function ClientDetailsPage() {
     isActive: boolean
     serviceTitle?: string
     slackChannelId?: string
+    clickupListId?: string
+    clickupListName?: string
+    projectBotEnabled: boolean
+    projectBotDailyUpdateEnabled: boolean
+    projectBotDailyUpdateTime: string
+    projectBotTimezone: string
+    projectBotAuthorizedSlackUserIds: string
   } | null>(null)
   const [newServiceData, setNewServiceData] = useState({
     serviceTypeId: '',
     rate: '',
     serviceTitle: '',
     startDate: new Date().toISOString().split('T')[0],
-    slackChannelId: ''
+    slackChannelId: '',
+    clickupListId: '',
+    projectBotEnabled: false,
+    projectBotDailyUpdateEnabled: true,
+    projectBotDailyUpdateTime: '09:00',
+    projectBotTimezone: 'Europe/Kyiv',
+    projectBotAuthorizedSlackUserIds: ''
   })
   const [newDeveloperData, setNewDeveloperData] = useState({
     developerId: '',
@@ -396,9 +409,13 @@ export function ClientDetailsPage() {
       showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
+    if (newServiceData.projectBotEnabled && (!newServiceData.slackChannelId || !newServiceData.clickupListId)) {
+      showAlert({ message: 'Enable the project bot only after adding both the Slack Channel ID and ClickUp List ID.', type: 'warning' })
+      return
+    }
 
     try {
-      await api.request(`/services/clients/${clientId}/services`, {
+      const createdService = await api.request(`/services/clients/${clientId}/services`, {
         method: 'POST',
         body: JSON.stringify({
           serviceTypeId: parseInt(newServiceData.serviceTypeId),
@@ -408,6 +425,21 @@ export function ClientDetailsPage() {
           slackChannelId: newServiceData.slackChannelId || null
         }),
       })
+
+      if (newServiceData.projectBotEnabled || newServiceData.clickupListId) {
+        await api.updateProjectBotConfig(createdService.id, {
+          slackChannelId: newServiceData.slackChannelId || null,
+          clickupListId: newServiceData.clickupListId || null,
+          projectBotEnabled: newServiceData.projectBotEnabled,
+          projectBotDailyUpdateEnabled: newServiceData.projectBotDailyUpdateEnabled,
+          projectBotDailyUpdateTime: newServiceData.projectBotDailyUpdateTime,
+          projectBotTimezone: newServiceData.projectBotTimezone,
+          projectBotAuthorizedSlackUserIds: newServiceData.projectBotAuthorizedSlackUserIds
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean),
+        })
+      }
 
       // Refresh client data
       const response = await api.getClient(clientId)
@@ -469,7 +501,13 @@ export function ClientDetailsPage() {
       rate: '',
       serviceTitle: '',
       startDate: new Date().toISOString().split('T')[0],
-      slackChannelId: ''
+      slackChannelId: '',
+      clickupListId: '',
+      projectBotEnabled: false,
+      projectBotDailyUpdateEnabled: true,
+      projectBotDailyUpdateTime: '09:00',
+      projectBotTimezone: 'Europe/Kyiv',
+      projectBotAuthorizedSlackUserIds: ''
     })
   }
 
@@ -632,7 +670,14 @@ export function ClientDetailsPage() {
       startDate: service.startDate,
       endDate: service.endDate || undefined,
       isActive: service.isActive,
-      slackChannelId: service.slackChannelId || ''
+      slackChannelId: service.slackChannelId || '',
+      clickupListId: service.clickupListId || '',
+      clickupListName: service.clickupListName || '',
+      projectBotEnabled: service.projectBotEnabled || false,
+      projectBotDailyUpdateEnabled: service.projectBotDailyUpdateEnabled !== false,
+      projectBotDailyUpdateTime: service.projectBotDailyUpdateTime || '09:00',
+      projectBotTimezone: service.projectBotTimezone || 'Europe/Kyiv',
+      projectBotAuthorizedSlackUserIds: (service.projectBotAuthorizedSlackUserIds || []).join(', ')
     })
     setIsEditServiceDialogOpen(true)
   }
@@ -641,6 +686,19 @@ export function ClientDetailsPage() {
     if (!editingServiceData) return
 
     try {
+      await api.updateProjectBotConfig(editingServiceData.serviceId, {
+        slackChannelId: editingServiceData.slackChannelId || null,
+        clickupListId: editingServiceData.clickupListId || null,
+        projectBotEnabled: editingServiceData.projectBotEnabled,
+        projectBotDailyUpdateEnabled: editingServiceData.projectBotDailyUpdateEnabled,
+        projectBotDailyUpdateTime: editingServiceData.projectBotDailyUpdateTime,
+        projectBotTimezone: editingServiceData.projectBotTimezone,
+        projectBotAuthorizedSlackUserIds: editingServiceData.projectBotAuthorizedSlackUserIds
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean),
+      })
+
       await api.updateClientService(editingServiceData.clientId, editingServiceData.serviceId, {
         rate: editingServiceData.rate,
         serviceTitle: editingServiceData.serviceTitle || null,
@@ -1568,6 +1626,12 @@ export function ClientDetailsPage() {
                                 Slack Notifications Active
                               </Badge>
                             )}
+                            {service.projectBotEnabled && (
+                              <Badge className="gap-1 border-indigo-200 bg-indigo-100 text-indigo-800">
+                                <Bot className="h-3 w-3" />
+                                Project Bot Active
+                              </Badge>
+                            )}
                             {!service.isActive && (
                               <Badge variant="destructive" className="animate-pulse">
                                 Ended
@@ -1599,6 +1663,12 @@ export function ClientDetailsPage() {
                           <span className="flex items-center gap-1">
                             <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                             Slack: {service.slackChannelId}
+                          </span>
+                        )}
+                        {service.clickupListId && (
+                          <span className="flex items-center gap-1">
+                            <ListTodo className="h-3.5 w-3.5" />
+                            ClickUp: {service.clickupListName || service.clickupListId}
                           </span>
                         )}
                       </div>
@@ -1805,7 +1875,7 @@ export function ClientDetailsPage() {
 
       {/* Add Service Dialog */}
       <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Service to {client?.name}</DialogTitle>
             <DialogDescription>
@@ -1865,32 +1935,95 @@ export function ClientDetailsPage() {
               />
             </div>
 
-            <div>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Label htmlFor="slackChannelId" className="mb-0">Slack Channel ID (Optional)</Label>
-                <Tooltip content={
-                  <div className="space-y-2">
-                    <p className="font-semibold">How to configure Slack notifications:</p>
-                    <ol className="list-decimal list-inside space-y-1">
-                      <li>Create or select a channel in your Slack workspace.</li>
-                      <li>Go to the <strong>Integrations</strong> tab and add the <span className="font-mono bg-white/10 px-1 rounded">Vestov Shifts</span> app.</li>
-                      <li>Go to the <strong>About</strong> tab, copy the <strong>Channel ID</strong> at the bottom, and paste it here.</li>
-                    </ol>
-                    <p className="text-blue-200">Our bot will notify this channel whenever a developer starts, ends, or takes a break during their shift.</p>
+            <div className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex gap-3">
+                  <Bot className="mt-0.5 h-5 w-5 text-indigo-600" />
+                  <div>
+                    <p className="font-semibold text-gray-900">Project updates bot</p>
+                    <p className="text-xs text-gray-600">Connect this project’s Slack channel to its current ClickUp List.</p>
                   </div>
-                }>
-                  <HelpCircle className="w-3.5 h-3.5 text-blue-500 hover:text-blue-600 transition-colors" />
-                </Tooltip>
+                </div>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={newServiceData.projectBotEnabled}
+                    onChange={(e) => setNewServiceData({ ...newServiceData, projectBotEnabled: e.target.checked })}
+                    className="rounded"
+                  />
+                  Enable
+                </label>
               </div>
-              <Input
-                id="slackChannelId"
-                value={newServiceData.slackChannelId}
-                onChange={(e) => setNewServiceData({ ...newServiceData, slackChannelId: e.target.value })}
-                placeholder="e.g., C0123456789"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Notifications for this service will be sent to this channel instead of the default admin channel.
-              </p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <Label htmlFor="slackChannelId" className="mb-0">Slack Channel ID</Label>
+                    <Tooltip content="Copy the channel ID from Slack’s channel details. The bot only answers project questions in this channel.">
+                      <HelpCircle className="h-3.5 w-3.5 text-indigo-500" />
+                    </Tooltip>
+                  </div>
+                  <Input
+                    id="slackChannelId"
+                    value={newServiceData.slackChannelId}
+                    onChange={(e) => setNewServiceData({ ...newServiceData, slackChannelId: e.target.value.trim() })}
+                    placeholder="C0123456789"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="clickupListId">ClickUp List ID</Label>
+                  <Input
+                    id="clickupListId"
+                    value={newServiceData.clickupListId}
+                    onChange={(e) => setNewServiceData({ ...newServiceData, clickupListId: e.target.value.trim() })}
+                    placeholder="901234567890"
+                  />
+                </div>
+              </div>
+
+              {newServiceData.projectBotEnabled && (
+                <>
+                  <div>
+                    <Label htmlFor="authorizedSlackUsers">Authorized Slack user IDs</Label>
+                    <Input
+                      id="authorizedSlackUsers"
+                      value={newServiceData.projectBotAuthorizedSlackUserIds}
+                      onChange={(e) => setNewServiceData({ ...newServiceData, projectBotAuthorizedSlackUserIds: e.target.value })}
+                      placeholder="U0123456789, U9876543210"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Only these users can create or link ClickUp tasks. Reports remain available to channel members.</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-[auto_120px_1fr] md:items-end">
+                    <label className="flex h-10 items-center gap-2 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        checked={newServiceData.projectBotDailyUpdateEnabled}
+                        onChange={(e) => setNewServiceData({ ...newServiceData, projectBotDailyUpdateEnabled: e.target.checked })}
+                        className="rounded"
+                      />
+                      Daily update
+                    </label>
+                    <div>
+                      <Label htmlFor="dailyUpdateTime">Time</Label>
+                      <Input
+                        id="dailyUpdateTime"
+                        type="time"
+                        value={newServiceData.projectBotDailyUpdateTime}
+                        onChange={(e) => setNewServiceData({ ...newServiceData, projectBotDailyUpdateTime: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="projectBotTimezone">Timezone</Label>
+                      <Input
+                        id="projectBotTimezone"
+                        value={newServiceData.projectBotTimezone}
+                        onChange={(e) => setNewServiceData({ ...newServiceData, projectBotTimezone: e.target.value })}
+                        placeholder="Europe/Kyiv"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -2018,7 +2151,7 @@ export function ClientDetailsPage() {
 
       {/* Edit Service Dialog */}
       <Dialog open={isEditServiceDialogOpen} onOpenChange={setIsEditServiceDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Service: {editingServiceData?.serviceTypeName}</DialogTitle>
             <DialogDescription>
@@ -2101,35 +2234,93 @@ export function ClientDetailsPage() {
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Label htmlFor="editSlackChannelId" className="mb-0">Slack Channel ID (Optional)</Label>
-                  <Tooltip content={
-                    <div className="space-y-2">
-                      <p className="font-semibold">How to configure Slack notifications:</p>
-                      <ol className="list-decimal list-inside space-y-1">
-                        <li>Create or select a channel in your Slack workspace.</li>
-                        <li>Go to the <strong>Integrations</strong> tab and add the <span className="font-mono bg-white/10 px-1 rounded">Vestov Shifts</span> app.</li>
-                        <li>Go to the <strong>About</strong> tab, copy the <strong>Channel ID</strong> at the bottom, and paste it here.</li>
-                      </ol>
-                      <p className="text-blue-200">Our bot will notify this channel whenever a developer starts, ends, or takes a break during their shift.</p>
+              <div className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex gap-3">
+                    <Bot className="mt-0.5 h-5 w-5 text-indigo-600" />
+                    <div>
+                      <p className="font-semibold text-gray-900">Project updates bot</p>
+                      <p className="text-xs text-gray-600">Reports are restricted to this channel and this ClickUp List.</p>
                     </div>
-                  }>
-                    <HelpCircle className="w-3.5 h-3.5 text-blue-500 hover:text-blue-600 transition-colors" />
-                  </Tooltip>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={editingServiceData.projectBotEnabled}
+                      onChange={(e) => setEditingServiceData({ ...editingServiceData, projectBotEnabled: e.target.checked })}
+                      className="rounded"
+                    />
+                    Enable
+                  </label>
                 </div>
-                <Input
-                  id="editSlackChannelId"
-                  value={editingServiceData.slackChannelId || ''}
-                  onChange={(e) => setEditingServiceData({
-                    ...editingServiceData,
-                    slackChannelId: e.target.value
-                  })}
-                  placeholder="e.g., C0123456789"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Notifications for this service will be sent to this channel instead of the default admin channel.
-                </p>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="editSlackChannelId">Slack Channel ID</Label>
+                    <Input
+                      id="editSlackChannelId"
+                      value={editingServiceData.slackChannelId || ''}
+                      onChange={(e) => setEditingServiceData({ ...editingServiceData, slackChannelId: e.target.value.trim() })}
+                      placeholder="C0123456789"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="editClickupListId">ClickUp List ID</Label>
+                    <Input
+                      id="editClickupListId"
+                      value={editingServiceData.clickupListId || ''}
+                      onChange={(e) => setEditingServiceData({ ...editingServiceData, clickupListId: e.target.value.trim() })}
+                      placeholder="901234567890"
+                    />
+                    {editingServiceData.clickupListName && (
+                      <p className="mt-1 text-xs text-gray-500">Connected List: {editingServiceData.clickupListName}</p>
+                    )}
+                  </div>
+                </div>
+
+                {editingServiceData.projectBotEnabled && (
+                  <>
+                    <div>
+                      <Label htmlFor="editAuthorizedSlackUsers">Authorized Slack user IDs</Label>
+                      <Input
+                        id="editAuthorizedSlackUsers"
+                        value={editingServiceData.projectBotAuthorizedSlackUserIds}
+                        onChange={(e) => setEditingServiceData({ ...editingServiceData, projectBotAuthorizedSlackUserIds: e.target.value })}
+                        placeholder="U0123456789, U9876543210"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Leave empty for a read-only bot. Explicit write actions will be disabled.</p>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-[auto_120px_1fr] md:items-end">
+                      <label className="flex h-10 items-center gap-2 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          checked={editingServiceData.projectBotDailyUpdateEnabled}
+                          onChange={(e) => setEditingServiceData({ ...editingServiceData, projectBotDailyUpdateEnabled: e.target.checked })}
+                          className="rounded"
+                        />
+                        Daily update
+                      </label>
+                      <div>
+                        <Label htmlFor="editDailyUpdateTime">Time</Label>
+                        <Input
+                          id="editDailyUpdateTime"
+                          type="time"
+                          value={editingServiceData.projectBotDailyUpdateTime}
+                          onChange={(e) => setEditingServiceData({ ...editingServiceData, projectBotDailyUpdateTime: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="editProjectBotTimezone">Timezone</Label>
+                        <Input
+                          id="editProjectBotTimezone"
+                          value={editingServiceData.projectBotTimezone}
+                          onChange={(e) => setEditingServiceData({ ...editingServiceData, projectBotTimezone: e.target.value })}
+                          placeholder="Europe/Kyiv"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex items-center space-x-2">

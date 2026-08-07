@@ -567,6 +567,21 @@ class ApiClient {
     })
   }
 
+  async updateProjectBotConfig(serviceId: number, data: {
+    slackChannelId: string | null
+    clickupListId: string | null
+    projectBotEnabled: boolean
+    projectBotDailyUpdateEnabled: boolean
+    projectBotDailyUpdateTime: string
+    projectBotTimezone: string
+    projectBotAuthorizedSlackUserIds: string[]
+  }) {
+    return this.request(`/project-bot/services/${serviceId}/config`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
   // Developer management
   async updateDeveloper(id: number, data: {
     name: string

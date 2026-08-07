@@ -40,8 +40,14 @@ export function convertClientToClientDetails(client: Client): ClientDetails {
       endDate: service.endDate,
       isActive: service.isActive,
       slackChannelId: service.slackChannelId,
+      clickupListId: service.clickupListId,
+      clickupListName: service.clickupListName,
+      projectBotEnabled: service.projectBotEnabled,
+      projectBotDailyUpdateEnabled: service.projectBotDailyUpdateEnabled,
+      projectBotDailyUpdateTime: service.projectBotDailyUpdateTime,
+      projectBotTimezone: service.projectBotTimezone,
+      projectBotAuthorizedSlackUserIds: service.projectBotAuthorizedSlackUserIds,
       createdAt: service.createdAt || service.startDate,
     })),
   }
 }
-

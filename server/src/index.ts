@@ -25,6 +25,7 @@ import { financesRouter } from './routes/finances.js'
 import { settingsRouter } from './routes/settings.js'
 import { searchRouter } from './routes/search.js'
 import { clickupRouter } from './routes/clickup.js'
+import { projectBotRouter } from './routes/project-bot.js'
 import { setupPassport } from './auth/passport.js'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -32,9 +33,10 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
-import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureClientContactColumns, ensureFinanceTables, ensureClickUpTables } from './utils/migrations.js'
+import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureClientContactColumns, ensureFinanceTables, ensureClickUpTables, ensureProjectBotTables } from './utils/migrations.js'
 import { initializeSocket } from './socket.js'
 import { startClickUpScheduler } from './services/clickup.js'
+import { startProjectBotScheduler } from './services/projectBot.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -107,6 +109,7 @@ async function runMigrations() {
     await ensureClientContactColumns(pool)
     await ensureFinanceTables(pool)
     await ensureClickUpTables(pool)
+    await ensureProjectBotTables(pool)
     const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
     if (columnExistsAfter) {
       console.log('[MIGRATIONS] ✓ Column is_active verified - exists in database')
@@ -131,7 +134,8 @@ async function runMigrations() {
       await ensureClientContactColumns(pool)
       await ensureFinanceTables(pool)
       await ensureClickUpTables(pool)
-      console.log('[MIGRATIONS] ✓ Added missing user columns, finance tables, and ClickUp tables as fallback')
+      await ensureProjectBotTables(pool)
+      console.log('[MIGRATIONS] ✓ Added missing user columns, finance tables, ClickUp tables, and project bot tables as fallback')
     } catch (fallbackError) {
       console.error('[MIGRATIONS] Fallback failed:', fallbackError)
     }
@@ -248,22 +252,31 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/api/project-bot/slack/'),
 })
 app.use(limiter)
 
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+const captureRawBody = (req: express.Request, _res: express.Response, buffer: Buffer) => {
+  const rawRequest = req as express.Request & { rawBody?: Buffer }
+  rawRequest.rawBody = Buffer.from(buffer)
+}
+
+app.use(express.json({ limit: '10mb', verify: captureRawBody }))
+app.use(express.urlencoded({ extended: true, limit: '10mb', verify: captureRawBody }))
 
 app.use((req, res, next) => {
   try {
+    const isSlackProjectBotRequest = req.url.startsWith('/api/project-bot/slack/')
     console.log(`[${new Date().toISOString()}] [INCOMING REQUEST] ${req.method} ${req.url}`)
     if (req.url?.includes('/google')) {
       console.log(`[GOOGLE OAUTH DEBUG] Request received for: ${req.url}`)
       console.log(`[GOOGLE OAUTH DEBUG] Full path: ${req.path}`)
       console.log(`[GOOGLE OAUTH DEBUG] Original URL: ${req.originalUrl}`)
     }
-    console.log(`[INCOMING REQUEST] Headers:`, JSON.stringify(req.headers, null, 2))
-    if (req.body && Object.keys(req.body).length > 0) {
+    if (!isSlackProjectBotRequest) {
+      console.log(`[INCOMING REQUEST] Headers:`, JSON.stringify(req.headers, null, 2))
+    }
+    if (!isSlackProjectBotRequest && req.body && Object.keys(req.body).length > 0) {
       console.log(`[INCOMING REQUEST] Body:`, JSON.stringify(req.body, null, 2))
     }
   } catch (err) {
@@ -330,6 +343,7 @@ app.use('/api/finances', financesRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/search', searchRouter)
 app.use('/api/clickup', clickupRouter)
+app.use('/api/project-bot', projectBotRouter)
 
 const uploadsPath = path.join(process.cwd(), 'uploads')
 app.use('/api/uploads', express.static(uploadsPath))
@@ -528,6 +542,7 @@ runMigrations().then(async () => {
   // Initialize Socket.IO
   initializeSocket(httpServer, corsOrigin)
   startClickUpScheduler()
+  startProjectBotScheduler()
 
   httpServer.listen(PORT, () => {
     console.log('========================================')

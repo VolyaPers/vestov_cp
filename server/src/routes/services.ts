@@ -4,7 +4,7 @@ import { eq, desc, and, sql, inArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { serviceTypes, clientServices, clients, teamMembers, users, clientServiceTeamMembers, clientUsers } from '../db/schema.js'
 import * as schema from '../db/schema.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
@@ -140,6 +140,13 @@ router.get('/client-services', requireAuth, async (req, res) => {
         billingModel: serviceTypes.billingModel,
         rate: clientServices.rate,
         serviceTitle: clientServices.serviceTitle,
+        slackChannelId: clientServices.slackChannelId,
+        clickupListId: clientServices.clickupListId,
+        clickupListName: clientServices.clickupListName,
+        projectBotEnabled: clientServices.projectBotEnabled,
+        projectBotDailyUpdateEnabled: clientServices.projectBotDailyUpdateEnabled,
+        projectBotDailyUpdateTime: clientServices.projectBotDailyUpdateTime,
+        projectBotTimezone: clientServices.projectBotTimezone,
         startDate: clientServices.startDate,
         endDate: clientServices.endDate,
         isActive: clientServices.isActive,
@@ -397,6 +404,10 @@ router.get('/clients', requireAuth, async (req, res) => {
             rate: clientServices.rate,
             serviceTitle: clientServices.serviceTitle,
             serviceLevelPrice: clientServices.serviceLevelPrice,
+            slackChannelId: clientServices.slackChannelId,
+            clickupListId: clientServices.clickupListId,
+            clickupListName: clientServices.clickupListName,
+            projectBotEnabled: clientServices.projectBotEnabled,
             startDate: clientServices.startDate,
             endDate: clientServices.endDate,
             isActive: clientServices.isActive,
@@ -595,6 +606,13 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
         endDate: clientServices.endDate,
         isActive: clientServices.isActive,
         slackChannelId: clientServices.slackChannelId,
+        clickupListId: clientServices.clickupListId,
+        clickupListName: clientServices.clickupListName,
+        projectBotEnabled: clientServices.projectBotEnabled,
+        projectBotDailyUpdateEnabled: clientServices.projectBotDailyUpdateEnabled,
+        projectBotDailyUpdateTime: clientServices.projectBotDailyUpdateTime,
+        projectBotTimezone: clientServices.projectBotTimezone,
+        projectBotAuthorizedSlackUserIds: clientServices.projectBotAuthorizedSlackUserIds,
         createdAt: clientServices.createdAt,
       })
       .from(clientServices)
@@ -621,10 +639,14 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
         ? 'active'
         : 'inactive'
 
+    const visibleServices = req.user?.role === 'admin'
+      ? services
+      : services.map(({ projectBotAuthorizedSlackUserIds: _authorizedIds, ...service }) => service)
+
     res.json({
       ...client,
       status: calculatedStatus, // Override status with calculated value
-      services,
+      services: visibleServices,
       // Include access level for client users
       ...(userAccessLevel && { accessLevel: userAccessLevel }),
     })
@@ -685,7 +707,7 @@ router.delete('/clients/:clientId/services/:serviceId', requireAuth, async (req,
 })
 
 // Add service to client
-router.post('/clients/:clientId/services', requireAuth, async (req, res) => {
+router.post('/clients/:clientId/services', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { clientId } = req.params
     const { serviceTypeId, rate, startDate } = req.body
@@ -998,7 +1020,7 @@ router.patch('/clients/:clientId/services/:serviceId/developers/:assignmentId', 
 })
 
 // Update client service
-router.put('/clients/:clientId/services/:serviceId', requireAuth, async (req, res) => {
+router.put('/clients/:clientId/services/:serviceId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { clientId, serviceId } = req.params
     const { rate, serviceLevelPrice, startDate, endDate, isActive } = req.body

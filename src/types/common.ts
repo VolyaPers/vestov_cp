@@ -107,6 +107,13 @@ export interface ClientService {
   startDate: string
   endDate?: string
   slackChannelId?: string
+  clickupListId?: string
+  clickupListName?: string
+  projectBotEnabled?: boolean
+  projectBotDailyUpdateEnabled?: boolean
+  projectBotDailyUpdateTime?: string
+  projectBotTimezone?: string
+  projectBotAuthorizedSlackUserIds?: string[]
   isActive: boolean
   createdAt?: string
 }
