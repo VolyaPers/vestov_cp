@@ -100,6 +100,25 @@ type ProjectData = {
   tasks: ClickUpProjectTask[]
 }
 
+export const PROJECT_BOT_DEFAULT_TAG = 'cursprint'
+
+export function normalizeClickUpListInput(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  let candidate = trimmed
+  try {
+    const url = new URL(trimmed)
+    const pathMatch = url.pathname.match(/\/v\/(?:li|l)\/([^/?#]+)/i)
+    if (pathMatch?.[1]) candidate = decodeURIComponent(pathMatch[1])
+  } catch {
+    // Plain List IDs are accepted without URL parsing.
+  }
+
+  const listViewMatch = candidate.match(/^6-(\d+)-\d+$/)
+  return listViewMatch?.[1] ?? candidate
+}
+
 type SnapshotState = {
   carryoverCount: number
   changed: boolean
@@ -303,6 +322,7 @@ async function fetchProjectData(project: ProjectBotProject): Promise<ProjectData
       include_closed: true,
       subtasks: true,
       include_timl: true,
+      'tags[]': PROJECT_BOT_DEFAULT_TAG,
       page,
     })
     const pageTasks = Array.isArray(payload.tasks) ? payload.tasks : []
@@ -452,14 +472,14 @@ export async function buildProjectReport(project: ProjectBotProject, command: Pr
         : ''
       return `• ${escapeSlack(truncate(request.requestText, 150))} — ${request.classification} · ${age}d waiting${match}`
     })
-    return capSlackText(`*${escapeSlack(projectName(project))}* · ClickUp: ${escapeSlack(project.clickupListName || project.clickupListId || 'not configured')}\n` +
+    return capSlackText(`*${escapeSlack(projectName(project))}* · ClickUp: ${escapeSlack(project.clickupListName || project.clickupListId || 'not configured')} · Tag: ${PROJECT_BOT_DEFAULT_TAG}\n` +
       `*Slack requests without a confirmed task (${requests.length})*\n${lines.join('\n') || '_None_'}${requests.length > lines.length ? `\n_+${requests.length - lines.length} more_` : ''}`)
   }
 
   const data = await fetchProjectData(project)
   const snapshots = await syncTaskSnapshots(project, data.tasks)
   const tasks = data.tasks
-  const title = `*${escapeSlack(projectName(project))}* · ClickUp: ${escapeSlack(data.list.name)}`
+  const title = `*${escapeSlack(projectName(project))}* · ClickUp: ${escapeSlack(data.list.name)} · Tag: ${PROJECT_BOT_DEFAULT_TAG}`
   const byStatus = (status: ProjectTaskStatus) => tasks.filter((task) => taskStatus(task) === status)
   const completed = byStatus('COMPLETED')
   const liveReview = byStatus('LIVE_REVIEW')
@@ -886,6 +906,7 @@ export async function resolveSlackRequestAction(
             regression && request.matchedTaskUrl ? `Possible regression of ${request.matchedTaskUrl}.` : '',
           ].filter(Boolean).join('\n'),
           links_to: regression ? request.matchedTaskId : undefined,
+          tags: [PROJECT_BOT_DEFAULT_TAG],
           notify_all: false,
         },
       },

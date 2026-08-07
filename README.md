@@ -150,11 +150,11 @@ SLACK_SIGNING_SECRET=your-signing-secret
 Open **Admin → Clients → Client → Service Assignments**, choose the project settings button, and complete the **Project updates bot** section:
 
 - Slack Channel ID
-- ClickUp List ID
+- ClickUp List URL or numeric List ID
 - Authorized Slack user IDs for task creation/linking
 - Daily update time and IANA timezone
 
-Saving validates the ClickUp List and prevents two enabled projects from sharing one Slack channel. An empty authorized-user list makes the bot read-only while preserving reports.
+Saving extracts the numeric List ID from standard ClickUp List URLs, validates the List, and prevents two enabled projects from sharing one Slack channel. Project reports only include tasks tagged `cursprint`; tasks captured from Slack receive that tag automatically. An empty authorized-user list makes the bot read-only while preserving reports.
 
 ### Commands and behavior
 

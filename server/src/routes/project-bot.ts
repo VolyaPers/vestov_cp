@@ -9,6 +9,7 @@ import {
   captureSlackRequest,
   getProjectByChannel,
   getProjectById,
+  normalizeClickUpListInput,
   parseProjectCommand,
   resolveSlackRequestAction,
 } from '../services/projectBot.js'
@@ -159,7 +160,7 @@ router.put('/services/:id/config', requireAuth, requireAdmin, asyncRoute(async (
   if (!current) return res.status(404).json({ error: 'Project not found' })
 
   const slackChannelId = String(req.body?.slackChannelId ?? '').trim().toUpperCase() || null
-  const clickupListId = String(req.body?.clickupListId ?? '').trim() || null
+  const clickupListId = normalizeClickUpListInput(String(req.body?.clickupListId ?? '')) || null
   const projectBotEnabled = req.body?.projectBotEnabled === true
   const projectBotDailyUpdateEnabled = req.body?.projectBotDailyUpdateEnabled !== false
   const projectBotDailyUpdateTime = String(req.body?.projectBotDailyUpdateTime ?? '09:00').trim()
@@ -171,8 +172,10 @@ router.put('/services/:id/config', requireAuth, requireAdmin, asyncRoute(async (
   if (slackChannelId && !/^[CG][A-Z0-9]+$/i.test(slackChannelId)) {
     return res.status(400).json({ error: 'Slack Channel ID must look like C0123456789 or G0123456789.' })
   }
-  if (clickupListId && !/^[A-Z0-9_-]+$/i.test(clickupListId)) {
-    return res.status(400).json({ error: 'ClickUp List ID contains unsupported characters.' })
+  if (clickupListId && !/^\d+$/.test(clickupListId)) {
+    return res.status(400).json({
+      error: 'Use a numeric ClickUp List ID. Vestov Hub also accepts List URLs containing /v/li/NUMBER or /v/l/6-NUMBER-1.',
+    })
   }
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(projectBotDailyUpdateTime)) {
     return res.status(400).json({ error: 'Daily update time must use 24-hour HH:mm format.' })

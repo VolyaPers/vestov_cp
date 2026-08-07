@@ -410,7 +410,7 @@ export function ClientDetailsPage() {
       return
     }
     if (newServiceData.projectBotEnabled && (!newServiceData.slackChannelId || !newServiceData.clickupListId)) {
-      showAlert({ message: 'Enable the project bot only after adding both the Slack Channel ID and ClickUp List ID.', type: 'warning' })
+      showAlert({ message: 'Enable the project bot only after adding both the Slack Channel ID and ClickUp List URL or ID.', type: 'warning' })
       return
     }
 
@@ -1971,13 +1971,14 @@ export function ClientDetailsPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="clickupListId">ClickUp List ID</Label>
+                  <Label htmlFor="clickupListId">ClickUp List URL or ID</Label>
                   <Input
                     id="clickupListId"
                     value={newServiceData.clickupListId}
                     onChange={(e) => setNewServiceData({ ...newServiceData, clickupListId: e.target.value.trim() })}
-                    placeholder="901234567890"
+                    placeholder="https://app.clickup.com/.../v/l/6-901234567890-1"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Reports include tasks tagged cursprint. The numeric List ID is saved automatically.</p>
                 </div>
               </div>
 
@@ -2265,16 +2266,17 @@ export function ClientDetailsPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="editClickupListId">ClickUp List ID</Label>
+                    <Label htmlFor="editClickupListId">ClickUp List URL or ID</Label>
                     <Input
                       id="editClickupListId"
                       value={editingServiceData.clickupListId || ''}
                       onChange={(e) => setEditingServiceData({ ...editingServiceData, clickupListId: e.target.value.trim() })}
-                      placeholder="901234567890"
+                      placeholder="https://app.clickup.com/.../v/l/6-901234567890-1"
                     />
                     {editingServiceData.clickupListName && (
                       <p className="mt-1 text-xs text-gray-500">Connected List: {editingServiceData.clickupListName}</p>
                     )}
+                    <p className="mt-1 text-xs text-gray-500">Reports include tasks tagged cursprint.</p>
                   </div>
                 </div>
 

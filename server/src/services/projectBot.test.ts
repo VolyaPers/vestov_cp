@@ -3,8 +3,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   detectSlackRequest,
+  normalizeClickUpListInput,
   normalizeProjectStatus,
   parseProjectCommand,
+  PROJECT_BOT_DEFAULT_TAG,
   requestSimilarity,
   taskStatus,
 } from './projectBot.js'
@@ -18,6 +20,19 @@ test('maps the project workflow statuses without treating generic closed work as
   assert.equal(normalizeProjectStatus('closed'), 'UNKNOWN')
   assert.equal(taskStatus({ id: '1', name: 'Safe completion', status: { status: 'COMPLETED' } }), 'COMPLETED')
   assert.equal(taskStatus({ id: '2', name: 'Generic close', status: { status: 'Complete' } }), 'LIVE_REVIEW')
+})
+
+test('normalizes ClickUp List URLs to the numeric API List ID', () => {
+  assert.equal(normalizeClickUpListInput('901523977314'), '901523977314')
+  assert.equal(
+    normalizeClickUpListInput('https://app.clickup.com/9015956554/v/l/6-901523977314-1'),
+    '901523977314',
+  )
+  assert.equal(
+    normalizeClickUpListInput('https://app.clickup.com/9015956554/v/li/901523977314'),
+    '901523977314',
+  )
+  assert.equal(PROJECT_BOT_DEFAULT_TAG, 'cursprint')
 })
 
 test('parses slash commands and natural-language member questions', () => {
