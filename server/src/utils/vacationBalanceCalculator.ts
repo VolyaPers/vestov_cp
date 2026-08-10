@@ -2,7 +2,7 @@ import { db } from '../db/index.js'
 import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers, leaveAllocationSettings } from '../db/schema.js'
 import { eq, and, sql } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from './employment.js'
-import { calculateDays } from './dateUtils.js'
+import { calculateDays, formatDateOnlyLocal, getCalendarHalfMidpoint } from './dateUtils.js'
 
 export interface VacationBalance {
   // Totals
@@ -44,7 +44,8 @@ export interface VacationBalance {
  * Calculate vacation balance for an employee based on 50/50 milestone rule
  *
  * Rules:
- * 1. Total allocation split 50/50 between first and second half of cycle
+ * 1. Total allocation split 50/50 between first and second half of the calendar year
+ *    (Jan–Jun / Jul–Dec; midpoint = July 1 within the employment cycle)
  * 2. Each half has STRICT 50% usage limit - unused days from first half do NOT increase second half availability
  * 3. Unused days from both halves are tracked for financial purposes (cashout/expiry)
  * 4. At year end, up to 5 unused days can be paid out
@@ -64,27 +65,7 @@ function getVacationAllocation(careerYear: number): number {
 
 /** Normalize any Date / ISO / YYYY-MM-DD value to a date-only YYYY-MM-DD string. */
 function toDateOnlyString(value: string | Date): string {
-  if (typeof value === 'string') {
-    return value.slice(0, 10)
-  }
-  // pg DATE values arrive as midnight UTC — use UTC parts to avoid timezone day shifts
-  const isMidnightUtc =
-    value.getUTCHours() === 0 &&
-    value.getUTCMinutes() === 0 &&
-    value.getUTCSeconds() === 0 &&
-    value.getUTCMilliseconds() === 0
-
-  if (isMidnightUtc) {
-    const y = value.getUTCFullYear()
-    const m = String(value.getUTCMonth() + 1).padStart(2, '0')
-    const d = String(value.getUTCDate()).padStart(2, '0')
-    return `${y}-${m}-${d}`
-  }
-
-  const y = value.getFullYear()
-  const m = String(value.getMonth() + 1).padStart(2, '0')
-  const d = String(value.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return formatDateOnlyLocal(value)
 }
 
 function addDaysToDateOnly(dateStr: string, days: number): string {
@@ -108,9 +89,8 @@ export interface HalfUsageSplit {
 }
 
 /**
- * Attribute leave days to first/second half by weekday against the cycle midpoint.
- * Weekends are excluded. Matches calculateDays: inclusive range, optional 0.5 on
- * first/last day when those days are weekdays.
+ * Attribute leave days to first/second half by weekday against the half midpoint.
+ * Midpoint is calendar July 1 (Jan–Jun = first half of the year). Weekends excluded.
  */
 export function splitDaysAcrossHalves(
   startDate: string | Date,
@@ -254,7 +234,8 @@ export async function calculateVacationBalance(
     return null // No cycle found
   }
   
-  const cycleMidpointStr = toDateOnlyString(cycle.cycleMidpoint)
+  // Half boundary is calendar July 1 within the cycle (Jan–Jun = first half of the year)
+  const cycleMidpointStr = getCalendarHalfMidpoint(cycle.cycleStart, cycle.cycleEnd)
   const currentDateStr = toDateOnlyString(currentDate)
 
   // Determine which cycle number this is (for metadata purposes only)
@@ -266,7 +247,7 @@ export async function calculateVacationBalance(
 
   const cycleNumber = allEmployeeCycles.findIndex(c => c.id === cycle.id) + 1
 
-  // Determine which half we're in (date-only to match usage buckets)
+  // Determine which half we're in (before July 1 = first half of the year)
   const isFirstHalf = currentDateStr < cycleMidpointStr
 
   // Get vacation leave type (assuming name is 'Vacation' or 'Annual Leave')
@@ -501,9 +482,9 @@ export async function calculateVacationBalance(
 
     isFirstHalf,
     daysUntilSecondHalf,
-    cycleStartDate: cycle.cycleStart,
-    cycleMidpointDate: cycle.cycleMidpoint,
-    cycleEndDate: cycle.cycleEnd,
+    cycleStartDate: toDateOnlyString(cycle.cycleStart),
+    cycleMidpointDate: cycleMidpointStr,
+    cycleEndDate: toDateOnlyString(cycle.cycleEnd),
     cycleId: cycle.id,
     cycleNumber, // For metadata only
     careerYear, // Career year for UI logic (matches dashboard/roadmap)
@@ -592,10 +573,10 @@ async function createCycleForDate(
       }) || null
     }
 
-    // Calculate midpoint (6 months from start) for 50/50 vacation split
-    const midpointDate = new Date(cycleStart)
-    midpointDate.setMonth(cycleStart.getMonth() + 6)
-    const cycleMidpoint = midpointDate.toISOString().split('T')[0]
+    // Calendar half midpoint (July 1) for 50/50 vacation split — June stays in first half
+    const cycleStartStr = formatDateOnlyLocal(cycleStart)
+    const cycleEndStr = formatDateOnlyLocal(cycleEnd)
+    const cycleMidpoint = getCalendarHalfMidpoint(cycleStartStr, cycleEndStr)
 
     // Check if this should be the active cycle
     // If the cycle start date is today or in the past, or if it's the most recent cycle, make it active
@@ -606,8 +587,8 @@ async function createCycleForDate(
       .insert(employmentCycles)
       .values({
         employeeId,
-        cycleStart: cycleStart.toISOString().split('T')[0],
-        cycleEnd: cycleEnd.toISOString().split('T')[0],
+        cycleStart: cycleStartStr,
+        cycleEnd: cycleEndStr,
         cycleMidpoint,
         isActive: shouldBeActive, // Activate if it's current/past or if it's the first cycle
       })
