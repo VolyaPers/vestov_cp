@@ -691,35 +691,25 @@ export function requestSimilarity(requestText: string, task: Pick<ClickUpProject
   return Math.min(1, jaccard * 0.65 + titleContainment * 0.35)
 }
 
-function requestTitle(text: string): string {
-  const firstLine = text.replace(/<@[A-Z0-9]+>/gi, '').split('\n')[0].trim()
-  return truncate(firstLine || 'Slack request', 180)
-}
-
-function requestButtons(requestId: number, hasMatch: boolean): unknown[] {
-  const elements: unknown[] = []
-  if (hasMatch) {
-    elements.push({
-      type: 'button',
-      action_id: 'project_bot_link_task',
-      text: { type: 'plain_text', text: 'Link existing task' },
-      value: String(requestId),
-    })
-  }
-  elements.push({
-    type: 'button',
-    action_id: 'project_bot_create_task',
-    text: { type: 'plain_text', text: hasMatch ? 'Create separate task' : 'Create ClickUp task' },
-    style: 'primary',
-    value: String(requestId),
-  })
-  elements.push({
-    type: 'button',
-    action_id: 'project_bot_dismiss_request',
-    text: { type: 'plain_text', text: 'Not a task' },
-    value: String(requestId),
-  })
-  return [{ type: 'actions', elements }]
+export function projectRequestActions(requestId: number, hasMatch: boolean): unknown[] {
+  if (!hasMatch) return []
+  return [{
+    type: 'actions',
+    elements: [
+      {
+        type: 'button',
+        action_id: 'project_bot_link_task',
+        text: { type: 'plain_text', text: 'Link existing task' },
+        value: String(requestId),
+      },
+      {
+        type: 'button',
+        action_id: 'project_bot_dismiss_request',
+        text: { type: 'plain_text', text: 'Not a task' },
+        value: String(requestId),
+      },
+    ],
+  }]
 }
 
 export async function captureSlackRequest(event: {
@@ -790,24 +780,26 @@ export async function captureSlackRequest(event: {
     return
   }
 
+  // Keep unmatched requests available in `/project untracked` without creating
+  // channel noise or offering to create anything in ClickUp.
+  if (!hasPossibleMatch) return
+
   const prefix = isRegression
     ? `⚠ This may be regression #${created.regressionCount} of <${created.matchedTaskUrl}|${escapeSlack(created.matchedTaskName || 'a completed task')}>. It must be verified again before it can return to Completed.`
-    : hasPossibleMatch
-      ? `I found a possible related task: <${created.matchedTaskUrl}|${escapeSlack(created.matchedTaskName || 'ClickUp task')}>.`
-      : 'I could not find a related ClickUp task.'
+    : `I found a possible related task: <${created.matchedTaskUrl}|${escapeSlack(created.matchedTaskName || 'ClickUp task')}>.`
 
   await postSlackMessage({
     channel: event.channel,
     thread_ts: event.thread_ts || event.ts,
-    text: `${prefix} Confirm how to track this request.`,
+    text: `${prefix} Confirm whether it refers to the existing task.`,
     blocks: [
-      { type: 'section', text: { type: 'mrkdwn', text: `${prefix}\n*Classification:* ${classification.replace(/_/g, ' ')}\nAn authorized project user must confirm the action.` } },
-      ...requestButtons(created.id, hasPossibleMatch),
+      { type: 'section', text: { type: 'mrkdwn', text: `${prefix}\n*Classification:* ${classification.replace(/_/g, ' ')}\nThe bot will never create a ClickUp task.` } },
+      ...projectRequestActions(created.id, hasPossibleMatch),
     ],
   })
 }
 
-function isAuthorizedForWrites(project: ProjectBotProject, slackUserId: string): boolean {
+function isAuthorizedForRequestActions(project: ProjectBotProject, slackUserId: string): boolean {
   return project.projectBotAuthorizedSlackUserIds.includes(slackUserId)
 }
 
@@ -826,28 +818,18 @@ export async function resolveSlackRequestAction(
 
   const project = await getProjectById(request.clientServiceId)
   if (!project || !project.projectBotEnabled) throw new Error('The project bot is no longer enabled for this project.')
-  if (!isAuthorizedForWrites(project, slackUserId)) {
-    throw new Error('You are not authorized to create or link ClickUp tasks for this project.')
+  if (!isAuthorizedForRequestActions(project, slackUserId)) {
+    throw new Error('You are not authorized to link or dismiss Slack requests for this project.')
   }
 
   const supportedActions = new Set([
     'project_bot_dismiss_request',
     'project_bot_link_task',
-    'project_bot_create_task',
   ])
   if (!supportedActions.has(actionId)) throw new Error('Unsupported project action.')
   if (actionId === 'project_bot_link_task' && (!request.matchedTaskId || !request.matchedTaskUrl)) {
     throw new Error('No existing task was selected for this request.')
   }
-  if (actionId === 'project_bot_create_task' && !project.clickupListId) {
-    throw new Error('This project has no ClickUp List configured.')
-  }
-
-  const credentials = actionId === 'project_bot_create_task' ? await getClickUpCredentials() : null
-  if (actionId === 'project_bot_create_task' && !credentials) {
-    throw new Error('ClickUp is not connected in Vestov Hub.')
-  }
-
   const [claimed] = await db
     .update(projectBotSlackRequests)
     .set({ status: 'processing', updatedAt: new Date() })
@@ -866,69 +848,12 @@ export async function resolveSlackRequestAction(
     return 'Marked as not requiring a tracked task.'
   }
 
-  if (actionId === 'project_bot_link_task') {
-    await db
-      .update(projectBotSlackRequests)
-      .set({
-        status: 'linked',
-        clickupTaskId: request.matchedTaskId,
-        clickupTaskUrl: request.matchedTaskUrl,
-        resolvedBySlackUserId: slackUserId,
-        resolvedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(projectBotSlackRequests.id, request.id))
-    await postSlackMessage({
-      channel: request.slackChannelId,
-      thread_ts: request.slackThreadTs || request.slackMessageTs,
-      text: `Linked to ClickUp: ${request.matchedTaskUrl}`,
-    }).catch((error) => console.error('[PROJECT BOT] Could not post linked-task confirmation:', error))
-    return `Linked to ${request.matchedTaskUrl}`
-  }
-
-  const regression = request.regressionCount > 0 && Boolean(request.matchedTaskId)
-  let createdTask: { id: string; url?: string }
-  try {
-    createdTask = await clickupRequest<{ id: string; url?: string }>(
-      `/list/${encodeURIComponent(project.clickupListId!)}/task`,
-      credentials!.apiToken,
-      undefined,
-      {
-        method: 'POST',
-        body: {
-          name: regression ? `[Regression] ${requestTitle(request.requestText)}` : requestTitle(request.requestText),
-          markdown_content: [
-            request.requestText,
-            '',
-            '---',
-            `Captured from Slack channel ${request.slackChannelId}, message ${request.slackMessageTs}.`,
-            `Requested by Slack user ${request.slackUserId}.`,
-            regression && request.matchedTaskUrl ? `Possible regression of ${request.matchedTaskUrl}.` : '',
-          ].filter(Boolean).join('\n'),
-          links_to: regression ? request.matchedTaskId : undefined,
-          tags: [PROJECT_BOT_DEFAULT_TAG],
-          notify_all: false,
-        },
-      },
-    )
-  } catch (error) {
-    await db
-      .update(projectBotSlackRequests)
-      .set({ status: 'pending', updatedAt: new Date() })
-      .where(and(
-        eq(projectBotSlackRequests.id, request.id),
-        eq(projectBotSlackRequests.status, 'processing'),
-      ))
-    throw error
-  }
-  const url = createdTask.url || `https://app.clickup.com/t/${createdTask.id}`
-
   await db
     .update(projectBotSlackRequests)
     .set({
-      status: 'created',
-      clickupTaskId: createdTask.id,
-      clickupTaskUrl: url,
+      status: 'linked',
+      clickupTaskId: request.matchedTaskId,
+      clickupTaskUrl: request.matchedTaskUrl,
       resolvedBySlackUserId: slackUserId,
       resolvedAt: new Date(),
       updatedAt: new Date(),
@@ -938,9 +863,9 @@ export async function resolveSlackRequestAction(
   await postSlackMessage({
     channel: request.slackChannelId,
     thread_ts: request.slackThreadTs || request.slackMessageTs,
-    text: `${regression ? 'Regression task' : 'ClickUp task'} created: ${url}`,
-  }).catch((error) => console.error('[PROJECT BOT] Could not post created-task confirmation:', error))
-  return `${regression ? 'Regression task' : 'Task'} created: ${url}`
+    text: `Linked to ClickUp: ${request.matchedTaskUrl}`,
+  }).catch((error) => console.error('[PROJECT BOT] Could not post linked-task confirmation:', error))
+  return `Linked to ${request.matchedTaskUrl}`
 }
 
 async function markTasksReported(projectId: number, tasks: ClickUpProjectTask[]): Promise<void> {

@@ -237,7 +237,7 @@ router.put('/services/:id/config', requireAuth, requireAdmin, asyncRoute(async (
     ...project,
     slackAppConfigured: isProjectBotSlackConfigured(),
     warning: authorizedIds.length === 0
-      ? 'Read-only reports are available, but task creation and linking remain disabled until authorized Slack user IDs are added.'
+      ? 'Reports are available, but request linking and dismissal remain disabled until authorized Slack user IDs are added.'
       : !isProjectBotSlackConfigured()
         ? 'Project saved, but PROJECT_BOT_ENABLED, SLACK_BOT_TOKEN, and SLACK_SIGNING_SECRET must be configured on the server.'
         : null,

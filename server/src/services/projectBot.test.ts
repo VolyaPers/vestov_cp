@@ -7,6 +7,7 @@ import {
   normalizeProjectStatus,
   parseProjectCommand,
   PROJECT_BOT_DEFAULT_TAG,
+  projectRequestActions,
   requestSimilarity,
   taskStatus,
 } from './projectBot.js'
@@ -47,6 +48,14 @@ test('detects actionable Slack requests but ignores project-status questions', (
   assert.equal(detectSlackRequest('The checkout button is broken again in production.'), 'bug_report')
   assert.equal(detectSlackRequest('Can we add an export button to the report?'), 'feature_request')
   assert.equal(detectSlackRequest('What is the sprint status today?'), null)
+})
+
+test('never offers ClickUp task creation for Slack requests', () => {
+  assert.deepEqual(projectRequestActions(42, false), [])
+  const matchedActions = JSON.stringify(projectRequestActions(42, true))
+  assert.match(matchedActions, /project_bot_link_task/)
+  assert.match(matchedActions, /project_bot_dismiss_request/)
+  assert.doesNotMatch(matchedActions, /create/i)
 })
 
 test('ranks a related task above an unrelated task', () => {

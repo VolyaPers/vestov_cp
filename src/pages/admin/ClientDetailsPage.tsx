@@ -1992,7 +1992,7 @@ export function ClientDetailsPage() {
                       onChange={(e) => setNewServiceData({ ...newServiceData, projectBotAuthorizedSlackUserIds: e.target.value })}
                       placeholder="U0123456789, U9876543210"
                     />
-                    <p className="mt-1 text-xs text-gray-500">Only these users can create or link ClickUp tasks. Reports remain available to channel members.</p>
+                    <p className="mt-1 text-xs text-gray-500">Only these users can link Slack requests to existing tasks or dismiss them. The bot never creates ClickUp tasks.</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-[auto_120px_1fr] md:items-end">
                     <label className="flex h-10 items-center gap-2 text-sm font-medium">
@@ -2290,7 +2290,7 @@ export function ClientDetailsPage() {
                         onChange={(e) => setEditingServiceData({ ...editingServiceData, projectBotAuthorizedSlackUserIds: e.target.value })}
                         placeholder="U0123456789, U9876543210"
                       />
-                      <p className="mt-1 text-xs text-gray-500">Leave empty for a read-only bot. Explicit write actions will be disabled.</p>
+                      <p className="mt-1 text-xs text-gray-500">Leave empty to disable request-linking actions. The bot never creates ClickUp tasks.</p>
                     </div>
                     <div className="grid gap-4 md:grid-cols-[auto_120px_1fr] md:items-end">
                       <label className="flex h-10 items-center gap-2 text-sm font-medium">

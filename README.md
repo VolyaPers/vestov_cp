@@ -122,7 +122,7 @@ The project bot is configured per client service, which is the project boundary 
 
 ### 1. Connect ClickUp
 
-Open **Admin → Time Tracking**, connect the ClickUp workspace, and keep the integration active. The saved ClickUp token must be able to read every List assigned to a project bot and create tasks when Slack request capture is enabled.
+Open **Admin → Time Tracking**, connect the ClickUp workspace, and keep the integration active. The saved ClickUp token only needs to read every List assigned to a project bot; the bot never creates ClickUp tasks.
 
 ### 2. Create the Slack app
 
@@ -132,7 +132,7 @@ The manifest configures:
 
 - `/project` slash command
 - App mentions and channel-message events
-- Interactive request-to-task buttons
+- Interactive buttons for linking a Slack request to an existing task
 - `chat:write`, `commands`, `app_mentions:read`, `channels:history`, and `groups:history` bot scopes
 
 ### 3. Configure server secrets
@@ -151,16 +151,16 @@ Open **Admin → Clients → Client → Service Assignments**, choose the projec
 
 - Slack Channel ID
 - ClickUp List URL or numeric List ID
-- Authorized Slack user IDs for task creation/linking
+- Authorized Slack user IDs for request linking/dismissal
 - Daily update time and IANA timezone
 
-Saving extracts the numeric List ID from standard ClickUp List URLs, validates the List, and prevents two enabled projects from sharing one Slack channel. Project reports only include tasks tagged `cursprint`; tasks captured from Slack receive that tag automatically. An empty authorized-user list makes the bot read-only while preserving reports.
+Saving extracts the numeric List ID from standard ClickUp List URLs, validates the List, and prevents two enabled projects from sharing one Slack channel. Project reports only include tasks tagged `cursprint`. An empty authorized-user list disables request-linking actions while preserving reports.
 
 ### Commands and behavior
 
 Supported commands include `/project now`, `/project sprint`, `/project done`, `/project review`, `/project remaining`, `/project <team member>`, `/project needs-me`, `/project blocked`, `/project carryover`, `/project untracked`, and `/project changes-today`. Equivalent questions work when the bot is mentioned.
 
-The bot only treats the explicit ClickUp **Completed** workflow status as production verified. Generic closed or unknown statuses remain unfinished and are called out as unmapped. Request-like Slack messages are matched against the configured List; ambiguous matches and task creation always require a button click from an allowlisted Slack user.
+The bot only treats the explicit ClickUp **Completed** workflow status as production verified. Generic closed or unknown statuses remain unfinished and are called out as unmapped. Request-like Slack messages are matched against the configured List. Unmatched requests stay silent and remain available through `/project untracked`; the bot never creates ClickUp tasks.
 
 ## 🔑 Default Login Credentials
 
