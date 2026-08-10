@@ -862,8 +862,14 @@ router.post('/leave-requests', async (req, res) => {
   try {
     const { employeeId, leaveTypeId, startDate, endDate, halfDayStart, halfDayEnd, reason } = req.body
 
-    // Calculate days count
+    // Calculate days count (weekdays only — weekends excluded)
     const daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd)
+
+    if (daysCount <= 0) {
+      return res.status(400).json({
+        error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+      })
+    }
 
     const [request] = await db.insert(leaveRequests).values({
       employeeId,

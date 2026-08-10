@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { format, differenceInDays, parseISO } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { api } from '@/lib/api'
+import { calculateDays } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 
 interface LeaveBalance {
@@ -147,11 +148,9 @@ export function EmployeeLeaveRequest() {
     }
   }
 
-  const calculateDays = () => {
+  const calculateDaysCount = () => {
     if (!formData.startDate || !formData.endDate) return 0
-    const start = parseISO(formData.startDate)
-    const end = parseISO(formData.endDate)
-    return differenceInDays(end, start) + 1
+    return calculateDays(formData.startDate, formData.endDate)
   }
 
   const getStatusBadge = (status: string) => {
@@ -177,7 +176,7 @@ export function EmployeeLeaveRequest() {
     )
   }
 
-  const requestedDays = calculateDays()
+  const requestedDays = calculateDaysCount()
 
   return (
     <div className="space-y-6">

@@ -18,6 +18,7 @@ import {
 } from '../db/schema.js'
 import { requireAuth as auth } from '../middleware/auth.js'
 import { calculateVacationBalance, validateVacationRequest } from '../utils/vacationBalanceCalculator.js'
+import { calculateDays, formatDateOnlyLocal, getCalendarHalfMidpoint } from '../utils/dateUtils.js'
 import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator.js'
 import { notifyVacationRequest } from '../utils/slack.js'
 import { buildVacationRequestEmail, REQUEST_NOTIFICATION_EMAIL, sendEmail } from '../services/email.js'
@@ -56,24 +57,6 @@ function notifyNewVacationRequest(options: {
     daysCount: options.daysCount,
     reason: options.reason || null,
   })).catch((err) => console.error('[email] vacation request notify failed:', err))
-}
-
-// Helper function to calculate working days between dates (including weekends for v1)
-function calculateDays(startDate: Date, endDate: Date, halfDayStart: boolean, halfDayEnd: boolean): number {
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-
-  // Calculate full days
-  const diffTime = Math.abs(end.getTime() - start.getTime())
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 // +1 to include both start and end days
-
-  let totalDays = diffDays
-
-  // Adjust for half days
-  if (halfDayStart) totalDays -= 0.5
-  if (halfDayEnd) totalDays -= 0.5
-
-  return totalDays
 }
 
 async function getActiveClientServiceTeamMemberIds(clientId: number) {
@@ -237,17 +220,16 @@ async function autoCreateEmploymentCycle(employeeId: number): Promise<boolean> {
 
     // Create cycle based on start date
     const startDate = new Date(member.startDate)
-    const cycleStart = startDate.toISOString().split('T')[0]
+    const cycleStart = formatDateOnlyLocal(startDate)
 
-    // Calculate end date (1 year from start)
+    // Calculate end date (1 year from start, day before next anniversary)
     const endDate = new Date(startDate)
     endDate.setFullYear(startDate.getFullYear() + 1)
-    const cycleEnd = endDate.toISOString().split('T')[0]
+    endDate.setDate(endDate.getDate() - 1)
+    const cycleEnd = formatDateOnlyLocal(endDate)
 
-    // Calculate midpoint (6 months from start) for 50/50 vacation split
-    const midpointDate = new Date(startDate)
-    midpointDate.setMonth(startDate.getMonth() + 6)
-    const cycleMidpoint = midpointDate.toISOString().split('T')[0]
+    // Calendar half midpoint (July 1) — June remains first half of the year
+    const cycleMidpoint = getCalendarHalfMidpoint(cycleStart, cycleEnd)
 
     // Determine if cycle should be active based on start date
     // If start date is in the future, mark as inactive
@@ -1154,13 +1136,19 @@ router.post('/requests', auth, async (req, res) => {
       return res.status(400).json({ error: 'Start date must be before or equal to end date' })
     }
 
-    // Calculate days
+    // Calculate days (weekdays only — weekends excluded)
     const daysCount = calculateDays(
       new Date(startDate),
       new Date(endDate),
       halfDayStart || false,
       halfDayEnd || false
     )
+
+    if (daysCount <= 0) {
+      return res.status(400).json({
+        error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+      })
+    }
 
     // Validate vacation balance for vacation/PTO requests (50/50 rule)
     // Get vacation leave type to check if this is a vacation request
@@ -1176,8 +1164,12 @@ router.post('/requests', auth, async (req, res) => {
       // This is a vacation request - validate against 50/50 rule
       const validation = await validateVacationRequest(
         employeeId,
-        new Date(startDate),
-        daysCount
+        startDate,
+        daysCount,
+        new Date(),
+        endDate,
+        halfDayStart || false,
+        halfDayEnd || false
       )
 
       if (!validation.allowed) {
@@ -1369,13 +1361,19 @@ router.post('/admin/create-and-approve', auth, async (req, res) => {
       return res.status(400).json({ error: 'Start date must be before or equal to end date' })
     }
 
-    // Calculate days
+    // Calculate days (weekdays only — weekends excluded)
     const daysCount = calculateDays(
       new Date(startDate),
       new Date(endDate),
       false,
       false
     )
+
+    if (daysCount <= 0) {
+      return res.status(400).json({
+        error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+      })
+    }
 
     // Check for overlapping requests
     // Only check for pending or approved requests (exclude denied and cancelled)
@@ -1533,12 +1531,18 @@ router.put('/requests/:requestId', auth, async (req, res) => {
     // Calculate days if dates are provided
     let daysCount = existing[0].daysCount
     if (startDate && endDate) {
-      daysCount = calculateDays(
+      const computedDays = calculateDays(
         new Date(startDate),
         new Date(endDate),
         halfDayStart !== undefined ? halfDayStart : existing[0].halfDayStart || false,
         halfDayEnd !== undefined ? halfDayEnd : existing[0].halfDayEnd || false
-      ).toString()
+      )
+      if (computedDays <= 0) {
+        return res.status(400).json({
+          error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+        })
+      }
+      daysCount = computedDays.toString()
     }
 
     // Update the request
@@ -1663,8 +1667,12 @@ router.put('/requests/:requestId/status', auth, async (req, res) => {
         // Vacation request - validate using 50/50 milestone rule
         const validation = await validateVacationRequest(
           request.employeeId,
-          new Date(request.startDate),
-          parseFloat(request.daysCount.toString())
+          request.startDate,
+          parseFloat(request.daysCount.toString()),
+          new Date(),
+          request.endDate,
+          request.halfDayStart || false,
+          request.halfDayEnd || false
         )
 
         if (!validation.allowed) {
@@ -2105,15 +2113,14 @@ router.post('/cycles/initialize', auth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid cycle start date' })
     }
 
-    // Automatically calculate end date as 1 year from start date
+    // Automatically calculate end date as 1 year from start date (day before next anniversary)
     const endDate = new Date(startDate)
     endDate.setFullYear(startDate.getFullYear() + 1)
-    const cycleEnd = endDate.toISOString().split('T')[0]
+    endDate.setDate(endDate.getDate() - 1)
+    const cycleEnd = formatDateOnlyLocal(endDate)
 
-    // Calculate midpoint (6 months from start) for 50/50 vacation split
-    const midpointDate = new Date(startDate)
-    midpointDate.setMonth(startDate.getMonth() + 6)
-    const cycleMidpoint = midpointDate.toISOString().split('T')[0]
+    // Calendar half midpoint (July 1) — June remains first half of the year
+    const cycleMidpoint = getCalendarHalfMidpoint(cycleStart, cycleEnd)
 
     // Create employment cycle
     const [cycle] = await db
@@ -2364,16 +2371,15 @@ router.post('/admin/cycles', auth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid cycle start date' })
     }
 
-    // Automatically calculate end date as 1 year from start date
+    // Automatically calculate end date as 1 year from start date (day before next anniversary)
     const endDate = new Date(startDate)
     endDate.setFullYear(startDate.getFullYear() + 1)
+    endDate.setDate(endDate.getDate() - 1)
 
-    const cycleEnd = endDate.toISOString().split('T')[0] // Format as YYYY-MM-DD
+    const cycleEnd = formatDateOnlyLocal(endDate)
 
-    // Calculate midpoint (6 months from start) for 50/50 vacation split
-    const midpointDate = new Date(startDate)
-    midpointDate.setMonth(startDate.getMonth() + 6)
-    const cycleMidpoint = midpointDate.toISOString().split('T')[0]
+    // Calendar half midpoint (July 1) — June remains first half of the year
+    const cycleMidpoint = getCalendarHalfMidpoint(cycleStart, cycleEnd)
 
     // Check for overlapping cycles
     const overlappingCycles = await db
