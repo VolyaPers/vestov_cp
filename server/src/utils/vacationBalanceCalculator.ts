@@ -2,6 +2,7 @@ import { db } from '../db/index.js'
 import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers, leaveAllocationSettings } from '../db/schema.js'
 import { eq, and, gte, lte, sql, desc } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from './employment.js'
+import { calculateDays } from './dateUtils.js'
 
 export interface VacationBalance {
   // Totals
@@ -298,12 +299,14 @@ export async function calculateVacationBalance(
     }
   }
 
-  // Total used days - sum of all approved vacation days in this cycle
-  // When a request is approved, its daysCount is automatically included here
-  // When a request is cancelled/denied, it's excluded (status != 'approved'), so days are returned
+  // Total used days — weekday-only count from each request range (excludes weekends)
   const totalUsed = requests.reduce((sum, r) => {
-    const days = parseFloat(r.daysCount.toString())
-    return sum + days
+    return sum + calculateDays(
+      r.startDate,
+      r.endDate,
+      r.halfDayStart || false,
+      r.halfDayEnd || false
+    )
   }, 0)
   const totalRemaining = totalAllocated - totalUsed
 
@@ -362,9 +365,23 @@ export async function calculateVacationBalance(
       return requestStart >= cycleMidpoint
     })
 
-    // Sum up days used in each half
-    firstHalfUsed = firstHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount.toString()), 0)
-    secondHalfUsed = secondHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount.toString()), 0)
+    // Sum up days used in each half (weekdays only)
+    firstHalfUsed = firstHalfRequests.reduce((sum, r) => {
+      return sum + calculateDays(
+        r.startDate,
+        r.endDate,
+        r.halfDayStart || false,
+        r.halfDayEnd || false
+      )
+    }, 0)
+    secondHalfUsed = secondHalfRequests.reduce((sum, r) => {
+      return sum + calculateDays(
+        r.startDate,
+        r.endDate,
+        r.halfDayStart || false,
+        r.halfDayEnd || false
+      )
+    }, 0)
 
     // Calculate remaining days in first half
     firstHalfRemaining = Math.max(0, halfAllocation - firstHalfUsed)

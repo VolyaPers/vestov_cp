@@ -19,6 +19,7 @@ import {
 import { requireAuth as auth } from '../middleware/auth.js'
 import { calculateVacationBalance, validateVacationRequest } from '../utils/vacationBalanceCalculator.js'
 import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator.js'
+import { calculateDays } from '../utils/dateUtils.js'
 import { notifyVacationRequest } from '../utils/slack.js'
 import { buildVacationRequestEmail, REQUEST_NOTIFICATION_EMAIL, sendEmail } from '../services/email.js'
 
@@ -56,24 +57,6 @@ function notifyNewVacationRequest(options: {
     daysCount: options.daysCount,
     reason: options.reason || null,
   })).catch((err) => console.error('[email] vacation request notify failed:', err))
-}
-
-// Helper function to calculate working days between dates (including weekends for v1)
-function calculateDays(startDate: Date, endDate: Date, halfDayStart: boolean, halfDayEnd: boolean): number {
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-
-  // Calculate full days
-  const diffTime = Math.abs(end.getTime() - start.getTime())
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 // +1 to include both start and end days
-
-  let totalDays = diffDays
-
-  // Adjust for half days
-  if (halfDayStart) totalDays -= 0.5
-  if (halfDayEnd) totalDays -= 0.5
-
-  return totalDays
 }
 
 async function getActiveClientServiceTeamMemberIds(clientId: number) {
@@ -1154,13 +1137,19 @@ router.post('/requests', auth, async (req, res) => {
       return res.status(400).json({ error: 'Start date must be before or equal to end date' })
     }
 
-    // Calculate days
+    // Calculate days (weekdays only — weekends excluded)
     const daysCount = calculateDays(
       new Date(startDate),
       new Date(endDate),
       halfDayStart || false,
       halfDayEnd || false
     )
+
+    if (daysCount <= 0) {
+      return res.status(400).json({
+        error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+      })
+    }
 
     // Validate vacation balance for vacation/PTO requests (50/50 rule)
     // Get vacation leave type to check if this is a vacation request
@@ -1369,13 +1358,19 @@ router.post('/admin/create-and-approve', auth, async (req, res) => {
       return res.status(400).json({ error: 'Start date must be before or equal to end date' })
     }
 
-    // Calculate days
+    // Calculate days (weekdays only — weekends excluded)
     const daysCount = calculateDays(
       new Date(startDate),
       new Date(endDate),
       false,
       false
     )
+
+    if (daysCount <= 0) {
+      return res.status(400).json({
+        error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+      })
+    }
 
     // Check for overlapping requests
     // Only check for pending or approved requests (exclude denied and cancelled)
@@ -1533,12 +1528,18 @@ router.put('/requests/:requestId', auth, async (req, res) => {
     // Calculate days if dates are provided
     let daysCount = existing[0].daysCount
     if (startDate && endDate) {
-      daysCount = calculateDays(
+      const computedDays = calculateDays(
         new Date(startDate),
         new Date(endDate),
         halfDayStart !== undefined ? halfDayStart : existing[0].halfDayStart || false,
         halfDayEnd !== undefined ? halfDayEnd : existing[0].halfDayEnd || false
-      ).toString()
+      )
+      if (computedDays <= 0) {
+        return res.status(400).json({
+          error: 'Selected date range has no working days (weekends are not counted). Please choose weekdays.'
+        })
+      }
+      daysCount = computedDays.toString()
     }
 
     // Update the request
