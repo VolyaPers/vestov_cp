@@ -21,6 +21,7 @@ interface SalaryPaymentEmailPayload {
   extras: SalaryBreakdownItem[]
   totalPayout: number
   note?: string
+  description?: string | null
 }
 
 interface ReimbursementRequestEmailPayload {
@@ -52,7 +53,7 @@ const EMAIL_WEBHOOK =
   process.env.EMAIL_WEBHOOK_URL ||
   process.env.RESEND_WEBHOOK_URL
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || process.env.SENDGRID_FROM
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Vestov Hub'
 const SENDGRID_REPLY_TO_EMAIL = process.env.SENDGRID_REPLY_TO_EMAIL
 
@@ -285,15 +286,23 @@ export function buildSalaryPaymentEmail(payload: SalaryPaymentEmailPayload) {
   const extras = payload.extras.filter((item) => item.label && Number.isFinite(item.amount) && item.amount > 0)
   const extrasTotal = extras.reduce((sum, item) => sum + item.amount, 0)
   const subject = `Your salary breakdown for ${formattedMonth}`
+  const description = payload.description?.trim() || ''
 
   const textLines = [
     `Hello ${payload.employeeName},`,
     '',
     `Your salary payment for ${formattedMonth} was recorded on ${formattedDate}.`,
+  ]
+
+  if (description) {
+    textLines.push('', `Description: ${description}`)
+  }
+
+  textLines.push(
     '',
     `Base salary for month: ${formatCurrency(payload.baseSalary)}`,
     `Base salary paid now: ${formatCurrency(payload.salaryPaidNow)}`,
-  ]
+  )
 
   if (extras.length > 0) {
     textLines.push('', 'Extras included:')
@@ -318,6 +327,7 @@ export function buildSalaryPaymentEmail(payload: SalaryPaymentEmailPayload) {
   const html = `
     <p>Hello ${payload.employeeName},</p>
     <p>Your salary payment for <strong>${formattedMonth}</strong> was recorded on <strong>${formattedDate}</strong>.</p>
+    ${description ? `<p><strong>Description:</strong> ${escapeHtml(description)}</p>` : ''}
     <table style="border-collapse:collapse; width:100%; max-width:560px; margin:16px 0;">
       <tbody>
         <tr>
@@ -330,7 +340,7 @@ export function buildSalaryPaymentEmail(payload: SalaryPaymentEmailPayload) {
         </tr>
         ${extras.map((extra) => `
           <tr>
-            <td style="padding:8px 12px; border:1px solid #e5e7eb;">${extra.label}</td>
+            <td style="padding:8px 12px; border:1px solid #e5e7eb;">${escapeHtml(extra.label)}</td>
             <td style="padding:8px 12px; border:1px solid #e5e7eb; text-align:right;"><strong>${formatCurrency(extra.amount)}</strong></td>
           </tr>
         `).join('')}
@@ -348,7 +358,7 @@ export function buildSalaryPaymentEmail(payload: SalaryPaymentEmailPayload) {
         </tr>
       </tbody>
     </table>
-    ${payload.note?.trim() ? `<p><strong>Note:</strong> ${payload.note.trim()}</p>` : ''}
+    ${payload.note?.trim() ? `<p><strong>Note:</strong> ${escapeHtml(payload.note.trim())}</p>` : ''}
     <p>If anything looks incorrect, please reply to this email or contact the admin team.</p>
   `
 
