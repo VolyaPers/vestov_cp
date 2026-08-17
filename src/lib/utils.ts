@@ -34,27 +34,14 @@ export function calculateDays(
   halfDayStart = false,
   halfDayEnd = false
 ): number {
-  const start = parseLocalDate(startDate)
-  const end = parseLocalDate(endDate)
-
-  if (start > end) return 0
-
-  let adjustedDays = 0
-  const cursor = new Date(start)
-  while (cursor <= end) {
-    const day = cursor.getDay()
-    if (day !== 0 && day !== 6) {
-      adjustedDays += 1
-    }
-    cursor.setDate(cursor.getDate() + 1)
-  }
-
-  if (halfDayStart && start.getDay() !== 0 && start.getDay() !== 6) {
-    adjustedDays -= 0.5
-  }
-  if (halfDayEnd && end.getDay() !== 0 && end.getDay() !== 6) {
-    adjustedDays -= 0.5
-  }
-
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  const diffTime = Math.abs(end.getTime() - start.getTime())
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  
+  let adjustedDays = diffDays
+  if (halfDayStart) adjustedDays -= 0.5
+  if (halfDayEnd) adjustedDays -= 0.5
+  
   return Math.max(0, adjustedDays)
 }

@@ -22,7 +22,7 @@ import {
   isToday
 } from 'date-fns'
 import { api } from '@/lib/api'
-import { cn, calculateDays } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 
@@ -439,7 +439,9 @@ export function EmployeeVacations() {
 
   const calculateRequestDays = () => {
     if (!formData.startDate || !formData.endDate) return 0
-    return calculateDays(formData.startDate, formData.endDate)
+    const start = parseISO(formData.startDate)
+    const end = parseISO(formData.endDate)
+    return differenceInDays(end, start) + 1
   }
 
   const getStatusBadge = (status: string) => {

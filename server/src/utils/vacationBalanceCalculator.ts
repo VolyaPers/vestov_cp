@@ -1,8 +1,7 @@
 import { db } from '../db/index.js'
 import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers, leaveAllocationSettings } from '../db/schema.js'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, gte, lte, sql, desc } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from './employment.js'
-import { calculateDays } from './dateUtils.js'
 
 export interface VacationBalance {
   // Totals
@@ -60,92 +59,6 @@ function getVacationAllocation(careerYear: number): number {
   if (careerYear === 1) return 16
   if (careerYear === 2) return 20
   return 24 // Year 3 and beyond
-}
-
-/** Normalize any Date / ISO / YYYY-MM-DD value to a date-only YYYY-MM-DD string. */
-function toDateOnlyString(value: string | Date): string {
-  if (typeof value === 'string') {
-    return value.slice(0, 10)
-  }
-  // pg DATE values arrive as midnight UTC — use UTC parts to avoid timezone day shifts
-  const isMidnightUtc =
-    value.getUTCHours() === 0 &&
-    value.getUTCMinutes() === 0 &&
-    value.getUTCSeconds() === 0 &&
-    value.getUTCMilliseconds() === 0
-
-  if (isMidnightUtc) {
-    const y = value.getUTCFullYear()
-    const m = String(value.getUTCMonth() + 1).padStart(2, '0')
-    const d = String(value.getUTCDate()).padStart(2, '0')
-    return `${y}-${m}-${d}`
-  }
-
-  const y = value.getFullYear()
-  const m = String(value.getMonth() + 1).padStart(2, '0')
-  const d = String(value.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function addDaysToDateOnly(dateStr: string, days: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const date = new Date(y, m - 1, d + days)
-  return toDateOnlyString(date)
-}
-
-function daysBetweenInclusive(startDate: string, endDate: string): number {
-  const [sy, sm, sd] = startDate.split('-').map(Number)
-  const [ey, em, ed] = endDate.split('-').map(Number)
-  const start = new Date(sy, sm - 1, sd)
-  const end = new Date(ey, em - 1, ed)
-  const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-  return Math.max(0, diffDays) + 1
-}
-
-export interface HalfUsageSplit {
-  firstHalfDays: number
-  secondHalfDays: number
-}
-
-/**
- * Attribute leave days to first/second half by weekday against the cycle midpoint.
- * Weekends are excluded. Matches calculateDays: inclusive range, optional 0.5 on
- * first/last day when those days are weekdays.
- */
-export function splitDaysAcrossHalves(
-  startDate: string | Date,
-  endDate: string | Date,
-  cycleMidpoint: string | Date,
-  halfDayStart = false,
-  halfDayEnd = false
-): HalfUsageSplit {
-  const start = toDateOnlyString(startDate)
-  const end = toDateOnlyString(endDate)
-  const midpoint = toDateOnlyString(cycleMidpoint)
-
-  let firstHalfDays = 0
-  let secondHalfDays = 0
-  const totalCalendarDays = daysBetweenInclusive(start, end)
-
-  for (let i = 0; i < totalCalendarDays; i++) {
-    const day = addDaysToDateOnly(start, i)
-    const [y, m, d] = day.split('-').map(Number)
-    const weekday = new Date(y, m - 1, d).getDay()
-    if (weekday === 0 || weekday === 6) continue
-
-    let credit = 1
-    if (i === 0 && halfDayStart) credit -= 0.5
-    if (i === totalCalendarDays - 1 && halfDayEnd) credit -= 0.5
-    if (credit <= 0) continue
-
-    if (day < midpoint) {
-      firstHalfDays += credit
-    } else {
-      secondHalfDays += credit
-    }
-  }
-
-  return { firstHalfDays, secondHalfDays }
 }
 
 export async function calculateVacationBalance(
@@ -254,8 +167,9 @@ export async function calculateVacationBalance(
     return null // No cycle found
   }
   
-  const cycleMidpointStr = toDateOnlyString(cycle.cycleMidpoint)
-  const currentDateStr = toDateOnlyString(currentDate)
+  const cycleStart = new Date(cycle.cycleStart)
+  const cycleMidpoint = new Date(cycle.cycleMidpoint)
+  const cycleEnd = new Date(cycle.cycleEnd)
 
   // Determine which cycle number this is (for metadata purposes only)
   const allEmployeeCycles = await db
@@ -266,8 +180,8 @@ export async function calculateVacationBalance(
 
   const cycleNumber = allEmployeeCycles.findIndex(c => c.id === cycle.id) + 1
 
-  // Determine which half we're in (date-only to match usage buckets)
-  const isFirstHalf = currentDateStr < cycleMidpointStr
+  // Determine which half we're in
+  const isFirstHalf = currentDate < cycleMidpoint
 
   // Get vacation leave type (assuming name is 'Vacation' or 'Annual Leave')
   const vacationTypes = await db
@@ -314,9 +228,10 @@ export async function calculateVacationBalance(
   // it's no longer counted here, so the days are automatically returned to the balance.
   // Only count vacations that fall within this cycle's date range
   // Vacations in future cycles should be counted in those cycles, not this one
-  const cycleStartStr = toDateOnlyString(cycle.cycleStart)
-  const cycleEndStr = toDateOnlyString(cycle.cycleEnd)
-
+  // Convert cycle dates to Date objects for comparison
+  const cycleStartDate = new Date(cycle.cycleStart)
+  const cycleEndDate = new Date(cycle.cycleEnd)
+  
   // Get all approved vacation requests for this employee
   const allApprovedRequests = await db
     .select()
@@ -328,44 +243,52 @@ export async function calculateVacationBalance(
         eq(leaveRequests.status, 'approved') // Only approved requests count as used days
       )
     )
-
+  
   console.log(`[DEBUG] Total approved requests found: ${allApprovedRequests.length}`)
   allApprovedRequests.forEach(r => {
     console.log(`[DEBUG] - Request ${r.id}: ${r.startDate} - ${r.endDate}, ${r.daysCount} days, status: ${r.status}`)
   })
-
-  // Filter requests that fall within this cycle's date range (by start date, date-only)
+  
+  // Filter requests that fall within this cycle's date range
+  // We do this in JavaScript to ensure proper date comparison
   const requests = allApprovedRequests.filter(r => {
-    const requestStart = toDateOnlyString(r.startDate)
-    const isInCycle = requestStart >= cycleStartStr && requestStart <= cycleEndStr
+    const requestStart = new Date(r.startDate)
+    const isInCycle = requestStart >= cycleStartDate && requestStart <= cycleEndDate
     if (!isInCycle) {
-      console.log(`[DEBUG] Request ${r.id} (${r.startDate}) is OUTSIDE cycle ${cycle.id} (${cycleStartStr} - ${cycleEndStr})`)
+      console.log(`[DEBUG] Request ${r.id} (${r.startDate}) is OUTSIDE cycle ${cycle.id} (${cycleStartDate.toISOString().split('T')[0]} - ${cycleEndDate.toISOString().split('T')[0]})`)
     }
     return isInCycle
   })
 
   // Check if there are approved vacations outside this cycle
+  // This helps identify if vacations were approved for future cycles
+  // Find vacations that fall outside the current cycle
   const vacationsOutsideCycle = allApprovedRequests.filter(r => {
-    const requestStart = toDateOnlyString(r.startDate)
-    return requestStart < cycleStartStr || requestStart > cycleEndStr
+    const requestStart = new Date(r.startDate)
+    return requestStart < cycleStartDate || requestStart > cycleEndDate
   })
 
+  // If there are vacations outside the current cycle, check if they belong to another cycle
   if (vacationsOutsideCycle.length > 0) {
+    // Get all cycles for this employee (not just active ones)
     const allCycles = await db
       .select()
       .from(employmentCycles)
       .where(eq(employmentCycles.employeeId, employeeId))
       .orderBy(employmentCycles.cycleStart)
 
+    // Check if any of these vacations belong to other cycles
     for (const vacation of vacationsOutsideCycle) {
-      const vacationStart = toDateOnlyString(vacation.startDate)
+      const vacationStart = new Date(vacation.startDate)
       const belongsToCycle = allCycles.find(c => {
-        const cStart = toDateOnlyString(c.cycleStart)
-        const cEnd = toDateOnlyString(c.cycleEnd)
+        const cStart = new Date(c.cycleStart)
+        const cEnd = new Date(c.cycleEnd)
         return vacationStart >= cStart && vacationStart <= cEnd
       })
 
       if (!belongsToCycle) {
+        // Vacation doesn't belong to any existing cycle
+        // This is a data integrity issue - vacation approved for a date with no cycle
         console.warn(
           `Vacation request ${vacation.id} for employee ${employeeId} ` +
           `(date: ${vacation.startDate}) does not belong to any existing cycle. ` +
@@ -375,14 +298,12 @@ export async function calculateVacationBalance(
     }
   }
 
-  // Total used days — weekday-only count from each request range (excludes weekends)
+  // Total used days - sum of all approved vacation days in this cycle
+  // When a request is approved, its daysCount is automatically included here
+  // When a request is cancelled/denied, it's excluded (status != 'approved'), so days are returned
   const totalUsed = requests.reduce((sum, r) => {
-    return sum + calculateDays(
-      r.startDate,
-      r.endDate,
-      r.halfDayStart || false,
-      r.halfDayEnd || false
-    )
+    const days = parseFloat(r.daysCount.toString())
+    return sum + days
   }, 0)
   const totalRemaining = totalAllocated - totalUsed
 
@@ -430,20 +351,20 @@ export async function calculateVacationBalance(
     // 50/50 split logic (2nd year onwards)
     const halfAllocation = totalAllocated / 2
 
-    // Attribute each calendar day to the half where it falls (not whole request by startDate)
-    firstHalfUsed = 0
-    secondHalfUsed = 0
-    for (const r of requests) {
-      const split = splitDaysAcrossHalves(
-        r.startDate,
-        r.endDate,
-        cycleMidpointStr,
-        r.halfDayStart || false,
-        r.halfDayEnd || false
-      )
-      firstHalfUsed += split.firstHalfDays
-      secondHalfUsed += split.secondHalfDays
-    }
+    // Split requests by half based on start date
+    // A request belongs to the half where its start date falls
+    const firstHalfRequests = requests.filter(r => {
+      const requestStart = new Date(r.startDate)
+      return requestStart < cycleMidpoint
+    })
+    const secondHalfRequests = requests.filter(r => {
+      const requestStart = new Date(r.startDate)
+      return requestStart >= cycleMidpoint
+    })
+
+    // Sum up days used in each half
+    firstHalfUsed = firstHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount.toString()), 0)
+    secondHalfUsed = secondHalfRequests.reduce((sum, r) => sum + parseFloat(r.daysCount.toString()), 0)
 
     // Calculate remaining days in first half
     firstHalfRemaining = Math.max(0, halfAllocation - firstHalfUsed)
@@ -457,8 +378,8 @@ export async function calculateVacationBalance(
     // Currently available depends on which half we're in - STRICT 50% LIMIT
     currentlyAvailable = isFirstHalf ? firstHalfRemaining : secondHalfRemaining
 
-    // Second-half pool locked until midpoint (reflect early second-half bookings)
-    lockedUntilSecondHalf = isFirstHalf ? secondHalfRemaining : 0
+    // In first half: remaining days are locked until second half
+    lockedUntilSecondHalf = isFirstHalf ? firstHalfRemaining : 0
   } else {
     // First year: No 50/50 split - all days available anytime
     firstHalfAvailable = totalAllocated
@@ -475,9 +396,9 @@ export async function calculateVacationBalance(
   const cashableAtYearEnd = Math.min(5, totalRemaining)
   const willExpire = Math.max(0, totalRemaining - 5)
 
-  // Days until second half (date-only difference)
+  // Days until second half
   const daysUntilSecondHalf = isFirstHalf
-    ? daysBetweenInclusive(currentDateStr, cycleMidpointStr) - 1
+    ? Math.ceil((cycleMidpoint.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24))
     : 0
 
   return {
@@ -685,12 +606,11 @@ async function findCycleForDate(
     .where(eq(employmentCycles.employeeId, employeeId))
     .orderBy(employmentCycles.cycleStart)
 
-  const dateStr = toDateOnlyString(date)
-
+  // Find the cycle that contains this date
   for (const cycle of allCycles) {
-    const cycleStart = toDateOnlyString(cycle.cycleStart)
-    const cycleEnd = toDateOnlyString(cycle.cycleEnd)
-    if (dateStr >= cycleStart && dateStr <= cycleEnd) {
+    const cycleStart = new Date(cycle.cycleStart)
+    const cycleEnd = new Date(cycle.cycleEnd)
+    if (date >= cycleStart && date <= cycleEnd) {
       return cycle
     }
   }
@@ -699,30 +619,23 @@ async function findCycleForDate(
 }
 
 /**
- * Validate if a vacation request can be approved based on 50/50 rule.
- * Spanning requests are split day-by-day across halves.
+ * Validate if a vacation request can be approved based on 50/50 rule
  */
 export async function validateVacationRequest(
   employeeId: number,
-  requestStartDate: Date | string,
+  requestStartDate: Date,
   requestDays: number,
-  currentDate: Date = new Date(),
-  requestEndDate?: Date | string,
-  halfDayStart = false,
-  halfDayEnd = false
+  currentDate: Date = new Date()
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const startDateOnly = toDateOnlyString(requestStartDate)
-  const endDateOnly = toDateOnlyString(requestEndDate ?? requestStartDate)
-  const startAsDate = new Date(startDateOnly + 'T12:00:00')
-
   // First, find which cycle contains the vacation date
-  let cycleForVacation = await findCycleForDate(employeeId, startAsDate)
+  let cycleForVacation = await findCycleForDate(employeeId, requestStartDate)
 
   // If no cycle found, try to create one automatically based on employee start date
   if (!cycleForVacation) {
-    cycleForVacation = await createCycleForDate(employeeId, startAsDate)
-
+    cycleForVacation = await createCycleForDate(employeeId, requestStartDate)
+    
     if (!cycleForVacation) {
+      // Get team member to check if they have start date
       const [member] = await db
         .select()
         .from(teamMembers)
@@ -732,69 +645,72 @@ export async function validateVacationRequest(
       if (!member || !member.startDate) {
         return {
           allowed: false,
-          reason: `The vacation date ${startDateOnly} does not belong to any existing employment cycle. The employee needs a start date to automatically create cycles.`
+          reason: `The vacation date ${requestStartDate.toISOString().split('T')[0]} does not belong to any existing employment cycle. The employee needs a start date to automatically create cycles.`
         }
       }
 
       return {
         allowed: false,
-        reason: `The vacation date ${startDateOnly} does not belong to any existing employment cycle and could not be automatically created. Please create an employment cycle for this date range first.`
+        reason: `The vacation date ${requestStartDate.toISOString().split('T')[0]} does not belong to any existing employment cycle and could not be automatically created. Please create an employment cycle for this date range first.`
       }
     }
   }
 
-  const cycleStartStr = toDateOnlyString(cycleForVacation.cycleStart)
-  const currentDateStr = toDateOnlyString(currentDate)
-  const isFutureCycle = cycleStartStr > currentDateStr
+  // Check if this is a future cycle
+  const cycleStart = new Date(cycleForVacation.cycleStart)
+  const cycleEnd = new Date(cycleForVacation.cycleEnd)
+  const isFutureCycle = cycleStart > currentDate
   const isActiveCycle = cycleForVacation.isActive
 
+  // If it's a future cycle or not active, we can't validate against current balance
+  // But we should still allow it if the cycle exists (it was just created)
   if (isFutureCycle || !isActiveCycle) {
+    // For future or inactive cycles, we'll allow the approval
+    // Balance will be validated when that cycle becomes active
     return { allowed: true }
   }
 
+  // For active current cycles, validate using the balance calculator
   const balance = await calculateVacationBalance(employeeId, currentDate)
 
   if (!balance) {
+    // If no balance found but cycle exists and is active, allow it
+    // This handles edge cases
     return { allowed: true }
   }
 
-  const balanceCycleStart = toDateOnlyString(balance.cycleStartDate)
-  const balanceCycleEnd = toDateOnlyString(balance.cycleEndDate)
-
-  if (startDateOnly < balanceCycleStart || startDateOnly > balanceCycleEnd) {
+  // Check if the vacation date is within the balance cycle
+  const balanceCycleStart = new Date(balance.cycleStartDate)
+  const balanceCycleEnd = new Date(balance.cycleEndDate)
+  
+  // If vacation is in a different cycle than the balance, allow it if the cycle exists
+  if (requestStartDate < balanceCycleStart || requestStartDate > balanceCycleEnd) {
+    // Vacation is in a different cycle, but the cycle exists, so allow it
     return { allowed: true }
   }
 
-  // First year: no half split — only check total remaining
-  if (balance.careerYear < 2) {
-    if (requestDays > balance.totalRemaining) {
-      return {
-        allowed: false,
-        reason: `Only ${balance.totalRemaining.toFixed(1)} vacation days available in this cycle.`
-      }
-    }
-    return { allowed: true }
-  }
+  // Vacation is in the balance cycle, validate availability
+  // If cycles don't match but vacation is in balance cycle, use balance for validation
+  // This handles cases where multiple cycles might exist
 
-  const split = splitDaysAcrossHalves(
-    startDateOnly,
-    endDateOnly,
-    balance.cycleMidpointDate,
-    halfDayStart,
-    halfDayEnd
-  )
+  // Determine which half the request falls into
+  const midpoint = new Date(balance.cycleMidpointDate)
+  const isRequestInFirstHalf = requestStartDate < midpoint
 
-  if (split.firstHalfDays > balance.firstHalfRemaining) {
+  // Check availability in the appropriate half
+  const availableInRequestedHalf = isRequestInFirstHalf
+    ? balance.firstHalfRemaining
+    : balance.secondHalfRemaining
+
+  if (requestDays > availableInRequestedHalf) {
+    const halfName = isRequestInFirstHalf ? 'first half' : 'second half'
+    const dateRange = isRequestInFirstHalf
+      ? `${balance.cycleStartDate} - ${balance.cycleMidpointDate}`
+      : `${balance.cycleMidpointDate} - ${balance.cycleEndDate}`
+
     return {
       allowed: false,
-      reason: `Only ${balance.firstHalfRemaining.toFixed(1)} days available in first half (${balance.cycleStartDate} - ${balance.cycleMidpointDate}). This request needs ${split.firstHalfDays.toFixed(1)} first-half days. You have ${balance.totalRemaining.toFixed(1)} total days, but ${balance.lockedUntilSecondHalf.toFixed(1)} are locked until the second half starts.`
-    }
-  }
-
-  if (split.secondHalfDays > balance.secondHalfRemaining) {
-    return {
-      allowed: false,
-      reason: `Only ${balance.secondHalfRemaining.toFixed(1)} days available in second half (${balance.cycleMidpointDate} - ${balance.cycleEndDate}). This request needs ${split.secondHalfDays.toFixed(1)} second-half days.`
+      reason: `Only ${availableInRequestedHalf.toFixed(1)} days available in ${halfName} (${dateRange}). You have ${balance.totalRemaining.toFixed(1)} total days, but ${balance.lockedUntilSecondHalf.toFixed(1)} are locked until the second half starts.`
     }
   }
 
