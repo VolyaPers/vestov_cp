@@ -57,6 +57,13 @@ const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || process.env.SENDG
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'Vestov Hub'
 const SENDGRID_REPLY_TO_EMAIL = process.env.SENDGRID_REPLY_TO_EMAIL
 
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY
+const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN
+const MAILGUN_BASE_URL = (process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net').replace(/\/$/, '')
+const MAILGUN_FROM =
+  process.env.MAILGUN_FROM ||
+  (MAILGUN_DOMAIN ? `${SENDGRID_FROM_NAME} <postmaster@${MAILGUN_DOMAIN}>` : undefined)
+
 const APP_BASE_URL = process.env.PUBLIC_APP_URL || 'http://localhost:5173'
 export const REQUEST_NOTIFICATION_EMAIL = process.env.REQUEST_NOTIFICATION_EMAIL || 'v@vestov.com'
 
@@ -152,6 +159,34 @@ export async function sendEmail(payload: EmailPayload) {
     }
 
     return { delivered: true, provider: 'sendgrid' }
+  }
+
+  if (MAILGUN_API_KEY && MAILGUN_DOMAIN && MAILGUN_FROM) {
+    const form = new URLSearchParams()
+    form.set('from', MAILGUN_FROM)
+    form.set('to', payload.to)
+    form.set('subject', payload.subject)
+    if (payload.text) form.set('text', payload.text)
+    if (payload.html) form.set('html', payload.html)
+
+    const auth = Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64')
+    const response = await fetch(`${MAILGUN_BASE_URL}/v3/${MAILGUN_DOMAIN}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `Failed to send Mailgun email (status ${response.status}): ${body || response.statusText}`
+      )
+    }
+
+    return { delivered: true, provider: 'mailgun' }
   }
 
   if (!EMAIL_WEBHOOK) {
