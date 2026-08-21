@@ -769,6 +769,7 @@ router.post('/salaries/record', async (req, res) => {
           extras,
           totalPayout: totalAmount,
           note,
+          description: description || created.description,
         })
         email = await sendEmail(payload)
       } catch (error) {

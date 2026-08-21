@@ -25,46 +25,13 @@ function toLocalDateParts(value: string | Date): { y: number; m: number; d: numb
   }
 }
 
-/** Format a date as YYYY-MM-DD using local/calendar parts (never toISOString — avoids TZ day shifts). */
-export function formatDateOnlyLocal(value: string | Date): string {
-  const { y, m, d } = toLocalDateParts(value)
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-/**
- * Vacation 50/50 half boundary: July 1 within the employment cycle.
- * Jan–Jun = first half of the year; Jul–Dec = second half.
- * Falls back to +6 months from cycle start if no July 1 falls in the cycle.
- */
-export function getCalendarHalfMidpoint(
-  cycleStart: string | Date,
-  cycleEnd: string | Date
-): string {
-  const start = formatDateOnlyLocal(cycleStart)
-  const end = formatDateOnlyLocal(cycleEnd)
-  const startYear = Number(start.slice(0, 4))
-
-  let july1 = `${startYear}-07-01`
-  if (july1 < start) {
-    july1 = `${startYear + 1}-07-01`
-  }
-
-  if (july1 > end) {
-    const { y, m, d } = toLocalDateParts(start)
-    const mid = new Date(y, m - 1 + 6, d)
-    return formatDateOnlyLocal(mid)
-  }
-
-  return july1
-}
-
 function isWeekend(y: number, m: number, d: number): boolean {
   const day = new Date(y, m - 1, d).getDay()
   return day === 0 || day === 6
 }
 
 /**
- * Count working days between dates (exclusive of weekends).
+ * Count working days between dates (excludes Saturday and Sunday).
  * Inclusive range; optional 0.5 on first/last day when those days are weekdays.
  */
 export function calculateDays(
