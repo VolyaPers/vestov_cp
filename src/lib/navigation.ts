@@ -54,28 +54,28 @@ export interface SearchShortcut {
 }
 
 export const adminNavigation: NavItem[] = [
-  { name: 'Home', href: '/admin/dashboard', icon: Home, section: 'Main' },
-  { name: 'Reports', href: '/admin/reports', icon: TrendingUp, section: 'Main' },
-  { name: 'Clients', href: '/admin/clients', icon: Building2, section: 'Revenue' },
-  { name: 'Invoices', href: '/admin/invoices', icon: DollarSign, section: 'Revenue' },
-  { name: 'Finances', href: '/admin/finances', icon: Wallet, section: 'Revenue' },
-  { name: 'Finance Logs', href: '/admin/finances/logs', icon: FileText, section: 'Revenue' },
-  { name: 'Services', href: '/admin/services', icon: Briefcase, section: 'Workspace' },
-  { name: 'Time Tracking', href: '/admin/time-tracking', icon: Clock, section: 'Workspace' },
-  { name: 'Team', href: '/admin/team', icon: Users, section: 'People' },
-  { name: 'Users', href: '/admin/users', icon: UserCog, section: 'People' },
-  { name: 'Shifts', href: '/admin/shifts', icon: Clock, section: 'People' },
-  { name: 'Calendar', href: '/admin/vacation', icon: Calendar, section: 'People', indicatorKey: 'pendingLeaveRequests' },
-  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt, section: 'Shortcuts', indicatorKey: 'openReimbursements' },
-  { name: 'Documents', href: '/admin/documents', icon: FileText, section: 'Shortcuts' },
-  { name: 'Feedback', href: '/admin/feedback', icon: Star, section: 'Shortcuts' },
+  { name: 'Home', href: '/admin/dashboard', icon: Home, section: 'Overview' },
+  { name: 'Reports', href: '/admin/reports', icon: TrendingUp, section: 'Overview' },
+  { name: 'Clients', href: '/admin/clients', icon: Building2, section: 'Business' },
+  { name: 'Invoices', href: '/admin/invoices', icon: DollarSign, section: 'Business' },
+  { name: 'Finances', href: '/admin/finances', icon: Wallet, section: 'Business' },
+  { name: 'Finance Logs', href: '/admin/finances/logs', icon: FileText, section: 'Business' },
+  { name: 'Services', href: '/admin/services', icon: Briefcase, section: 'Business' },
+  { name: 'Time Tracking', href: '/admin/time-tracking', icon: Clock, section: 'Business' },
+  { name: 'Team', href: '/admin/team', icon: Users, section: 'Team' },
+  { name: 'Users', href: '/admin/users', icon: UserCog, section: 'Team' },
+  { name: 'Shifts', href: '/admin/shifts', icon: Clock, section: 'Team' },
+  { name: 'Calendar', href: '/admin/vacation', icon: Calendar, section: 'Team', indicatorKey: 'pendingLeaveRequests' },
+  { name: 'Reimbursements', href: '/admin/reimbursements', icon: Receipt, section: 'Workspace', indicatorKey: 'openReimbursements' },
+  { name: 'Documents', href: '/admin/documents', icon: FileText, section: 'Workspace' },
+  { name: 'Feedback', href: '/admin/feedback', icon: Star, section: 'Workspace' },
 ]
 
 export const teamMemberNavigation: NavItem[] = [
-  { name: 'My Salary', href: '/employee/salary', icon: Wallet, section: 'Operations' },
   { name: 'Dashboard', href: '/employee/dashboard', icon: BarChart3, section: 'Overview' },
   { name: 'Roadmap', href: '/employee/roadmap', icon: TrendingUp, section: 'Growth' },
   { name: 'Calendar', href: '/employee/vacations', icon: Calendar, section: 'Operations' },
+  { name: 'My Salary', href: '/employee/salary', icon: Wallet, section: 'Operations' },
   { name: 'Reimbursements', href: '/employee/reimbursements', icon: Receipt, section: 'Operations' },
   { name: 'Profile', href: '/employee/profile', icon: User, section: 'Account' },
   {
@@ -97,7 +97,8 @@ export function getClientNavigation(clientId?: number): NavItem[] {
   }
 
   return [
-    { name: 'Overview', href: `/client/portal/${clientId}`, icon: Building, section: 'Overview' },
+    { name: 'Overview', href: '/client/dashboard', icon: Home, section: 'Overview' },
+    { name: 'Projects', href: `/client/portal/${clientId}`, icon: Building, section: 'Overview' },
     { name: 'Team Status', href: '/client/team-status', icon: Users, section: 'Overview' },
     { name: 'Documents', href: `/client/documents/${clientId}`, icon: FileText, section: 'Shared Data' },
     { name: 'Invoices', href: `/client/invoices/${clientId}`, icon: DollarSign, section: 'Shared Data' },
@@ -199,6 +200,7 @@ export function getSearchShortcuts(role: UserRole, currentClientId?: number | nu
       { id: 'page:employee-dashboard', type: 'page', title: 'Dashboard', subtitle: 'Employee overview', href: '/employee/dashboard', badge: 'Page', keywords: ['dashboard', 'overview'] },
       { id: 'page:employee-roadmap', type: 'page', title: 'Roadmap', subtitle: 'Career roadmap and progress', href: '/employee/roadmap', badge: 'Page', keywords: ['roadmap', 'career'] },
       { id: 'page:employee-vacations', type: 'page', title: 'Calendar', subtitle: 'Vacations and leave', href: '/employee/vacations', badge: 'Page', keywords: ['calendar', 'vacations', 'leave'] },
+      { id: 'page:employee-salary', type: 'page', title: 'My Salary', subtitle: 'Salary history and payment status', href: '/employee/salary', badge: 'Page', keywords: ['salary', 'payroll', 'payments'] },
       { id: 'page:employee-reimbursements', type: 'page', title: 'Reimbursements', subtitle: 'Workspace reimbursement requests', href: '/employee/reimbursements', badge: 'Page', keywords: ['reimbursements', 'expenses'] },
       { id: 'page:employee-profile', type: 'page', title: 'Profile', subtitle: 'Personal profile and settings', href: '/employee/profile', badge: 'Page', keywords: ['profile', 'account'] },
       { id: 'page:employee-kb', type: 'page', title: 'Knowledge Base', subtitle: 'Open the team knowledge base', href: 'https://www.notion.so/Vestov-Knowledge-Base-2611a26473ed80c08f2dd2178bccc864', badge: 'External', keywords: ['knowledge base', 'notion', 'docs'], external: true },
@@ -208,7 +210,8 @@ export function getSearchShortcuts(role: UserRole, currentClientId?: number | nu
   const clientId = currentClientId ?? undefined
 
   return [
-    ...(clientId ? [{ id: 'page:client-overview', type: 'page' as const, title: 'Overview', subtitle: 'Client portal overview', href: `/client/portal/${clientId}`, badge: 'Page', keywords: ['overview', 'portal', 'home'] }] : []),
+    { id: 'page:client-overview', type: 'page', title: 'Overview', subtitle: 'Your client workspace', href: '/client/dashboard', badge: 'Page', keywords: ['overview', 'dashboard', 'home'] },
+    { id: 'page:client-projects', type: 'page', title: 'Projects', subtitle: 'Active projects and assigned team', href: clientId ? `/client/portal/${clientId}` : '/client/portal', badge: 'Page', keywords: ['projects', 'portal', 'services'] },
     { id: 'page:client-team-status', type: 'page', title: 'Team Status', subtitle: 'Assigned team activity', href: '/client/team-status', badge: 'Page', keywords: ['team status', 'team', 'activity'] },
     ...(clientId ? [{ id: 'page:client-documents', type: 'page' as const, title: 'Documents', subtitle: 'Shared documents and folders', href: `/client/documents/${clientId}`, badge: 'Page', keywords: ['documents', 'files'] }] : []),
     ...(clientId ? [{ id: 'page:client-invoices', type: 'page' as const, title: 'Invoices', subtitle: 'Client invoice history', href: `/client/invoices/${clientId}`, badge: 'Page', keywords: ['invoices', 'billing'] }] : []),

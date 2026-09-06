@@ -1,6 +1,5 @@
 import { Suspense, lazy, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
-import { UserButton } from '@clerk/react'
 import { useQuery } from '@tanstack/react-query'
 import { Route, Switch, Link, useLocation } from 'wouter'
 import {
@@ -8,9 +7,9 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
+import { WorkspaceHeader } from '@/components/WorkspaceHeader'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
-import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
+const MobileSidebarSheet = lazy(() => import('@/components/MobileSidebarSheet').then(module => ({ default: module.MobileSidebarSheet })))
 import { WorkspaceRouteSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
@@ -146,11 +145,6 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
   })
-  const todayLabel = new Date().toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
   const mobileTitle = getActiveNavigationLabel('admin', location) ?? 'Workspace'
 
   const handleLogout = async () => {
@@ -158,7 +152,8 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
   }
 
   return (
-    <div className="app-shell min-h-screen">
+    <div className="app-shell min-h-[100dvh]">
+      {sidebarOpen && <Suspense fallback={null}>
       <MobileSidebarSheet
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
@@ -167,50 +162,18 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
       >
         <Sidebar role="admin" user={user} onLogout={handleLogout} navigationIndicators={navigationIndicators} />
       </MobileSidebarSheet>
+      </Suspense>}
 
-      <div className="fixed inset-y-0 left-0 z-30 hidden w-[220px] xl:w-[232px] lg:flex">
+      <div className="workspace-sidebar fixed inset-y-0 left-0 z-30 hidden w-[232px] lg:flex">
         <Sidebar role="admin" user={user} onLogout={handleLogout} navigationIndicators={navigationIndicators} />
       </div>
 
-      <div className="flex min-h-screen flex-col lg:pl-[220px] xl:pl-[232px]">
-        <header className="sticky top-0 z-20">
-          <div className="mobile-top-chrome lg:hidden">
-            <div className="mobile-top-chrome-main">
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.24em] text-primary/80">
-                  Admin Workspace
-                </p>
-                <h1 className="mt-1 truncate font-display text-[1.35rem] font-semibold text-foreground">
-                  {mobileTitle}
-                </h1>
-              </div>
-              <div className="mobile-top-chip">{todayLabel}</div>
-            </div>
+      <div className="flex min-h-[100dvh] flex-col lg:pl-[232px]">
+        <WorkspaceHeader workspace="Administration" title={mobileTitle} onOpenMenu={() => setSidebarOpen(true)} />
 
-            <div className="px-4 pb-4">
-              <GlobalSearchLauncher className="w-full" />
-            </div>
-          </div>
-
-          <div className="hidden workspace-topbar lg:block">
-            <div className="mx-auto flex w-full max-w-[1600px] items-center gap-4 px-6 py-3 xl:px-8">
-              <GlobalSearchLauncher className="max-w-[340px] flex-1" />
-
-              <div className="ml-auto flex items-center gap-2">
-                <div className="workspace-date-chip rounded-[0.7rem] px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
-                  {todayLabel}
-                </div>
-                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white">
-                  <UserButton />
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1">
-          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-5 xl:px-10">
-            <div className="mx-auto max-w-[1500px]">
+        <main id="workspace-content" className="min-w-0 flex-1">
+          <div className="mobile-page-pad mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            <div className="mx-auto max-w-[1400px]">
               <Switch>
                 <Route path="/admin/dashboard" component={AdminDashboardRoute} />
                 <Route path="/admin/reports" component={ReportsPageRoute} />

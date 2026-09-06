@@ -50,6 +50,8 @@ export function setupPassport(pool: Pool) {
           timezone: users.timezone,
           teamMemberId: users.teamMemberId,
           isActive: users.isActive,
+          createdAt: users.createdAt,
+          lastLoginAt: users.lastLoginAt,
         })
         .from(users)
         .where(eq(users.id, userId))

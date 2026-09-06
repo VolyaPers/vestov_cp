@@ -24,8 +24,8 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
       retry: (failureCount, error: any) => {
-        if (error?.status === 401) return false
-        return failureCount < 3
+        if (error?.status >= 400 && error?.status < 500) return false
+        return failureCount < 2
       },
     },
   },

@@ -1,6 +1,5 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { format, parseISO } from "date-fns"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -12,20 +11,28 @@ export function cn(...inputs: ClassValue[]) {
  * which interprets them as UTC midnight and can show the previous day in local timezone.
  */
 export function parseLocalDate(dateString: string): Date {
-  // parseISO from date-fns correctly handles date-only strings as local dates
-  return parseISO(dateString)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    const [year, month, day] = dateString.split('-').map(Number)
+    const parsed = new Date(0)
+    parsed.setFullYear(year, month - 1, day)
+    parsed.setHours(0, 0, 0, 0)
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day
+      ? parsed : new Date(NaN)
+  }
+  return new Date(dateString)
 }
+
+const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+const dateFormatter = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount)
+  return currencyFormatter.format(amount)
 }
 
-export function formatDate(date: string | Date): string {
-  const parsedDate = typeof date === 'string' ? parseLocalDate(date) : date
-  return format(parsedDate, 'd MMMM yyyy')
+export function formatDate(date?: string | Date | null): string {
+  if (!date) return 'Not specified'
+  const parsed = typeof date === 'string' ? parseLocalDate(date) : date
+  return Number.isFinite(parsed.getTime()) ? dateFormatter.format(parsed) : 'Not specified'
 }
 
 export function calculateDays(

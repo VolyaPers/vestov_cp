@@ -289,30 +289,12 @@ export function ShiftWidget() {
   }, [currentShift, activeBreak])
 
   return (
-    <div className="p-4 border-t border-gray-200 space-y-3">
-      {/* Info Card */}
-      {showInfoCard && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2 text-amber-800 relative">
-          <Info className="w-4 h-4 mt-0.5" />
-          <div className="text-sm leading-tight pr-6">
-            Click once to confirm, or click and hold for 3s to perform the action faster.
-          </div>
-          <button
-            type="button"
-            aria-label="Dismiss info"
-            onClick={() => setShowInfoCard(false)}
-            className="absolute top-2 right-2 text-amber-700 hover:text-amber-900 transition-colors"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
+    <div className="space-y-3">
       {/* Service Selection */}
       {!currentShift && myServices.length > 0 && (
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Service Context
+          <label className="text-xs font-medium text-muted-foreground">
+            Project
           </label>
           <select
             value={selectedServiceId || ''}
@@ -328,7 +310,7 @@ export function ShiftWidget() {
             ))}
           </select>
           <p className="text-[10px] text-gray-500 mt-1">
-            Optional - notifications go to default channel if not selected
+            Optional: choose the project for this shift.
           </p>
         </div>
       )}
@@ -350,11 +332,11 @@ export function ShiftWidget() {
 
       {/* Status Bar (only when on shift) */}
       {currentShift && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+        <div className="rounded-lg bg-muted/60 p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div
-                className={`w-2 h-2 rounded-full ${activeBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500 animate-pulse'
+                className={`w-2 h-2 rounded-full ${activeBreak ? 'bg-amber-500' : 'bg-green-500'
                   }`}
               />
               <span className="text-sm font-semibold text-gray-700">
@@ -387,6 +369,7 @@ export function ShiftWidget() {
       <div className="space-y-2">
         <div className="flex gap-2">
           <button
+            onClick={(event) => { if (event.detail === 0) setConfirmAction(mainAction) }}
             onMouseDown={() => startHold(mainAction)}
             onMouseUp={() => cancelHold(mainAction)}
             onMouseLeave={() => {
@@ -405,10 +388,10 @@ export function ShiftWidget() {
                   : 'Start shift'
             }
             className={`flex-1 py-2 rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden ${activeBreak
-              ? 'bg-blue-500 hover:bg-blue-600 text-white'
+              ? 'bg-slate-900 hover:bg-slate-800 text-white'
               : currentShift
-                ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                : 'bg-green-500 hover:bg-green-600 text-white'
+                ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                : 'bg-slate-900 hover:bg-slate-800 text-white'
               }`}
           >
             {holdAction === mainAction && (
@@ -419,7 +402,7 @@ export function ShiftWidget() {
                 aria-valuemax={100}
                 aria-label="Hold progress"
                 className="absolute inset-0 bg-black/30 transition-all duration-50 ease-linear"
-                style={{ width: `${holdProgress}%` }}
+                style={{ transform: `scaleX(${holdProgress / 100})`, transformOrigin: 'left' }}
               />
             )}
             <span className="relative z-10 flex items-center gap-1">
@@ -436,6 +419,7 @@ export function ShiftWidget() {
             </span>
           </button>
           <button
+            onClick={(event) => { if (event.detail === 0) setConfirmAction('endShift') }}
             onMouseDown={() => startHold('endShift')}
             onMouseUp={() => cancelHold('endShift')}
             onMouseLeave={() => {
@@ -449,7 +433,7 @@ export function ShiftWidget() {
                 ? `Holding to end shift... ${Math.round(holdProgress)}%`
                 : 'End shift'
             }
-            className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden"
+            className="flex-1 py-2 border border-border bg-white text-foreground hover:bg-muted rounded-lg font-medium text-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 relative overflow-hidden"
           >
             {holdAction === 'endShift' && (
               <div
@@ -459,7 +443,7 @@ export function ShiftWidget() {
                 aria-valuemax={100}
                 aria-label="Hold progress"
                 className="absolute inset-0 bg-black/30 transition-all duration-50 ease-linear"
-                style={{ width: `${holdProgress}%` }}
+                style={{ transform: `scaleX(${holdProgress / 100})`, transformOrigin: 'left' }}
               />
             )}
             <span className="relative z-10 flex items-center gap-1">

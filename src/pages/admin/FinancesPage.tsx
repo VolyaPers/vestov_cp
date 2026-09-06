@@ -1,16 +1,9 @@
+import { lazy } from 'react'
+import { DeferredChart } from '@/components/DeferredChart'
+const FinanceProfitChart = lazy(() => import('@/components/charts/FinancesPageCharts').then(module => ({default: module.FinanceProfitChart})))
+const FinanceRevenueChart = lazy(() => import('@/components/charts/FinancesPageCharts').then(module => ({default: module.FinanceRevenueChart})))
 import { useState, useEffect, useMemo, useCallback, type MouseEvent } from 'react'
-import {
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts'
+
 import {
   TrendingUp,
   TrendingDown,
@@ -785,17 +778,17 @@ export function FinancesPage() {
 
   // Load overview data when date range changes
   useEffect(() => {
-    loadOverview()
-  }, [dateRange.start, dateRange.end])
+    if (activeTab === 'overview') loadOverview()
+  }, [activeTab, dateRange.start, dateRange.end])
 
   // Load comparison data when enabled or range changes
   useEffect(() => {
-    if (compareEnabled) {
+    if (activeTab === 'overview' && compareEnabled) {
       loadComparison()
     } else {
       setComparisonData(null)
     }
-  }, [compareEnabled, dateRange.start, dateRange.end])
+  }, [activeTab, compareEnabled, dateRange.start, dateRange.end])
 
   // Load transactions data
   useEffect(() => {
@@ -1579,7 +1572,7 @@ export function FinancesPage() {
     <div className="space-y-6">
       {Object.values(loadErrors).some(Boolean)&&<div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">Some financial data is unavailable: {Object.values(loadErrors).filter(Boolean).join('; ')} <Button variant="outline" onClick={()=>{loadOverview();loadComparison();loadTransactions()}}>Retry</Button></div>}
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-2xl font-bold stripe-text-primary">Finances</h1>
           <p className="stripe-text-secondary text-sm mt-1">
@@ -1588,7 +1581,7 @@ export function FinancesPage() {
         </div>
         <div className="flex items-center gap-2">
           {/* Compact balance indicators */}
-          <div className="flex items-center gap-3 mr-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => openConfigModal('stripe')}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors text-sm"
@@ -1865,28 +1858,7 @@ export function FinancesPage() {
                     <LabelWithInfo label="Monthly Revenue vs Costs" infoKey="monthlyRevenueVsCosts" />
                   </h3>
                   <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#9ca3af" axisLine={false} tickLine={false} />
-                        <YAxis
-                          tick={{ fontSize: 11 }}
-                          stroke="#9ca3af"
-                          tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <RechartsTooltip
-                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
-                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,.07)', fontSize: '12px' }}
-                          cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-                        />
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
-                        <Bar dataKey="Income" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={32} />
-                        <Bar dataKey="Salaries" stackId="costs" fill="#6366f1" maxBarSize={32} />
-                        <Bar dataKey="Other Expenses" stackId="costs" fill="#f87171" radius={[3, 3, 0, 0]} maxBarSize={32} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <DeferredChart><FinanceRevenueChart chartData={chartData} /></DeferredChart>
                   </div>
                 </div>
 
@@ -1896,40 +1868,7 @@ export function FinancesPage() {
                     <LabelWithInfo label="Cumulative P&L" infoKey="cumulativePL" />
                   </h3>
                   <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={cumulativePLData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                        <defs>
-                          <linearGradient id="plGradientPos" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="plGradientNeg" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#9ca3af" axisLine={false} tickLine={false} />
-                        <YAxis
-                          tick={{ fontSize: 10 }}
-                          stroke="#9ca3af"
-                          tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : v <= -1000 ? `-$${(Math.abs(v) / 1000).toFixed(0)}k` : `$${v}`}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <RechartsTooltip
-                          formatter={(value: number) => [formatCurrency(value), 'Cumulative P&L']}
-                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="cumulative"
-                          stroke={netPL >= 0 ? '#10b981' : '#ef4444'}
-                          strokeWidth={2}
-                          fill={netPL >= 0 ? 'url(#plGradientPos)' : 'url(#plGradientNeg)'}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <DeferredChart><FinanceProfitChart cumulativePLData={cumulativePLData} netPL={netPL} /></DeferredChart>
                   </div>
                 </div>
               </div>

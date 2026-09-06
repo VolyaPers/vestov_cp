@@ -152,12 +152,13 @@ export function EmployeeDashboard() {
       setLoadError(null)
 
       // Load all data in parallel
-      const [profile, roadmap, vacationRequests, reimbursementData, vacationBalance] = await Promise.all([
+      const [profile, roadmap, vacationRequests, reimbursementData, vacationBalance, limit] = await Promise.all([
         api.request('/vacation/my-profile'),
         api.request('/roadmap'),
         api.request('/vacation/my-requests'),
         api.request('/reimbursements/my-requests'),
-        api.getMyVacationBalance()
+        api.getMyVacationBalance(),
+        api.request(`/reimbursements/limits/${new Date().getFullYear()}`)
       ])
 
       // Handle case where reimbursements might be empty array
@@ -174,7 +175,6 @@ export function EmployeeDashboard() {
       const balance = vacationBalance as { totalUsed: number; totalAllocated: number; totalRemaining: number; currentlyAvailable: number }
       const vacationDaysUsed = Number(balance.totalUsed)
 
-      const limit = await api.request(`/reimbursements/limits/${new Date().getFullYear()}`)
       const currentYearReimbursements = reimbursements.filter((r: any) => r.careerYear === roadmap.yearsAtCompany)
       const pendingReimbursements = currentYearReimbursements.filter((r: any) => r.status === 'pending')
       const reimbursementUsed = Number(limit.usedAmount || 0)
@@ -286,7 +286,7 @@ export function EmployeeDashboard() {
       <PageHero
         eyebrow="Employee Dashboard"
         title={`${getGreeting()}, ${data.profile.name.split(' ')[0]}.`}
-        description={`You are currently in ${yearLabel} at Vestov. This workspace now matches the refreshed shell with stronger hierarchy across benefits, planning and daily operations.`}
+        description={`Your schedule, time off and requests. ${yearLabel} at Vestov.`}
         theme="teal"
         meta={
           <>
@@ -297,28 +297,11 @@ export function EmployeeDashboard() {
             <span>{data.vacations.pending} pending vacation requests</span>
           </>
         }
-        aside={
-          <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-            <div className="hero-aside-card sm:rounded-[1.3rem] sm:p-4">
-              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Career year</p>
-              <p className="mt-2.5 font-display text-xl font-semibold text-foreground sm:mt-3 sm:text-2xl">{yearLabel}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Started {formatDate(data.profile.startDate)}</p>
-            </div>
-            <div className="hero-aside-card sm:rounded-[1.3rem] sm:p-4">
-              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Next milestone</p>
-              <p className="mt-2.5 font-display text-xl font-semibold text-foreground sm:mt-3 sm:text-2xl">
-                {data.roadmap.yearsAtCompany < 5 ? `Year ${data.roadmap.nextMilestoneYear}` : 'Max level'}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {data.roadmap.yearsAtCompany < 5 ? `In ${data.roadmap.daysUntilNextMilestone} days` : 'Maximum benefits unlocked'}
-              </p>
-            </div>
-          </div>
-        }
+
       />
 
-      <div className="-mx-1 flex snap-x snap-mandatory gap-3 px-1 pb-1 touch-scroll-x sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible lg:grid-cols-4">
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="min-w-0">
           <MetricTile
             label="Vacation Days"
             value={<>{vacationRemaining} <span className="text-lg text-muted-foreground">/ {data.roadmap.currentVacationDays}</span></>}
@@ -328,7 +311,7 @@ export function EmployeeDashboard() {
             tone="primary"
           />
         </div>
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+        <div className="min-w-0">
           <MetricTile
             label="Reimbursement Budget"
             value={<>{`$${reimbursementRemaining}`} <span className="text-lg text-muted-foreground">/ ${data.roadmap.currentReimbursementLimit}</span></>}
@@ -338,23 +321,21 @@ export function EmployeeDashboard() {
             tone="emerald"
           />
         </div>
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+        <div className="min-w-0">
           <MetricTile
             label="Career Year"
             value={yearLabel}
             hint={`Started ${formatDate(data.profile.startDate)}`}
             trend={
-              <Link href="/employee/roadmap">
-                <a className="inline-flex items-center gap-1 text-xs font-semibold text-primary no-underline hover:no-underline">
+              <Link href="/employee/roadmap" className="inline-flex items-center gap-1 text-xs font-semibold text-primary no-underline hover:no-underline">
                   View roadmap <ArrowRight className="w-3 h-3" />
-                </a>
-              </Link>
+                </Link>
             }
             icon={<TrendingUp className="w-5 h-5" />}
             tone="violet"
           />
         </div>
-        <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
+        <div className="min-w-0">
           <MetricTile
             label="Next Milestone"
             value={data.roadmap.yearsAtCompany < 5 ? `Year ${data.roadmap.nextMilestoneYear}` : 'Max level'}
@@ -366,47 +347,11 @@ export function EmployeeDashboard() {
         </div>
       </div>
 
-      <Card className="content-auto">
-        <CardHeader>
-          <SectionHeading title="Quick Actions" description="Access frequently used features" icon={<PlusCircle className="w-5 h-5" />} />
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            <Link href="/employee/vacations">
-              <a className="block">
-                <Button className="glass-action-button glass-action-button-blue flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
-                  <Calendar className="h-6 w-6 sm:h-8 sm:w-8" />
-                  <span className="text-xs font-semibold sm:text-sm">Request Vacation</span>
-                </Button>
-              </a>
-            </Link>
-            <Link href="/employee/reimbursements">
-              <a className="block">
-                <Button className="glass-action-button glass-action-button-emerald flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
-                  <DollarSign className="h-6 w-6 sm:h-8 sm:w-8" />
-                  <span className="text-xs font-semibold sm:text-sm">Submit Reimbursement</span>
-                </Button>
-              </a>
-            </Link>
-            <Link href="/employee/roadmap">
-              <a className="block">
-                <Button className="glass-action-button glass-action-button-violet flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
-                  <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8" />
-                  <span className="text-xs font-semibold sm:text-sm">View Roadmap</span>
-                </Button>
-              </a>
-            </Link>
-            <Link href="/employee/profile">
-              <a className="block">
-                <Button className="glass-action-button glass-action-button-slate flex h-20 w-full flex-col items-center justify-center gap-1.5 px-3 sm:h-24 sm:gap-2">
-                  <User className="h-6 w-6 sm:h-8 sm:w-8" />
-                  <span className="text-xs font-semibold sm:text-sm">Update Profile</span>
-                </Button>
-              </a>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild><Link href="/employee/vacations">Request time off</Link></Button>
+        <Button variant="outline" asChild><Link href="/employee/reimbursements">Submit expense</Link></Button>
+        <Button variant="ghost" asChild><Link href="/employee/profile">Edit profile</Link></Button>
+      </div>
 
       <Card className="relative z-10">
         <CardHeader>
@@ -546,11 +491,9 @@ export function EmployeeDashboard() {
                 <div className="text-center py-8">
                   <Calendar className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">No upcoming vacations</p>
-                  <Link href="/employee/vacations">
-                    <a className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 no-underline hover:text-blue-700 hover:no-underline">
+                  <Link href="/employee/vacations" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 no-underline hover:text-blue-700 hover:no-underline">
                       Request time off <ArrowRight className="w-3 h-3" />
-                    </a>
-                  </Link>
+                    </Link>
                 </div>
               )}
             </div>
@@ -596,12 +539,10 @@ export function EmployeeDashboard() {
               </p>
             </div>
             <Link href="/employee/roadmap">
-              <a>
                 <Button variant="outline" className="flex items-center gap-2">
                   View Full Roadmap <ArrowRight className="w-4 h-4" />
                 </Button>
-              </a>
-            </Link>
+              </Link>
           </div>
         </CardContent>
       </Card>

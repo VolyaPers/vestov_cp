@@ -106,27 +106,40 @@ router.get('/', async (req, res) => {
       .offset(offset)
       .orderBy(users.createdAt)
 
-    const allUsers = await usersQuery
+    const [allUsers, totalCount] = await Promise.all([
+      usersQuery,
+      db.select({ count: sql`count(*)` }).from(users)
+        .where(whereConditions.length > 0 ? and(...whereConditions) : undefined),
+    ])
 
-    // If clientId is provided, also fetch client assignments for these users
-    let usersWithClientInfo = allUsers
-    if (clientId) {
-      const clientAssignments = await db
-        .select()
-        .from(clientUsers)
-        .where(eq(clientUsers.clientId, Number(clientId)))
-
-      usersWithClientInfo = allUsers.map(user => ({
-        ...user,
-        clientAssignment: clientAssignments.find(ca => ca.userId === user.id) || null
-      }))
+    // Fetch memberships for this page in one query instead of one HTTP call per client user.
+    const userIds = allUsers.map(user => user.id)
+    const assignments = userIds.length ? await db.select({
+      userId: clientUsers.userId,
+      id: clientUsers.id,
+      assignmentId: clientUsers.id,
+      assignedBy: clientUsers.assignedBy,
+      clientId: clientUsers.clientId,
+      clientName: clients.name,
+      accessLevel: clientUsers.accessLevel,
+      isActive: clientUsers.isActive,
+      assignedAt: clientUsers.assignedAt,
+    }).from(clientUsers).leftJoin(clients, eq(clientUsers.clientId, clients.id))
+      .where(inArray(clientUsers.userId, userIds)) : []
+    const byUser = new Map<number, typeof assignments>()
+    for (const assignment of assignments) {
+      const list = byUser.get(assignment.userId) || []
+      list.push(assignment)
+      byUser.set(assignment.userId, list)
     }
-
-    // Get total count for pagination
-    const totalCount = await db
-      .select({ count: sql`count(*)` })
-      .from(users)
-      .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
+    const usersWithClientInfo = allUsers.map(user => {
+      const clientAssignments = byUser.get(user.id) || []
+      return {
+        ...user,
+        clientAssignments,
+        ...(clientId ? { clientAssignment: clientAssignments.find(item => item.clientId === Number(clientId)) || null } : {}),
+      }
+    })
 
     res.json({
       users: usersWithClientInfo,

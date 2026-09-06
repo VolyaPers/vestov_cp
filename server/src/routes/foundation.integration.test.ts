@@ -19,6 +19,7 @@ test('real HTTP access, document ownership, private uploads and stable employee 
   const { default: express } = await import('express')
   const { authRouter } = await import('./auth.js')
   const { adminRouter } = await import('./admin.js')
+  const { default: usersRouter } = await import('./users.js')
   const { documentsRouter } = await import('./documents.js')
   const { uploadsRouter } = await import('./uploads.js')
   const tag = randomUUID().slice(0, 12)
@@ -39,6 +40,7 @@ test('real HTTP access, document ownership, private uploads and stable employee 
   })
   app.use('/api', authRouter)
   app.use('/api/admin', adminRouter)
+  app.use('/api/users', usersRouter)
   app.use('/api/documents', documentsRouter)
   app.use('/api/uploads', uploadsRouter)
   const server = app.listen(0, '127.0.0.1')
@@ -61,6 +63,19 @@ test('real HTTP access, document ownership, private uploads and stable employee 
       { clientId: a.id, userId: writer.id, accessLevel: 'write', assignedBy: admin.id },
       { clientId: b.id, userId: outsider.id, accessLevel: 'admin', assignedBy: admin.id },
     ])
+    const listedResponse = await request('/users?limit=2&page=1&search=' + tag, admin.id)
+    assert.equal(listedResponse.status, 200)
+    const listed = await listedResponse.json() as any
+    assert.equal(listed.users.length, 2)
+    assert.equal(listed.pagination.total, 4)
+    assert.equal(listed.pagination.pages, 2)
+    const accountProfile = await (await request('/user', reader.id)).json() as any
+    assert.ok(accountProfile.createdAt, 'Profile carries its creation date')
+    const clientList = await (await request('/users?limit=50&role=client&search=' + tag, admin.id)).json() as any
+    assert.equal(clientList.users.length, 3)
+    assert.deepEqual(clientList.users.find((row: any) => row.id === reader.id).clientAssignments.map((row: any) => row.clientId), [a.id])
+    assert.deepEqual(clientList.users.find((row: any) => row.id === outsider.id).clientAssignments.map((row: any) => row.clientId), [b.id])
+    assert.equal((await request('/users', reader.id)).status, 403)
     const [type] = await db.insert(schema.serviceTypes).values({ name: `${tag} Service`, category: 'outstaffing', billingModel: 'monthly' }).returning(); typeId = type.id
     const services = await db.insert(schema.clientServices).values([
       { clientId: a.id, serviceTypeId: type.id, startDate: '2026-01-01', rate: '999.00', projectBotAuthorizedSlackUserIds: ['private-id'] },

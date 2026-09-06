@@ -119,8 +119,8 @@ export function EmployeeProfile() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Employee Workspace"
-        title="Personal profile and contact card"
-        description="Keep your public team profile and contact details current for operations, HR, and client-facing collaboration."
+        title="My profile"
+        description="Update your contact details and team profile."
         theme="violet"
         actions={editing ? (
           <>

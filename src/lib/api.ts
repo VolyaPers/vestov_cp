@@ -1,3 +1,4 @@
+import { createRequestDeduplicator } from './requestDeduplication'
 import type {
   User,
   Client,
@@ -144,7 +145,15 @@ class ApiError extends Error {
 }
 
 class ApiClient {
-  request = async (endpoint: string, options: RequestInit = {}) => {
+  private deduplicate = createRequestDeduplicator()
+
+  request = (endpoint: string, options: RequestInit = {}) => {
+    const method = (options.method || 'GET').toUpperCase()
+    const key = JSON.stringify([endpoint, Array.from(new Headers(options.headers).entries()).sort()])
+    return this.deduplicate(key, method, !options.signal && options.cache !== 'no-store', () => this.performRequest(endpoint, options))
+  }
+
+  private performRequest = async (endpoint: string, options: RequestInit = {}) => {
     const url = `${API_BASE}${endpoint}`
     const config: RequestInit = {
       ...options,

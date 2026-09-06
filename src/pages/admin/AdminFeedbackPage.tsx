@@ -179,7 +179,7 @@ export function AdminFeedbackPage() {
       <PageHero
         eyebrow="Feedback Management"
         title="Client sentiment and response workflow in one place."
-        description="Feedback now lives inside the same upgraded UI system, with cleaner filters and less visual friction around response handling."
+        description="Review client feedback and respond to your team’s requests."
         theme="teal"
         meta={
           <>

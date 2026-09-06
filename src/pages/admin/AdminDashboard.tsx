@@ -1,3 +1,6 @@
+import { lazy } from 'react'
+import { DeferredChart } from '@/components/DeferredChart'
+const DashboardRevenueChart = lazy(() => import('@/components/charts/AdminDashboardCharts').then(module => ({default: module.DashboardRevenueChart})))
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'wouter'
@@ -17,15 +20,7 @@ import {
   TrendingUp,
   Wallet,
 } from 'lucide-react'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+
 import { useShiftEvents, useShiftUpdateListener } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -693,114 +688,33 @@ export function AdminDashboard() {
   return (
     <div className="space-y-5">
       {sourceNotices}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
-        <div className="space-y-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <h1 className="text-[2rem] font-semibold tracking-[-0.04em] text-foreground">Today</h1>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Revenue, delivery, and staffing signals for the current operating day.
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <span>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
-                <span className="h-1 w-1 rounded-full bg-slate-300" />
-                <span>{shiftsState.usable?`${shiftCountText} live shifts`:'Live shifts unavailable'}</span>
-                <span className="h-1 w-1 rounded-full bg-slate-300" />
-                <span>{overdueInvoices.length} overdue invoices</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleRefreshAll} disabled={isRefreshing}>
-                <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
-                {isRefreshing ? 'Refreshing' : 'Refresh'}
-              </Button>
-              <Link href="/admin/reports" className="block">
-                <div className="inline-flex">
-                  <Button variant="outline" size="sm">
-                    <TrendingUp className="h-4 w-4" />
-                    Open reports
-                  </Button>
-                </div>
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Paid this month</p>
-              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">{formatCurrency(paidThisMonthTotal)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Collections rate</p>
-              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">{collectionEfficiency.toFixed(0)}%</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Runway</p>
-              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">
-                {runwayMonths !== null && Number.isFinite(runwayMonths) ? runwayMonths.toFixed(1) : 'N/A'}
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Top-client share</p>
-              <p className="mt-1.5 text-2xl font-semibold tracking-[-0.03em] text-foreground">{topClientShare.toFixed(0)}%</p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Executive note</p>
-            <p className="mt-1.5 text-sm leading-6 text-foreground">{summaryState.fresh?executiveSummary:`Last successful snapshot: ${executiveSummary}`}</p>
-          </div>
+      <div className="flex flex-wrap items-start justify-between gap-4 pb-2">
+        <div>
+          <h1 className="text-[28px] font-semibold tracking-tight">Overview</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · Your business at a glance</p>
         </div>
-
-        <Card>
-          <CardContent className="space-y-5">
-            <SectionHeading
-              title="Critical queue"
-              description="Start with the work that changes cashflow or delivery risk today."
-            />
-
-            <div className="space-y-3">
-              <QueueLink
-                href="/admin/invoices"
-                title="Collections queue"
-                detail={`${overdueInvoices.length} overdue invoices, ${outstandingInvoices.length} still outstanding.`}
-                value={formatCurrency(overdueTotal)}
-              />
-              <QueueLink
-                href="/admin/shifts"
-                title="Shift exceptions"
-                detail={lateState.usable?`${lateToday} late starts and ${missedToday} missed shifts.${lateState.fresh?'':' Last successful snapshot.'}`:'Shift exceptions are unavailable; no total is inferred.'}
-                value={lateState.usable?`${lateToday + missedToday}`:'Unavailable'}
-              />
-              <QueueLink
-                href="/admin/vacation"
-                title="Leave approvals"
-                detail="Requests waiting for review before schedule planning is blocked."
-                value={`${pendingLeaveRequests}`}
-              />
-              <QueueLink
-                href="/admin/reimbursements"
-                title="Reimbursements"
-                detail={`${pendingReimbursements} pending approvals and ${awaitingEvidence} waiting for evidence.`}
-                value={`${pendingReimbursements}`}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefreshAll} disabled={isRefreshing}><RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} />{isRefreshing ? 'Refreshing' : 'Refresh'}</Button>
+          <Button asChild><Link href="/admin/reports">View reports</Link></Button>
+        </div>
       </div>
-
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-y py-3 text-xs text-muted-foreground">
+        <span>Collection rate <strong className="ml-1 font-medium text-foreground">{collectionEfficiency.toFixed(0)}%</strong></span>
+        <span>Runway <strong className="ml-1 font-medium text-foreground">{runwayMonths !== null && Number.isFinite(runwayMonths) ? `${runwayMonths.toFixed(1)} months` : 'Unavailable'}</strong></span>
+        <span>Top client <strong className="ml-1 font-medium text-foreground">{topClientShare.toFixed(0)}%</strong></span>
+        <Link href="/admin/shifts" className="hover:text-foreground">{shiftsState.usable ? `${shiftCountText} active shifts` : 'Shift status unavailable'}</Link>
+      </div>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <MetricTile
-          label="Cash In (MTD)"
+          label="Received this month"
           value={formatCurrency(paidThisMonthTotal)}
           hint={`${paidThisMonth.length} invoices paid this month`}
           tone="emerald"
           icon={<DollarSign className="h-5 w-5" />}
           trend={(
             <div className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
-              revenueGrowthPct >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+              'inline-flex items-center gap-1 text-xs font-medium',
+              revenueGrowthPct >= 0 ? 'text-emerald-700' : 'text-rose-700'
             )}>
               {revenueGrowthPct >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
               {`${revenueGrowthPct >= 0 ? '+' : ''}${revenueGrowthPct.toFixed(1)}% vs last month`}
@@ -808,13 +722,13 @@ export function AdminDashboard() {
           )}
         />
         <MetricTile
-          label="Burn (MTD)"
+          label="Expenses this month"
           value={formatCurrency(currentMonthFinance?.burn || 0)}
           hint="Salaries and operating expenses"
           tone="rose"
           icon={<TrendingDown className="h-5 w-5" />}
           trend={(
-            <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+            <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               {(previousMonthFinance?.burn || 0) > 0
                 ? `${(((currentMonthFinance?.burn || 0) - (previousMonthFinance?.burn || 0)) / Math.max(1, previousMonthFinance?.burn || 1) * 100).toFixed(1)}% vs last month`
                 : 'First month with burn data'}
@@ -822,15 +736,15 @@ export function AdminDashboard() {
           )}
         />
         <MetricTile
-          label="Net (MTD)"
+          label="Net result"
           value={formatCurrency(currentMonthFinance?.net || 0)}
           hint="Revenue minus burn"
           tone="primary"
           icon={<Wallet className="h-5 w-5" />}
           trend={(
             <div className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
-              (currentMonthFinance?.net || 0) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+              'inline-flex items-center gap-1 text-xs font-medium',
+              (currentMonthFinance?.net || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'
             )}>
               {(currentMonthFinance?.net || 0) >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
               {(currentMonthFinance?.net || 0) >= 0 ? 'Positive month so far' : 'Margin needs attention'}
@@ -838,15 +752,15 @@ export function AdminDashboard() {
           )}
         />
         <MetricTile
-          label="Outstanding A/R"
+          label="Unpaid invoices"
           value={formatCurrency(outstandingReceivables)}
           hint={`${outstandingInvoices.length} invoices still unpaid`}
           tone="amber"
           icon={<Receipt className="h-5 w-5" />}
           trend={(
             <div className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
-              overdueInvoices.length === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+              'inline-flex items-center gap-1 text-xs font-medium',
+              overdueInvoices.length === 0 ? 'text-emerald-700' : 'text-amber-700'
             )}>
               {overdueInvoices.length === 0 ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
               {overdueInvoices.length === 0 ? 'No overdue invoices' : `${overdueInvoices.length} overdue`}
@@ -855,12 +769,21 @@ export function AdminDashboard() {
         />
       </div>
 
+      <section className="py-2">
+        <SectionHeading title="Needs attention" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <QueueLink href="/admin/invoices" title="Overdue invoices" detail={`${outstandingInvoices.length} invoices outstanding`} value={formatCurrency(overdueTotal)} />
+          <QueueLink href="/admin/shifts" title="Shift exceptions" detail={lateState.usable ? `${lateToday} late · ${missedToday} missed` : 'Status unavailable'} value={lateState.usable ? `${lateToday + missedToday}` : '—'} />
+          <QueueLink href="/admin/vacation" title="Leave requests" detail="Awaiting approval" value={`${pendingLeaveRequests}`} />
+          <QueueLink href="/admin/reimbursements" title="Reimbursements" detail={`${awaitingEvidence} awaiting evidence`} value={`${pendingReimbursements}`} />
+        </div>
+      </section>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.95fr)]">
         <Card className="content-auto">
-          <CardContent>
+          <CardContent className="pt-5 sm:pt-5">
             <SectionHeading
-              title="Revenue vs burn"
-              description="A six-month view of how cash coming in compares to operating cost."
+              title="Revenue & expenses"
+              description="Monthly revenue and operating expenses."
               action={(
                 <span className="hidden rounded-full border border-border/70 bg-muted/70 px-3 py-1 text-xs font-semibold text-muted-foreground sm:inline-flex">
                   Rolling 6 months
@@ -869,39 +792,7 @@ export function AdminDashboard() {
             />
 
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={financeSeries} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="dashboardRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.22} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="dashboardBurn" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#dc2626" stopOpacity={0.18} />
-                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#64748b" axisLine={false} tickLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    stroke="#64748b"
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(value: number) => formatShortCurrency(value)}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: 16,
-                      border: '1px solid rgba(148,163,184,0.18)',
-                      boxShadow: '0 24px 48px -28px rgba(15,23,42,0.24)',
-                    }}
-                  />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2563eb" fill="url(#dashboardRevenue)" strokeWidth={2.4} />
-                  <Area type="monotone" dataKey="burn" name="Burn" stroke="#dc2626" fill="url(#dashboardBurn)" strokeWidth={2.2} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <DeferredChart><DashboardRevenueChart financeSeries={financeSeries} /></DeferredChart>
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -923,7 +814,7 @@ export function AdminDashboard() {
 
         <div className="space-y-6">
           <Card className="content-auto">
-            <CardContent>
+            <CardContent className="pt-5 sm:pt-5">
               <SectionHeading
                 title="Risk board"
                 description="Signals that need attention before they affect revenue or delivery."
@@ -956,10 +847,10 @@ export function AdminDashboard() {
           </Card>
 
           <Card className="content-auto">
-            <CardContent>
+            <CardContent className="pt-5 sm:pt-5">
               <SectionHeading
                 title="Ops tools"
-                description="Low-frequency controls for keeping workspace data clean."
+                description="Sync team profile photos."
               />
 
               <Button
@@ -981,7 +872,7 @@ export function AdminDashboard() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="content-auto">
-          <CardContent>
+          <CardContent className="pt-5 sm:pt-5">
             <SectionHeading
               title="Collections watchlist"
               description="Invoices most likely to delay cashflow if nobody follows up."
@@ -1016,7 +907,7 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="content-auto">
-          <CardContent>
+          <CardContent className="pt-5 sm:pt-5">
             <SectionHeading
               title="Client concentration"
               description="How much paid revenue is currently tied to the largest accounts."
@@ -1054,7 +945,7 @@ export function AdminDashboard() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <Card className="content-auto">
-          <CardContent>
+          <CardContent className="pt-5 sm:pt-5">
             <SectionHeading
               title="Workforce and operating health"
               description="A compact readout of client load, utilization, billable mix, and live operations."
@@ -1088,7 +979,7 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="content-auto">
-          <CardContent>
+          <CardContent className="pt-5 sm:pt-5">
             <SectionHeading
               title="Today at a glance"
               description="A compact board for exceptions and activity."

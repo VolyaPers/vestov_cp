@@ -512,8 +512,8 @@ export function ClientsPage() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Client Management"
-        title="Accounts, services and financial context in one view."
-        description="The client area now follows the same advanced visual system as the rest of the product, with stronger hierarchy across CRM, service allocation and billing signal."
+        title="Clients"
+        description="Manage client accounts, projects and service assignments."
         theme="amber"
         actions={
           <Button onClick={() => setIsClientDialogOpen(true)}>
@@ -542,21 +542,23 @@ export function ClientsPage() {
 
       {/* Filters & Search */}
       <div className="stripe-card">
-        <div className="p-4 flex items-center gap-3 border-b border-[var(--stripe-border)]">
-          <div className="flex items-center gap-2 stripe-input flex-1 max-w-sm">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--stripe-border)] p-4">
+          <div className="stripe-input flex w-full min-w-0 items-center gap-2 sm:max-w-sm sm:flex-1">
             <Search className="h-4 w-4 stripe-text-muted flex-shrink-0" />
             <input
               placeholder="Search by name, industry, or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 bg-transparent outline-none border-none text-sm"
+              aria-label="Search clients"
+              className="min-w-0 flex-1 border-none bg-transparent text-sm outline-none"
             />
           </div>
-          <div className="flex items-center gap-1 bg-gray-50 rounded-lg p-1">
+          <div className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-gray-50 p-1">
             {(['all', 'active', 'inactive', 'prospect'] as const).map(status => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
+                aria-pressed={statusFilter === status}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   statusFilter === status
                     ? 'bg-white shadow-sm text-gray-900'
@@ -572,7 +574,7 @@ export function ClientsPage() {
               </button>
             ))}
           </div>
-          <div className="text-xs stripe-text-muted ml-auto">
+          <div className="stripe-text-muted whitespace-nowrap text-xs sm:ml-auto">
             {filteredAndSortedClients.length} of {clients.length} clients
           </div>
         </div>
@@ -1180,7 +1182,7 @@ function ClientRow({
 
         {/* Actions */}
         <td className="px-6 py-4 text-right">
-          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center justify-end gap-1">
             <button
               onClick={onAddService}
               className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"

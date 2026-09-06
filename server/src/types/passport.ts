@@ -7,6 +7,8 @@ export interface UserWithPassword {
   role: string
   position?: string | null
   avatarUrl?: string | null
+  createdAt?: Date | null
+  lastLoginAt?: Date | null
   isActive?: boolean | null
   teamMemberId?: number | null
   clientId?: number | null

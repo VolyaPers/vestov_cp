@@ -11,7 +11,7 @@ const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
       <div
         ref={ref}
         className={cn(
-          "inline-flex items-center rounded-full border px-3 py-1 text-[0.68rem] font-extrabold uppercase tracking-[0.18em] transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
           {
             "border-primary/10 bg-primary/10 text-primary hover:bg-primary/15": variant === 'default',
             "border-white/70 bg-secondary/85 text-secondary-foreground hover:bg-secondary/95": variant === 'secondary',

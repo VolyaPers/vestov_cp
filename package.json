@@ -8,7 +8,7 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/src/index.ts",
     "build": "npm run build:client && npm run build:server",
-    "build:client": "tsc && vite build",
+    "build:client": "tsc && NODE_ENV=production vite build",
     "build:server": "npm --prefix server run build",
     "preview": "vite preview",
     "start": "node server/dist/index.js",

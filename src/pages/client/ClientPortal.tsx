@@ -333,7 +333,7 @@ export function ClientPortal() {
           )}
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <MetricTile label="Active Services" value={client.services.filter(service => isCurrentAssignment(service)).length} hint="Current delivery lanes" icon={<Building className="h-5 w-5" />} tone="emerald" />
+          <MetricTile label="Active Services" value={client.services.filter(service => isCurrentAssignment(service)).length} hint="Current projects" icon={<Building className="h-5 w-5" />} tone="emerald" />
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
           {isDocumentsLoading ? (

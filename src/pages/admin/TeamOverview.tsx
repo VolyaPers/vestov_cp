@@ -529,7 +529,7 @@ export function TeamOverview() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Admin / Team"
-        title="Workforce overview"
+        title="Team"
         description="Track who is staffed, who is available, and how the delivery bench is changing across the team."
         theme="teal"
         meta={

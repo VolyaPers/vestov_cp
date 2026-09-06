@@ -86,6 +86,7 @@ Thumbs.db
 coverage/
 .nyc_output/
 .cypress/
+.playwright-cli/
 
 # Misc
 *.pem

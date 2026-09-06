@@ -26,7 +26,7 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
 
   const loadUsers = async () => {
     try {
-      const response = await api.getUsers({ limit: 1000 })
+      const response = await api.getUsers({ limit: 500 })
       
       // Handle different response formats
       let allUsers: User[] = []
@@ -143,21 +143,14 @@ export function UserImpersonation({ currentUser, onImpersonate, onStopImpersonat
   }
 
   return (
-    <div className="rounded-[1.1rem] border border-white/80 bg-white/75 p-4 shadow-[0_16px_28px_-24px_rgba(15,23,42,0.45)]">
+    <div className="py-1">
       {!showDropdown ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.95rem] bg-primary/10 text-primary">
-              <ShieldCheck className="h-4.5 w-4.5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">Admin impersonation</div>
-            </div>
-          </div>
+        <div>
           <Button
             size="sm"
             onClick={() => setShowDropdown(true)}
-            className="w-full justify-center"
+            variant="ghost"
+            className="w-full justify-start text-muted-foreground"
             title="Impersonate another user"
           >
             <Users className="mr-2 h-4 w-4" />

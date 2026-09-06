@@ -1,30 +1,20 @@
+import { preloadRoute } from '@/lib/preloadRoute'
+import { lazy, Suspense } from 'react'
 import { Link, useLocation } from 'wouter'
 import {
-  BriefcaseBusiness,
-  Building2,
   LogOut,
   ExternalLink,
-  ShieldCheck,
-  ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
-import { UserImpersonation } from '@/components/UserImpersonation'
-import { ShiftWidget } from '@/components/ShiftWidget'
-import vestovLogo from '@/assets/vestov-logo.png'
+const UserImpersonation = lazy(() => import('@/components/UserImpersonation').then(module => ({default: module.UserImpersonation})))
+const ShiftWidget = lazy(() => import('@/components/ShiftWidget').then(module => ({default: module.ShiftWidget})))
+import vestovLogo from '@/assets/vestov-logo.svg'
 import { getNavigation } from '@/lib/navigation'
 import type { NavigationIndicators } from '@/lib/api'
 import type { User as UserType, Client } from '@/types/common'
-
-// Role subtitles
-const roleSubtitles: Record<string, string> = {
-  admin: 'Admin Dashboard',
-  team_member: 'Employee Portal',
-  client: 'Client Portal',
-}
 
 // Props interface
 export interface SidebarProps {
@@ -35,25 +25,8 @@ export interface SidebarProps {
   navigationIndicators?: Partial<NavigationIndicators>
 }
 
-const roleThemes = {
-  admin: {
-    icon: ShieldCheck,
-    iconSurface: 'border-sky-200/80 bg-sky-50/88 text-sky-700',
-  },
-  team_member: {
-    icon: BriefcaseBusiness,
-    iconSurface: 'border-emerald-200/80 bg-emerald-50/88 text-emerald-700',
-  },
-  client: {
-    icon: Building2,
-    iconSurface: 'border-amber-200/80 bg-amber-50/88 text-amber-700',
-  },
-} as const
-
 export function Sidebar({ role, user, onLogout, currentClient, navigationIndicators }: SidebarProps) {
   const [location] = useLocation()
-  const theme = roleThemes[role]
-  const ThemeIcon = theme.icon
 
   // Get navigation based on role
   const navigation = getNavigation(role, currentClient)
@@ -73,26 +46,19 @@ export function Sidebar({ role, user, onLogout, currentClient, navigationIndicat
   const showImpersonation = role === 'admin' || user?.isImpersonating
 
   return (
-    <div className="relative flex min-h-full flex-col overflow-visible border-r border-slate-200 bg-white lg:h-full lg:min-h-0 lg:overflow-hidden">
-      <div className="border-b border-slate-200 px-3 pb-3 pt-3 lg:px-4 lg:pb-4 lg:pt-4">
-        <div className="flex items-center gap-2.5">
+    <div className="relative flex min-h-full w-full flex-col border-r border-border bg-[#f8f9fa] lg:h-full lg:min-h-0 lg:overflow-hidden">
+      <div className="flex h-16 shrink-0 items-center px-5">
+        <div className="flex w-full items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-[0.55rem] border border-slate-200 bg-white">
-            <img src={vestovLogo} alt="Vestov Logo" className="h-6 w-auto" />
+            <img src={vestovLogo} alt="" className="h-6 w-auto" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold text-foreground">Vestov</h1>
+            <p className="truncate text-sm font-semibold text-foreground">Vestov <span className="font-normal text-muted-foreground">Hub</span></p>
           </div>
-          <div className="ml-auto flex items-center gap-1 text-slate-400">
-            <div className={cn('flex h-6 w-6 items-center justify-center rounded-[0.55rem] border border-slate-200 bg-slate-50', theme.iconSurface)}>
-              <ThemeIcon className="h-3 w-3" />
-            </div>
-            <ChevronDown className="h-3.5 w-3.5" />
-          </div>
+
         </div>
 
-        <div className="mt-3 lg:hidden">
-          <GlobalSearchLauncher className="sidebar-search-launcher w-full border-slate-200 bg-slate-50" />
-        </div>
+
       </div>
 
       <div className="px-2 py-3 lg:flex-1 lg:overflow-y-auto lg:px-2.5 lg:py-4">
@@ -131,9 +97,9 @@ export function Sidebar({ role, user, onLogout, currentClient, navigationIndicat
                     )
                   }
 
-                  const isActive = location === item.href || location.startsWith(item.href + '/')
+                  const isActive = (location === item.href || location.startsWith(item.href + '/')) && !navigation.some(other => other.href !== item.href && other.href.startsWith(item.href + '/') && (location === other.href || location.startsWith(other.href + '/')))
                   return (
-                    <Link key={item.name} href={item.href} className="stripe-nav-link block no-underline hover:no-underline">
+                    <Link key={item.name} href={item.href} onPointerEnter={(event) => { if (event.pointerType === 'mouse') preloadRoute(item.href) }} onFocus={() => preloadRoute(item.href)} aria-current={isActive ? 'page' : undefined} className="stripe-nav-link block no-underline hover:no-underline">
                       <div className={cn(
                         'stripe-nav-item',
                         isActive && 'stripe-nav-item-active'
@@ -160,15 +126,15 @@ export function Sidebar({ role, user, onLogout, currentClient, navigationIndicat
         </div>
       </div>
 
-      <div className="space-y-3 border-t border-slate-200 bg-white p-3">
+      <div className="space-y-3 border-t border-border p-3">
         {role === 'team_member' && (
           <div className="rounded-[0.8rem] border border-slate-200 bg-white p-3">
-            <ShiftWidget />
+            <Suspense fallback={<div className="h-20" />}><ShiftWidget /></Suspense>
           </div>
         )}
 
         {showImpersonation && (
-          <UserImpersonation
+          <Suspense fallback={<div className="h-8" />}><UserImpersonation
             currentUser={user}
             onImpersonate={async () => {
               // API handles impersonation and reloads page
@@ -176,11 +142,11 @@ export function Sidebar({ role, user, onLogout, currentClient, navigationIndicat
             onStopImpersonation={async () => {
               // API handles stop impersonation and reloads page
             }}
-          />
+          /></Suspense>
         )}
 
         {user && (
-          <div className="rounded-[0.8rem] border border-slate-200 bg-slate-50 p-3">
+          <div className="px-1 py-2">
             <div className="flex items-start gap-3">
               {role === 'admin' ? (
                 <div className="flex h-8 w-8 items-center justify-center rounded-[0.6rem] bg-slate-900 text-xs font-bold text-white">
@@ -216,22 +182,13 @@ export function Sidebar({ role, user, onLogout, currentClient, navigationIndicat
                     size="icon"
                     onClick={onLogout}
                     className="h-8 w-8 rounded-[0.6rem] border-border bg-white"
-                    title="Sign out"
+                    title="Sign out" aria-label="Sign out"
                   >
                     <LogOut className="h-3.5 w-3.5" />
                   </Button>
                 </div>
 
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Badge variant="outline" className="border-slate-200 bg-white text-muted-foreground">
-                    {roleSubtitles[role]}
-                  </Badge>
-                  {user.isImpersonating && (
-                    <Badge variant="destructive" className="bg-destructive/10 text-destructive">
-                      Impersonation
-                    </Badge>
-                  )}
-                </div>
+                {user.isImpersonating && <Badge variant="destructive" className="mt-2">Impersonation</Badge>}
               </div>
             </div>
           </div>

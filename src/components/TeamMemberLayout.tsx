@@ -7,9 +7,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
-import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
+import { WorkspaceHeader } from '@/components/WorkspaceHeader'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
-import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
+const MobileSidebarSheet = lazy(() => import('@/components/MobileSidebarSheet').then(module => ({ default: module.MobileSidebarSheet })))
 import { WorkspaceRouteSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { ShiftReminderModal } from '@/components/ShiftReminderModal'
@@ -67,11 +67,6 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const signOut = useAppSignOut()
   const [location] = useLocation()
-  const todayLabel = new Date().toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
   const mobileTitle = getActiveNavigationLabel('team_member', location) ?? 'Workspace'
 
   const handleLogout = async () => {
@@ -79,9 +74,10 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
   }
 
   return (
-    <div className="app-shell min-h-screen">
+    <div className="app-shell min-h-[100dvh]">
       <ShiftReminderModal />
 
+      {sidebarOpen && <Suspense fallback={null}>
       <MobileSidebarSheet
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
@@ -90,65 +86,18 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
       >
         <Sidebar role="team_member" user={user} onLogout={handleLogout} />
       </MobileSidebarSheet>
+      </Suspense>}
 
-      <div className="fixed inset-y-4 left-4 z-30 hidden w-[288px] lg:flex">
+      <div className="workspace-sidebar fixed inset-y-0 left-0 z-30 hidden w-[232px] lg:flex">
         <Sidebar role="team_member" user={user} onLogout={handleLogout} />
       </div>
 
-      <div className="flex min-h-screen flex-col lg:pl-[320px]">
-        <header className="sticky top-0 z-20">
-          <div className="mobile-top-chrome lg:hidden">
-            <div className="mobile-top-chrome-main">
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.24em] text-primary/80">
-                  Employee Workspace
-                </p>
-                <h1 className="mt-1 truncate font-display text-[1.35rem] font-semibold text-foreground">
-                  {mobileTitle}
-                </h1>
-              </div>
-              <div className="mobile-top-chip">{todayLabel}</div>
-            </div>
+      <div className="flex min-h-[100dvh] flex-col lg:pl-[232px]">
+        <WorkspaceHeader workspace="My workspace" title={mobileTitle} onOpenMenu={() => setSidebarOpen(true)} />
 
-            <div className="px-4 pb-4">
-              <GlobalSearchLauncher className="w-full" />
-            </div>
-          </div>
-
-          <div className="hidden workspace-topbar lg:block">
-            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.7rem] font-extrabold uppercase tracking-[0.26em] text-primary/80">
-                  Employee Workspace
-                </p>
-                <h1 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">
-                  Personal operations and growth dashboard
-                </h1>
-                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-                  Schedule, reimbursements and roadmap now sit inside the same upgraded shadcn-driven shell.
-                </p>
-              </div>
-
-              <div className="workspace-date-chip hidden rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground md:block">
-                {todayLabel}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="stripe-badge-success">
-                <div className="h-2 w-2 rounded-full animate-pulse bg-[var(--stripe-success)]"></div>
-                <span>Workspace synced</span>
-              </div>
-              <GlobalSearchLauncher className="w-full max-w-[280px]" />
-            </div>
-          </div>
-          </div>
-        </header>
-
-        <main className="flex-1">
-          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-            <div className="mx-auto max-w-[1500px]">
+        <main id="workspace-content" className="min-w-0 flex-1">
+          <div className="mobile-page-pad mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            <div className="mx-auto max-w-[1400px]">
               <Switch>
                 <Route path="/employee/salary" component={EmployeeSalaryRoute} />
                 <Route path="/employee/dashboard" component={EmployeeDashboardRoute} />
@@ -167,7 +116,7 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
                           </div>
                           <h2 className="font-display text-3xl font-semibold text-foreground">Page not found</h2>
                           <p className="mx-auto mt-3 max-w-sm text-sm text-muted-foreground">
-                            This employee route is not available in the updated workspace shell.
+                            This page could not be found.
                           </p>
                           <Link href="/employee/dashboard">
                             <Button className="mt-6">Go to dashboard</Button>

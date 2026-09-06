@@ -1,12 +1,13 @@
+import { useQuery } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 import { useLocation, Route, Switch, Redirect } from 'wouter'
 import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
+import { WorkspaceHeader } from '@/components/WorkspaceHeader'
 import { MobileBottomNav } from '@/components/MobileBottomNav'
-import { MobileSidebarSheet } from '@/components/MobileSidebarSheet'
+const MobileSidebarSheet = lazy(() => import('@/components/MobileSidebarSheet').then(module => ({ default: module.MobileSidebarSheet })))
 import { WorkspaceRouteSkeleton, WorkspaceShellSkeleton } from '@/components/page-primitives'
 import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
@@ -76,61 +77,23 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   const [location, setLocation] = useLocation()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const signOut = useAppSignOut()
-  const [assignedClients, setAssignedClients] = useState<Client[]>([])
-  const [currentClient, setCurrentClient] = useState<Client | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [retry, setRetry] = useState(0)
-  const todayLabel = new Date().toLocaleDateString('en-US', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
+  const { data: assignedClients = [], isLoading, error: loadError, refetch } = useQuery<Client[]>({
+    queryKey: ['clientWorkspaces', user.id],
+    queryFn: () => api.getClients(),
   })
+  const [currentClient, setCurrentClient] = useState<Client | null>(null)
   const mobileTitle = getActiveNavigationLabel('client', location, currentClient) ?? 'Workspace'
 
   useEffect(() => {
-    let isMounted = true
-
-    const loadAssignedClients = async () => {
-      try {
-        setIsLoading(true)
-        setLoadError('')
-        const clients = await api.getClients()
-        if (!isMounted) return
-
-        setAssignedClients(clients)
-
-        // If user has assigned clients, set the first one as current
-        if (clients && clients.length > 0) {
-          const routeId = Number(window.location.pathname.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
-          let savedId = 0
-          try { savedId = Number(localStorage.getItem(`client-workspace:${user.id}`)) } catch {}
-          const selected = clients.find(client => client.id === routeId) || clients.find(client => client.id === savedId) || clients[0]
-          setCurrentClient(selected)
-
-          // Redirect to the client portal if on generic paths
-          const currentPath = window.location.pathname
-          if (currentPath === '/client' || currentPath === '/client/' || currentPath === '/client/portal') {
-            setLocation(`/client/portal/${selected.id}`)
-          }
-        }
-      } catch (error) {
-        setLoadError('Unable to load your client workspaces. Please try again.')
-        // Even if there's an error, stop loading to show the error state
-      } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    loadAssignedClients()
-
-    return () => {
-      isMounted = false
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id, retry])
+    if (!assignedClients.length) return
+    const routeId = Number(window.location.pathname.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
+    let savedId = 0
+    try { savedId = Number(localStorage.getItem(`client-workspace:${user.id}`)) } catch {}
+    const selected = assignedClients.find(client => client.id === routeId)
+      || assignedClients.find(client => client.id === savedId) || assignedClients[0]
+    setCurrentClient(selected)
+    if (['/client', '/client/', '/client/portal'].includes(window.location.pathname)) setLocation(`/client/portal/${selected.id}`)
+  }, [assignedClients, user.id, setLocation])
 
   useEffect(() => {
     const id = Number(location.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
@@ -152,7 +115,8 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
   return (
     <ClientWorkspaceContext.Provider value={{ client: currentClient }}>
-    <div className="app-shell min-h-screen">
+    <div className="app-shell min-h-[100dvh]">
+      {isMobileMenuOpen && <Suspense fallback={null}>
       <MobileSidebarSheet
         open={isMobileMenuOpen}
         onOpenChange={setIsMobileMenuOpen}
@@ -166,8 +130,9 @@ export function ClientLayout({ user }: ClientLayoutProps) {
           currentClient={currentClient}
         />
       </MobileSidebarSheet>
+      </Suspense>}
 
-      <div className="fixed inset-y-4 left-4 z-30 hidden w-[288px] lg:flex">
+      <div className="workspace-sidebar fixed inset-y-0 left-0 z-30 hidden w-[232px] lg:flex">
         <Sidebar
           role="client"
           user={user}
@@ -176,65 +141,11 @@ export function ClientLayout({ user }: ClientLayoutProps) {
         />
       </div>
 
-      <div className="flex min-h-screen flex-col lg:pl-[320px]">
-        <header className="sticky top-0 z-20">
-          <div className="mobile-top-chrome lg:hidden">
-            <div className="mobile-top-chrome-main">
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.65rem] font-extrabold uppercase tracking-[0.24em] text-primary/80">
-                  {currentClient?.name || 'Client Workspace'}
-                </p>
-                <h1 className="mt-1 truncate font-display text-[1.35rem] font-semibold text-foreground">
-                  {mobileTitle}
-                </h1>
-              </div>
-              <div className="mobile-top-chip">{todayLabel}</div>
-            </div>
+      <div className="flex min-h-[100dvh] flex-col lg:pl-[232px]">
+        <WorkspaceHeader workspace={currentClient?.name || 'Client workspace'} title={mobileTitle} onOpenMenu={() => setIsMobileMenuOpen(true)} />
 
-            <div className="px-4 pb-4">
-              <GlobalSearchLauncher className="w-full" />
-            </div>
-          </div>
-
-          <div className="hidden workspace-topbar lg:block">
-            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.7rem] font-extrabold uppercase tracking-[0.26em] text-primary/80">
-                  Client Workspace
-                </p>
-                <h1 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">
-                  {currentClient?.name || 'Client portal'}
-                </h1>
-                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-                  Cleaner access to delivery visibility, documents and invoices across your assigned accounts.
-                </p>
-              </div>
-
-              <div className="workspace-date-chip hidden rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground md:block">
-                {todayLabel}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="stripe-badge-success">
-                <div className="h-2 w-2 rounded-full animate-pulse bg-[var(--stripe-success)]"></div>
-                <span>{assignedClients.length || 0} active account{assignedClients.length === 1 ? '' : 's'}</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <GlobalSearchLauncher className="w-full max-w-[280px]" />
-                <Button variant="outline" size="icon" onClick={handleLogout} className="shrink-0" aria-label="Sign out" title="Sign out">
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          </div>
-        </header>
-
-        <main className="flex-1">
-          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+        <main id="workspace-content" className="min-w-0 flex-1">
+          <div className="mobile-page-pad mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {!isLoading && !loadError && assignedClients.length > 1 && (
               <label className="mb-5 flex flex-wrap items-center gap-3 text-sm font-medium">
                 Client workspace
@@ -244,8 +155,8 @@ export function ClientLayout({ user }: ClientLayoutProps) {
               </label>
             )}
             {isLoading ? (
-              <WorkspaceShellSkeleton roleLabel="Client Workspace" title="Loading client workspace" />
-            ) : loadError ? (<ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />) : assignedClients.length === 0 ? (
+              <WorkspaceRouteSkeleton />
+            ) : loadError ? (<ClientLoadError message="Unable to load your client workspaces." onRetry={() => refetch()} />) : assignedClients.length === 0 ? (
               <div className="flex min-h-[60vh] items-center justify-center">
                 <Card className="max-w-lg text-center">
                   <CardContent className="p-10 sm:p-12">

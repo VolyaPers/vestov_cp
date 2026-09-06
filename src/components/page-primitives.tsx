@@ -3,22 +3,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-const heroThemes = {
-  ocean: 'border-blue-200/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.98),rgba(255,255,255,0.98))]',
-  teal: 'border-emerald-200/70 bg-[linear-gradient(180deg,rgba(246,252,250,0.98),rgba(255,255,255,0.98))]',
-  violet: 'border-indigo-200/70 bg-[linear-gradient(180deg,rgba(248,248,255,0.98),rgba(255,255,255,0.98))]',
-  amber: 'border-amber-200/70 bg-[linear-gradient(180deg,rgba(255,251,245,0.98),rgba(255,255,255,0.98))]',
-} as const
-
-const metricThemes = {
-  primary: 'border border-blue-200/80 bg-blue-50 text-blue-700',
-  emerald: 'border border-emerald-200/80 bg-emerald-50 text-emerald-700',
-  amber: 'border border-amber-200/80 bg-amber-50 text-amber-700',
-  rose: 'border border-rose-200/80 bg-rose-50 text-rose-700',
-  violet: 'border border-violet-200/80 bg-violet-50 text-violet-700',
-  slate: 'border border-slate-200/80 bg-slate-100 text-slate-700',
-} as const
-
 interface PageHeroProps {
   eyebrow: string
   title: string
@@ -27,51 +11,30 @@ interface PageHeroProps {
   actions?: ReactNode
   aside?: ReactNode
   children?: ReactNode
-  theme?: keyof typeof heroThemes
+  theme?: 'ocean' | 'teal' | 'violet' | 'amber'
 }
 
 export function PageHero({
-  eyebrow,
   title,
   description,
   meta,
   actions,
   aside,
   children,
-  theme = 'ocean',
 }: PageHeroProps) {
   return (
-    <Card className={cn('overflow-hidden border bg-white text-foreground shadow-none', heroThemes[theme])}>
-      <CardContent className="px-5 pb-5 pt-5 sm:px-7 sm:pb-7 sm:pt-6 lg:px-8 lg:pb-8 lg:pt-7">
-        <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-8">
-          <div className="max-w-3xl">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              {eyebrow}
-            </p>
-            <h1 className="mt-3 text-[1.9rem] font-semibold leading-tight tracking-[-0.03em] text-foreground sm:text-[2.35rem]">
-              {title}
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-[0.95rem]">
-              {description}
-            </p>
-            {meta && (
-              <div className="mt-4 flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground sm:mt-5 sm:gap-3 sm:text-sm">
-                {meta}
-              </div>
-            )}
-          </div>
-
-          {(actions || aside) && (
-            <div className="flex w-full flex-col gap-3 xl:max-w-md xl:items-end xl:self-start">
-              {actions && <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap xl:justify-end">{actions}</div>}
-              {aside}
-            </div>
-          )}
+    <section className="page-heading">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 max-w-2xl">
+          <h1 className="text-2xl font-semibold leading-tight tracking-tight sm:text-[28px]">{title}</h1>
+          {description && <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>}
+          {meta && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
         </div>
-
-        {children && <div className="mt-5 border-t border-border/70 pt-5 sm:mt-6 sm:pt-6">{children}</div>}
-      </CardContent>
-    </Card>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      {aside && <div className="page-heading-context mt-5 border-t pt-4">{aside}</div>}
+      {children && <div className="mt-5 border-t pt-4">{children}</div>}
+    </section>
   )
 }
 
@@ -81,7 +44,7 @@ interface MetricTileProps {
   hint?: ReactNode
   trend?: ReactNode
   icon?: ReactNode
-  tone?: keyof typeof metricThemes
+  tone?: 'primary' | 'emerald' | 'amber' | 'rose' | 'violet' | 'slate'
   className?: string
 }
 
@@ -90,31 +53,15 @@ export function MetricTile({
   value,
   hint,
   trend,
-  icon,
-  tone = 'primary',
   className,
 }: MetricTileProps) {
   return (
-    <Card className={cn('h-full border border-border/80 shadow-none', className)}>
-      <CardContent className="flex h-full flex-col gap-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5 sm:pt-5">
-        <div className="flex min-h-[2.75rem] items-start justify-between gap-3 sm:items-center">
-          <div className="min-w-0">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] leading-4 text-muted-foreground">{label}</p>
-          </div>
-          {icon && (
-            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', metricThemes[tone])}>
-              {icon}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-1 flex-col justify-end">
-          <p className="text-[1.75rem] font-semibold leading-none tracking-[-0.03em] text-foreground sm:text-[1.95rem]">{value}</p>
-          {hint && <p className="mt-2 text-sm text-muted-foreground">{hint}</p>}
-          {trend && <div className="mt-3">{trend}</div>}
-        </div>
-      </CardContent>
-    </Card>
+    <div className={cn('metric-tile min-w-0 border-b py-5', className)}>
+      <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
+      <p className="mt-3 text-[28px] font-semibold leading-none tracking-tight text-foreground tabular-nums">{value}</p>
+      {hint && <p className="mt-2 text-xs leading-5 text-muted-foreground">{hint}</p>}
+      {trend && <div className="mt-3 text-xs">{trend}</div>}
+    </div>
   )
 }
 
@@ -125,17 +72,12 @@ interface SectionHeadingProps {
   action?: ReactNode
 }
 
-export function SectionHeading({ title, description, icon, action }: SectionHeadingProps) {
+export function SectionHeading({ title, description, action }: SectionHeadingProps) {
   return (
     <div className="mb-4 flex items-start justify-between gap-4 sm:mb-5">
       <div className="flex items-start gap-3">
-        {icon && (
-          <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border border-border/80 bg-slate-50 text-primary">
-            {icon}
-          </div>
-        )}
         <div>
-          <h3 className="text-lg font-semibold text-foreground sm:text-[1.15rem]">{title}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
@@ -153,13 +95,13 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/80 bg-slate-50/70 p-6 text-center sm:p-8">
+    <div className="rounded-lg bg-muted/40 px-6 py-10 text-center">
       {icon && (
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-border/80 bg-white text-muted-foreground">
           {icon}
         </div>
       )}
-      <p className="text-lg font-semibold text-foreground sm:text-xl">{title}</p>
+      <p className="text-base font-medium text-foreground">{title}</p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
@@ -175,67 +117,11 @@ function SkeletonLine({ className }: SkeletonLineProps) {
 }
 
 export function PageHeroSkeleton() {
-  return (
-    <Card className="overflow-hidden border bg-white text-foreground shadow-none border-blue-200/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.98),rgba(255,255,255,0.98))]">
-      <CardContent className="px-5 pb-5 pt-5 sm:px-7 sm:pb-7 sm:pt-6 lg:px-8 lg:pb-8 lg:pt-7">
-        <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-8">
-          <div className="max-w-3xl">
-            <SkeletonLine className="h-3 w-28 rounded-full" />
-            <SkeletonLine className="mt-3 h-10 w-3/5 rounded-xl sm:h-12" />
-            <div className="mt-3 space-y-2">
-              <SkeletonLine className="h-4 w-full max-w-2xl" />
-              <SkeletonLine className="h-4 w-5/6 max-w-xl" />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2.5 sm:mt-5 sm:gap-3">
-              <Skeleton className="h-5 w-24 rounded-full" />
-              <Skeleton className="h-5 w-28 rounded-full" />
-              <Skeleton className="h-5 w-20 rounded-full" />
-            </div>
-          </div>
-
-          <div className="flex w-full flex-col gap-3 xl:max-w-md xl:items-end xl:self-start">
-            <div className="grid w-full gap-2 sm:grid-cols-2 sm:gap-3 xl:justify-end">
-              <Skeleton className="h-11 w-full rounded-[1rem]" />
-              <Skeleton className="h-11 w-full rounded-[1rem]" />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-              <div className="rounded-[1.3rem] border border-border/80 bg-white/65 p-4">
-                <SkeletonLine className="h-3 w-24 rounded-full" />
-                <SkeletonLine className="mt-3 h-6 w-20 rounded-lg" />
-                <SkeletonLine className="mt-2 h-4 w-3/4 rounded-lg" />
-              </div>
-              <div className="rounded-[1.3rem] border border-border/80 bg-white/65 p-4">
-                <SkeletonLine className="h-3 w-24 rounded-full" />
-                <SkeletonLine className="mt-3 h-6 w-24 rounded-lg" />
-                <SkeletonLine className="mt-2 h-4 w-2/3 rounded-lg" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
+  return <div className="space-y-3 py-1" aria-hidden="true"><Skeleton className="h-8 w-56 max-w-full" /><Skeleton className="h-4 w-96 max-w-full" /></div>
 }
 
 export function MetricTileSkeleton() {
-  return (
-    <Card className="h-full border border-border/80 shadow-none">
-      <CardContent className="flex h-full flex-col gap-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5 sm:pt-5">
-        <div className="flex min-h-[2.75rem] items-start justify-between gap-3 sm:items-center">
-          <div className="min-w-0 flex-1">
-            <SkeletonLine className="h-3.5 w-24 rounded-full" />
-          </div>
-          <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
-        </div>
-
-        <div className="flex flex-1 flex-col justify-end">
-          <SkeletonLine className="h-8 w-28 rounded-xl" />
-          <SkeletonLine className="mt-2 h-4 w-32 rounded-full" />
-          <Skeleton className="mt-3 h-6 w-20 rounded-full" />
-        </div>
-      </CardContent>
-    </Card>
-  )
+  return <div className="space-y-3 border-b py-5" aria-hidden="true"><Skeleton className="h-4 w-28" /><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-36" /></div>
 }
 
 export function CardSkeleton({
@@ -267,101 +153,17 @@ export function CardSkeleton({
   )
 }
 
-export function WorkspaceShellSkeleton({
-  roleLabel,
-  title,
-  sidebarLines = 5,
-}: {
-  roleLabel: string
-  title: string
-  sidebarLines?: number
-}) {
+export function WorkspaceShellSkeleton({ roleLabel, title }: { roleLabel: string; title: string; sidebarLines?: number }) {
   return (
-    <div className="app-shell min-h-screen" aria-label={`${roleLabel} loading skeleton`}>
-      <div className="fixed inset-y-0 left-0 z-30 hidden w-[220px] xl:w-[232px] lg:block">
-        <div className="flex h-full flex-col border-r border-slate-200 bg-white/90 px-4 py-5">
-          <Skeleton className="h-8 w-24 rounded-full" />
-          <Skeleton className="mt-5 h-10 w-full rounded-[1rem]" />
-          <div className="mt-6 space-y-2">
-            {Array.from({ length: sidebarLines }).map((_, index) => (
-              <Skeleton
-                key={index}
-                className={cn(
-                  'h-10 w-full rounded-[0.95rem]',
-                  index === 0 ? 'w-5/6' : index === 1 ? 'w-4/5' : ''
-                )}
-              />
-            ))}
-          </div>
-          <div className="mt-auto space-y-3 border-t border-slate-200 pt-4">
-            <Skeleton className="h-10 w-full rounded-[0.95rem]" />
-            <Skeleton className="h-10 w-full rounded-[0.95rem]" />
-          </div>
-        </div>
+    <div className="min-h-[100dvh] bg-white" role="status" aria-label={title}>
+      <span className="sr-only">{roleLabel}: {title}</span>
+      <div className="fixed inset-y-0 left-0 hidden w-[232px] border-r bg-[#f8f9fa] p-5 lg:block" aria-hidden="true">
+        <Skeleton className="h-7 w-28" />
+        <div className="mt-10 space-y-4">{Array.from({length: 6}, (_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
       </div>
-
-      <div className="flex min-h-screen flex-col lg:pl-[220px] xl:pl-[232px]">
-        <header className="sticky top-0 z-20">
-          <div className="mobile-top-chrome lg:hidden">
-            <div className="mobile-top-chrome-main">
-              <div className="min-w-0 flex-1 space-y-2">
-                <Skeleton className="h-3 w-28 rounded-full" />
-                <Skeleton className="h-6 w-44 rounded-full" />
-              </div>
-              <Skeleton className="h-8 w-24 rounded-full" />
-            </div>
-            <div className="px-4 pb-4">
-              <Skeleton className="h-11 w-full rounded-full" />
-            </div>
-          </div>
-
-          <div className="hidden workspace-topbar lg:block">
-            <div className="mx-auto flex w-full max-w-[1600px] items-center gap-4 px-6 py-3 xl:px-8">
-              <Skeleton className="h-11 max-w-[340px] flex-1 rounded-full" />
-              <div className="ml-auto flex items-center gap-2">
-                <Skeleton className="h-8 w-24 rounded-full" />
-                <Skeleton className="h-8 w-8 rounded-full" />
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1">
-          <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-5 xl:px-10">
-            <div className="mx-auto max-w-[1500px] space-y-5 sm:space-y-6">
-              <Card className="overflow-hidden border bg-white text-foreground shadow-none border-blue-200/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.98),rgba(255,255,255,0.98))]">
-                <CardContent className="px-5 pb-5 pt-5 sm:px-7 sm:pb-7 sm:pt-6 lg:px-8 lg:pb-8 lg:pt-7">
-                  <div className="space-y-3">
-                    <Skeleton className="h-3 w-24 rounded-full" />
-                    <Skeleton className="h-9 w-2/5 rounded-xl" />
-                    <Skeleton className="h-4 w-3/5 rounded-full" />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2.5">
-                    <Skeleton className="h-5 w-24 rounded-full" />
-                    <Skeleton className="h-5 w-28 rounded-full" />
-                    <Skeleton className="h-5 w-20 rounded-full" />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <MetricTileSkeleton key={index} />
-                ))}
-              </div>
-
-              <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                <CardSkeleton titleWidth="w-40" lines={4} tall />
-                <CardSkeleton titleWidth="w-44" lines={4} tall />
-              </div>
-
-              <div className="grid gap-6 xl:grid-cols-2">
-                <CardSkeleton titleWidth="w-36" lines={5} tall />
-                <CardSkeleton titleWidth="w-32" lines={4} tall />
-              </div>
-            </div>
-          </div>
-        </main>
+      <div className="lg:pl-[232px]">
+        <div className="flex h-16 items-center border-b px-8"><Skeleton className="h-4 w-40" /></div>
+        <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8"><WorkspaceRouteSkeleton /></div>
       </div>
     </div>
   )

@@ -374,8 +374,8 @@ export function ReportsPage() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Reports & Analytics"
-        title="Performance, revenue and growth in one workspace."
-        description="This section now uses the same advanced visual system as the rest of the product, with clearer filters, stronger KPI hierarchy and cleaner chart surfaces."
+        title="Reports"
+        description="Review revenue, team growth and client activity by period."
         theme="violet"
         meta={
           <>

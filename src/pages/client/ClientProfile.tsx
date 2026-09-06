@@ -45,10 +45,8 @@ export function ClientProfile() {
       try {
         setIsLoading(true)
         setLoadError('')
-        const currentUser = await api.getCurrentUser()
+        const [currentUser, clients] = await Promise.all([api.getCurrentUser(), api.getClients()])
         setUser(currentUser)
-
-        const clients = await api.getClients()
         setAssignedClients(clients)
       } catch (error) {
         setLoadError('Unable to load your profile and client access.')
@@ -87,8 +85,8 @@ export function ClientProfile() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Client Workspace"
-        title="Profile and access overview"
-        description="Review your account identity, client access, and current portal permissions in one place."
+        title="My profile"
+        description="Your account details and workspace access."
         theme="amber"
         meta={(
           <>
@@ -134,7 +132,7 @@ export function ClientProfile() {
           <CardContent className="p-6 sm:p-7">
             <SectionHeading
               title="Personal information"
-              description="Identity and primary account metadata used across the client workspace."
+              description="Your name, email and contact details."
               icon={<User className="h-5 w-5" />}
             />
 
@@ -253,7 +251,7 @@ export function ClientProfile() {
       <Card className="border-white/80 bg-white/88">
         <CardContent className="p-6 sm:p-7">
           <SectionHeading
-            title="Access posture"
+            title="Account status"
             description="A high-level summary of the current account state for this portal."
             icon={<Shield className="h-5 w-5" />}
           />

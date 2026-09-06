@@ -150,9 +150,10 @@ test('employee calendar and shifts: transactional real-router integration on dis
       ...request(`${year + 1}-01-01`, `${year + 1}-12-31`),
       autoApprove: true
     }, 'admin')).status, 400, 'Admin calendar must validate future allocation');
-    const firstTen = await call('/vacation/requests', 'POST', request(`${year}-10-01`, `${year}-10-10`));
+    // Two full weeks contain ten working days; weekends do not consume allowance.
+    const firstTen = await call('/vacation/requests', 'POST', request(`${year}-10-01`, `${year}-10-14`));
     assert.equal(firstTen.status, 200);
-    const secondTen = await call('/vacation/requests', 'POST', request(`${year}-11-01`, `${year}-11-10`));
+    const secondTen = await call('/vacation/requests', 'POST', request(`${year}-11-01`, `${year}-11-14`));
     assert.equal(secondTen.status, 200);
     const approvals = await Promise.all([firstTen, secondTen].map(r => call(`/vacation/requests/${r.body.id}/status`, 'PUT', {
       status: 'approved'

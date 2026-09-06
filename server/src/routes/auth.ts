@@ -184,6 +184,8 @@ router.get('/user', (req, res) => {
       position: user.position,
       avatarUrl: user.avatarUrl,
       isActive: user.isActive,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
       isImpersonating: user.originalUserId ? true : false,
       originalUser: user.originalUserId ? {
         id: user.originalUserId,
@@ -243,6 +245,8 @@ router.post('/auth/clerk/sync', async (req, res) => {
           position: user.position,
           avatarUrl: user.avatarUrl,
           isActive: user.isActive,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
         },
       })
     })
@@ -399,6 +403,8 @@ async function loadAuthUserForSession(userId: number): Promise<UserWithoutPasswo
       avatarUrl: users.avatarUrl,
       teamMemberId: users.teamMemberId,
       isActive: users.isActive,
+      createdAt: users.createdAt,
+      lastLoginAt: users.lastLoginAt,
     })
     .from(users)
     .where(eq(users.id, userId))

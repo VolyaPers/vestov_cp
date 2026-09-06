@@ -95,26 +95,7 @@ export function UsersPage() {
       setPages(response.pagination?.pages || 1)
       const usersData = response.users || []
 
-      // For each client user, load their client assignments
-      const usersWithAssignments = await Promise.all(
-        usersData.map(async (user) => {
-          if (user.role === 'client') {
-            try {
-              const assignments = await api.getUser(user.id)
-              return {
-                ...user,
-                clientAssignments: assignments.clientAssignments || []
-              }
-            } catch (error) {
-              setLoadError('Some client assignments could not be loaded. Please retry.')
-              return { ...user, clientAssignments: [] }
-            }
-          }
-          return user
-        })
-      )
-
-      setUsers(usersWithAssignments)
+      setUsers(usersData)
     } catch (error) {
       setLoadError('Unable to load users. Please retry.')
     } finally {

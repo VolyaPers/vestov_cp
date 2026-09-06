@@ -63,8 +63,8 @@ export function InvoicesPage() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Invoice Management"
-        title="Billing visibility with cleaner controls and stronger signal."
-        description="The invoices workspace now follows the same advanced shell with sharper filters, cleaner totals and less visual noise around the table."
+        title="Invoices"
+        description="Create invoices and track outstanding payments."
         theme="ocean"
         meta={
           <>

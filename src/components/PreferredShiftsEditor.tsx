@@ -88,39 +88,38 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
         </p>
       )}
 
-      <div className="space-y-3">
+      <div className="divide-y">
         {localSchedules.map((schedule) => {
           const day = WEEKDAYS.find((d) => d.dayOfWeek === schedule.dayOfWeek)
           return (
             <div
               key={schedule.dayOfWeek}
-              className={`flex flex-col gap-3 rounded-[1.2rem] border p-4 md:flex-row md:items-center ${
-                schedule.isActive
-                  ? 'border-white/80 bg-white/75 shadow-[0_14px_28px_-20px_rgba(15,23,42,0.45)]'
-                  : 'border-border/50 bg-muted/45 opacity-75'
-              }`}
+              className="grid grid-cols-[1fr_auto] items-center gap-3 py-3 sm:grid-cols-[100px_44px_1fr]"
             >
               <div className="w-28">
                 <Label className="text-sm font-semibold text-foreground">{day?.name}</Label>
               </div>
               <Switch
+                aria-label={`${day?.name} working day`}
                 checked={schedule.isActive}
                 onCheckedChange={(checked) => updateSchedule(schedule.dayOfWeek, 'isActive', checked)}
               />
-              <div className="flex flex-1 items-center gap-2">
+              <div className="col-span-2 flex min-w-0 items-center gap-2 sm:col-span-1">
                 <Input
                   type="time"
+                  aria-label={`${day?.name} start time`}
                   value={schedule.startTime}
                   onChange={(e) => updateSchedule(schedule.dayOfWeek, 'startTime', e.target.value)}
-                  className="w-32"
+                  className="min-w-0 flex-1 sm:max-w-36"
                   disabled={!schedule.isActive}
                 />
                 <span className="text-muted-foreground">-</span>
                 <Input
                   type="time"
+                  aria-label={`${day?.name} end time`}
                   value={schedule.endTime}
                   onChange={(e) => updateSchedule(schedule.dayOfWeek, 'endTime', e.target.value)}
-                  className="w-32"
+                  className="min-w-0 flex-1 sm:max-w-36"
                   disabled={!schedule.isActive}
                 />
               </div>
@@ -129,7 +128,7 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
         })}
       </div>
 
-      <div className="flex items-center gap-2 pt-2">
+      <div className="flex flex-wrap items-center gap-2 pt-2">
         <Button variant="outline" size="sm" onClick={copyFirstToAll} type="button">
           <Copy className="h-4 w-4 mr-1" />
           Copy Monday to all

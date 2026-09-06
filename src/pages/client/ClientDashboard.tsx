@@ -13,7 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { CardSkeleton, MetricTileSkeleton, PageHero, PageHeroSkeleton } from '@/components/page-primitives'
+import { CardSkeleton, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton } from '@/components/page-primitives'
 import { useClientWorkspace, ClientLoadError } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -60,22 +60,7 @@ function StatCard({
   hint: string
   icon: React.ReactNode
 }) {
-  return (
-    <Card className="border-white/80 bg-white/82">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">{title}</p>
-            <p className="mt-3 font-display text-[2rem] font-semibold text-foreground">{value}</p>
-            <p className="mt-1.5 text-sm text-muted-foreground">{hint}</p>
-          </div>
-          <div className="flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/80 bg-primary/10 text-primary shadow-[0_18px_30px_-20px_hsl(var(--primary)/0.9)]">
-            {icon}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
+  return <MetricTile label={title} value={value} hint={hint} />
 }
 
 export function ClientDashboard() {
@@ -131,22 +116,6 @@ export function ClientDashboard() {
             <span>{stats?.pendingFeedback || 0} feedback item{stats?.pendingFeedback === 1 ? '' : 's'} awaiting review</span>
           </>
         )}
-        aside={(
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="hero-aside-card">
-              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Contract</p>
-              <p className="mt-3 font-display text-2xl font-semibold text-foreground">{client?.status === 'active' ? 'Active' : 'Inactive'}</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {client?.contractEnd ? `Until ${formatDate(client.contractEnd)}` : 'No end date specified'}
-              </p>
-            </div>
-            <div className="hero-aside-card">
-              <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Services running</p>
-              <p className="mt-3 font-display text-2xl font-semibold text-foreground">{stats?.activeServices || services.length || 0}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Live delivery lanes across your account.</p>
-            </div>
-          </div>
-        )}
         actions={clientId ? (
           <>
             <Link href={`/client/portal/${clientId}`}>
@@ -175,7 +144,7 @@ export function ClientDashboard() {
         <StatCard
           title="Active Services"
           value={stats?.activeServices || services.length || 0}
-          hint="Current workstreams in motion"
+          hint="Projects currently active"
           icon={<Settings className="h-5 w-5" />}
         />
         <StatCard
@@ -201,7 +170,7 @@ export function ClientDashboard() {
               </div>
               <div>
                 <CardTitle className="text-xl">Active services</CardTitle>
-                <CardDescription>Live delivery lanes and engagement tracks</CardDescription>
+                <CardDescription>Projects currently assigned to your account</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -214,7 +183,7 @@ export function ClientDashboard() {
                       <div>
                         <p className="text-sm font-semibold text-foreground">{service}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Service lane {String(index + 1).padStart(2, '0')} in active delivery.
+                          Active project {index + 1}.
                         </p>
                       </div>
                       <Badge variant="outline" className="border-primary/20 bg-primary/10 text-primary">
@@ -316,7 +285,7 @@ export function ClientDashboard() {
         <Card className="border-white/80 bg-white/82">
           <CardHeader>
             <CardTitle className="text-xl">Suggested next actions</CardTitle>
-            <CardDescription>Fast paths into the updated client workspace</CardDescription>
+            <CardDescription>Shortcuts to your projects and billing.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
             {clientId && (

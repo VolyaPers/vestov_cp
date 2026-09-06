@@ -1,41 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 220 27% 97%;
-    --foreground: 222 38% 12%;
+    --background: 0 0% 100%;
+    --foreground: 220 10% 14%;
     --card: 0 0% 100%;
     --card-foreground: 222 38% 12%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 38% 12%;
-    --primary: 217 91% 58%;
+    --primary: 220 10% 14%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 23% 94%;
     --secondary-foreground: 222 25% 18%;
     --muted: 220 20% 94%;
-    --muted-foreground: 215 16% 42%;
+    --muted-foreground: 220 6% 43%;
     --accent: 214 100% 97%;
     --accent-foreground: 222 38% 12%;
     --destructive: 0 72% 54%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 18% 88%;
+    --border: 220 10% 91%;
     --input: 220 17% 86%;
-    --ring: 217 91% 58%;
-    --radius: 1.25rem;
+    --ring: 220 8% 44%;
+    --radius: 0.5rem;
 
-    --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --font-display: 'Manrope', 'Instrument Sans', sans-serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: var(--font-sans);
 
     --stripe-primary: #2563eb;
     --stripe-primary-hover: #1d4ed8;
     --stripe-text-primary: #111827;
     --stripe-text-secondary: #475569;
     --stripe-text-tertiary: #64748b;
-    --stripe-background: #f5f7fb;
+    --stripe-background: #ffffff;
     --stripe-surface: rgba(255, 255, 255, 0.82);
     --stripe-border: rgba(148, 163, 184, 0.22);
     --stripe-border-light: rgba(255, 255, 255, 0.88);
@@ -50,14 +48,14 @@
   }
 
   html {
-    scroll-behavior: smooth;
+    scroll-behavior: auto;
     -webkit-tap-highlight-color: transparent;
   }
 
   body {
     @apply bg-background text-foreground;
-    min-height: 100vh;
-    background: #f7f8fa;
+    min-height: 100dvh;
+    background: #ffffff;
     color: hsl(var(--foreground));
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     overscroll-behavior-y: none;
@@ -133,13 +131,13 @@
 
   .content-auto {
     content-visibility: auto;
-    contain-intrinsic-size: 520px;
+    contain-intrinsic-size: auto 0 auto 520px;
   }
 
   .workspace-topbar {
     border-bottom: 1px solid rgba(226, 232, 240, 0.9);
     background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(12px);
+    backdrop-filter: none;
   }
 
   .workspace-date-chip {
@@ -151,7 +149,7 @@
   .mobile-top-chrome {
     border-bottom: 1px solid rgba(226, 232, 240, 0.9);
     background: rgba(247, 248, 250, 0.96);
-    backdrop-filter: blur(14px);
+    backdrop-filter: none;
   }
 
   .mobile-top-chrome-main {
@@ -174,9 +172,9 @@
     box-shadow: none;
     color: var(--stripe-text-secondary);
     font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
     white-space: nowrap;
   }
 
@@ -191,7 +189,7 @@
     inset: 0;
     border: 0;
     background: rgba(15, 23, 42, 0.44);
-    backdrop-filter: blur(18px);
+    backdrop-filter: none;
     transition: opacity 220ms ease;
   }
 
@@ -234,7 +232,7 @@
     border-radius: 1.2rem;
     background: #ffffff;
     box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.16);
-    backdrop-filter: blur(12px);
+    backdrop-filter: none;
     padding: 0.55rem;
   }
 
@@ -251,7 +249,7 @@
     border-radius: 1.05rem;
     color: var(--stripe-text-secondary);
     font-size: 0.68rem;
-    font-weight: 800;
+    font-weight: 600;
     letter-spacing: 0.02em;
     text-decoration: none;
     transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
@@ -295,7 +293,7 @@
 
   .mobile-bottom-dock-item-active {
     color: #111827;
-    background: #f3f4f6;
+    background: #edeff1;
     border-color: rgba(203, 213, 225, 0.8);
     box-shadow: none;
   }
@@ -315,7 +313,7 @@
     gap: 0.5rem;
     min-height: 2.75rem;
     padding: 0.75rem 1rem;
-    border-radius: 0.9rem;
+    border-radius: 0.5rem;
     font-size: 0.92rem;
     font-weight: 600;
     transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
@@ -361,7 +359,7 @@
   .stripe-stat-card,
   .stripe-section {
     border: 1px solid rgba(226, 232, 240, 1);
-    border-radius: 1.1rem;
+    border-radius: 0.625rem;
     background: #ffffff;
     box-shadow: none;
     backdrop-filter: none;
@@ -406,7 +404,7 @@
 
   .stripe-input {
     border: 1px solid rgba(226, 232, 240, 1);
-    border-radius: 0.9rem;
+    border-radius: 0.5rem;
     background: #ffffff;
     color: var(--stripe-text-primary);
     box-shadow: none;
@@ -426,12 +424,12 @@
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    padding: 0.38rem 0.75rem;
+    padding: 0.2rem 0.5rem;
     border-radius: 999px;
     font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
     white-space: nowrap;
   }
 
@@ -496,13 +494,13 @@
   .stripe-nav-item-active {
     color: #0f172a;
     border-color: transparent;
-    background: #f3f4f6;
+    background: #edeff1;
     box-shadow: none;
   }
 
   .stripe-nav-item-active:hover {
     color: var(--stripe-text-primary);
-    background: #f3f4f6;
+    background: #edeff1;
   }
 
   .stripe-nav-indicator {
@@ -517,7 +515,7 @@
     background: #fef3c7;
     color: #92400e;
     font-size: 0.68rem;
-    font-weight: 800;
+    font-weight: 600;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
@@ -605,7 +603,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 4rem;
+    min-width: 2.25rem;
     padding: 0.25rem 0.5rem;
     border-radius: 999px;
     border: 1px solid rgba(226, 232, 240, 1);
@@ -613,8 +611,8 @@
     color: var(--stripe-text-secondary);
     font-size: 0.64rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .global-search-overlay {
@@ -632,7 +630,7 @@
     inset: 0;
     border: 0;
     background: rgba(15, 23, 42, 0.38);
-    backdrop-filter: blur(18px);
+    backdrop-filter: none;
   }
 
   .global-search-shell {
@@ -733,8 +731,8 @@
     color: var(--stripe-text-tertiary);
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .global-search-result {
@@ -910,4 +908,28 @@
 .rs-picker-daterange-menu,
 .rs-overlay-wrapper {
   z-index: 9999 !important;
+}
+
+/* Shared workspace surfaces and keyboard affordances. */
+.workspace-sidebar > div { width: 100%; }
+.workspace-topbar { background: #fff; border-color: hsl(var(--border)); }
+.page-heading { padding: 0 0 0.5rem; }
+.page-heading-context > div { display: flex; flex-wrap: wrap; gap: 2rem; }
+.page-heading-context .hero-aside-card { padding: 0; border: 0; background: none; box-shadow: none; }
+.page-heading-context p { margin-top: 0.25rem; font-size: 0.8125rem; letter-spacing: 0; text-transform: none; }
+.page-heading-context p:first-child { font-weight: 500; }
+.metric-tile { box-shadow: none; background: transparent; border-radius: 0; }
+.stripe-nav-link:focus-visible, .global-search-launcher:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 6px; }
+.workspace-search { width: 220px; min-height: 34px; padding: 4px 8px; background: transparent; }
+.mobile-bottom-dock { padding: 0; }
+.mobile-bottom-dock-shell { border-radius: 0; border: 0; border-top: 1px solid hsl(var(--border)); box-shadow: none; padding: 4px 8px calc(4px + env(safe-area-inset-bottom)); gap: 0; }
+.mobile-bottom-dock-item { min-height: 48px; border-radius: 6px; font-weight: 500; }
+.mobile-bottom-dock-item:hover { transform: none; }
+@media (max-width: 639px) {
+  .workspace-search { width: 36px; min-height: 40px; padding: 6px; }
+  .workspace-search > :not(:first-child) { display: none; }
+  input, select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
