@@ -55,7 +55,8 @@ test('a request crossing the midpoint charges each half by actual dates', () => 
 test('an absence crossing anniversary is split across cycles exactly once', () => {
   const c = context([approved('2026-12-31', '2027-01-02')]);
   assert.equal(summarizeLeave(c, vacation, '2026-12-31').totalUsed, 1);
-  assert.equal(summarizeLeave(c, vacation, '2027-01-02').totalUsed, 2);
+  // January 2, 2027 is Saturday; only the Friday in the next cycle consumes leave.
+  assert.equal(summarizeLeave(c, vacation, '2027-01-02').totalUsed, 1);
 });
 test('half-day overlap allows complementary halves and rejects intersecting slots', () => {
   const am = {
@@ -116,7 +117,7 @@ test('overnight shift uses actual elapsed minutes over DST; nonexistent time rej
 });
 test('override and approved half leave control expected attendance; denied leave does not', () => {
   const input = {
-    date: '2026-09-06',
+    date: '2026-09-07',
     timezone: 'UTC',
     schedule: {
       startTime: '09:00',
@@ -135,7 +136,7 @@ test('override and approved half leave control expected attendance; denied leave
   });
   assert.equal(day.workingMinutes, 240);
   assert.equal(day.absenceMinutes, 240);
-  assert.equal(day.expectedStartAt, '2026-09-06T13:00:00.000Z');
+  assert.equal(day.expectedStartAt, '2026-09-07T13:00:00.000Z');
   assert.equal(getEffectiveDay({
     ...input,
     leaves: [{

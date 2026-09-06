@@ -113,11 +113,18 @@ export function leaveDaySegments(request: LeaveDates): Array<{
   startHalf: number;
   endHalf: number;
 }> {
-  const dates = dateRange(request.startDate, request.endDate);
-  if (dates.length === 1 && request.halfDayStart && request.halfDayEnd) throw new Error('Choose one half-day option for a single-day request');
-  return dates.map((date, i) => {
-    const startHalf = i === 0 && request.halfDayStart ? 1 : 0;
-    const endHalf = i === dates.length - 1 && request.halfDayEnd ? 1 : 2;
+  const startDate = isoDate(request.startDate);
+  const endDate = isoDate(request.endDate);
+  const dates = dateRange(startDate, endDate).filter(date => {
+    const day = weekday(date);
+    return day !== 0 && day !== 6;
+  });
+  if (startDate === endDate && request.halfDayStart && request.halfDayEnd) throw new Error('Choose one half-day option for a single-day request');
+  return dates.map(date => {
+    // A half-day flag applies only when its selected endpoint is a working day.
+    // Weekend dates never consume leave or turn a scheduled weekday into absence.
+    const startHalf = date === startDate && request.halfDayStart ? 1 : 0;
+    const endHalf = date === endDate && request.halfDayEnd ? 1 : 2;
     return {
       date,
       units: (endHalf - startHalf) / 2,
