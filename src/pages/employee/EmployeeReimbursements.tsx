@@ -65,6 +65,7 @@ const categories = [
 ]
 
 export function EmployeeReimbursements() {
+  const [loadError,setLoadError]=useState('')
   const { showAlert } = useCustomAlert()
   const [limits, setLimits] = useState<ReimbursementLimits | null>(null)
   const [requests, setRequests] = useState<ReimbursementRequest[]>([])
@@ -74,6 +75,7 @@ export function EmployeeReimbursements() {
 
   // Form state
   const [showForm, setShowForm] = useState(false)
+  const [requestKey,setRequestKey]=useState(()=>crypto.randomUUID())
   const [expenseAmount, setExpenseAmount] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
@@ -84,29 +86,11 @@ export function EmployeeReimbursements() {
 
   const loadData = async () => {
     try {
-      setLoading(true)
-      const year = new Date().getFullYear()
-
-      // Load limits
-      try {
-        const limitsData = await api.request(`/reimbursements/limits/${year}`)
-        setLimits(limitsData)
-      } catch (error) {
-        console.error('Failed to load limits:', error)
-      }
-
-      // Load requests
-      try {
-        const requestsData = await api.request('/reimbursements/my-requests')
-        setRequests(requestsData)
-      } catch (error) {
-        console.error('Failed to load requests:', error)
-      }
-    } catch (error) {
-      console.error('Error loading reimbursement data:', error)
-    } finally {
-      setLoading(false)
-    }
+      setLoading(true);setLoadError('')
+      const [limitsData,requestsData]=await Promise.all([api.request(`/reimbursements/limits/${new Date().getFullYear()}`),api.request('/reimbursements/my-requests')])
+      setLimits(limitsData);setRequests(requestsData)
+    }catch(error){setLoadError(error instanceof Error?error.message:'Unable to load reimbursement budget')}
+    finally{setLoading(false)}
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -128,6 +112,7 @@ export function EmployeeReimbursements() {
       await api.request('/reimbursements', {
         method: 'POST',
         body: JSON.stringify({
+          idempotencyKey: requestKey,
           expenseAmount: expense,
           description: description.trim(),
           category: category || null
@@ -135,6 +120,7 @@ export function EmployeeReimbursements() {
       })
 
       // Reset form
+      setRequestKey(crypto.randomUUID())
       setExpenseAmount('')
       setDescription('')
       setCategory('')
@@ -179,6 +165,7 @@ export function EmployeeReimbursements() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'paid': return <span className="text-green-700 font-medium">Paid</span>
       case 'pending':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
@@ -219,6 +206,8 @@ export function EmployeeReimbursements() {
       </div>
     )
   }
+
+  if(loadError)return <div role="alert" className="p-4 text-red-600">{loadError} <Button onClick={loadData}>Retry</Button></div>
 
   return (
     <div className="space-y-6">
@@ -358,7 +347,8 @@ export function EmployeeReimbursements() {
                   variant="outline"
                   onClick={() => {
                     setShowForm(false)
-                    setExpenseAmount('')
+                    setRequestKey(crypto.randomUUID())
+      setExpenseAmount('')
                     setDescription('')
                     setCategory('')
                   }}

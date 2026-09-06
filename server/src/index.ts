@@ -13,7 +13,10 @@ import { adminRouter } from './routes/admin.js'
 import { clientRouter } from './routes/client.js'
 import { servicesRouter } from './routes/services.js'
 import { invoiceRouter } from './routes/invoice.js'
+import { clientCalendarRouter } from './routes/client-calendar.js'
+import { runDatabaseMigrations } from './db/migrate.js'
 import vacationRouter from './routes/vacation.js'
+import { uploadsRouter } from './routes/uploads.js'
 import { documentsRouter } from './routes/documents.js'
 import { clientContactsRouter } from './routes/client-contacts.js'
 import usersRouter from './routes/users.js'
@@ -27,13 +30,10 @@ import { searchRouter } from './routes/search.js'
 import { clickupRouter } from './routes/clickup.js'
 import { projectBotRouter } from './routes/project-bot.js'
 import { setupPassport } from './auth/passport.js'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { drizzle } from 'drizzle-orm/node-postgres'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import crypto from 'crypto'
-import { getAppliedMigrations, checkColumnExists, ensureIsActiveColumn, ensureUserColumns, ensureClientContactColumns, ensureFinanceTables, ensureClickUpTables, ensureProjectBotTables } from './utils/migrations.js'
 import { initializeSocket } from './socket.js'
 import { startClickUpScheduler } from './services/clickup.js'
 import { startProjectBotScheduler } from './services/projectBot.js'
@@ -52,95 +52,6 @@ const { Pool } = pg
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
 })
-
-async function runMigrations() {
-  try {
-    console.log('========================================')
-    console.log('[MIGRATIONS] Starting database migrations...')
-    console.log('========================================')
-    
-    const db = drizzle(pool, { schema: {} })
-    // Try dist/drizzle first (for production builds), then fall back to ../drizzle (for development)
-    const migrationsPathInDist = path.join(__dirname, 'drizzle')
-    const migrationsPathInParent = path.join(__dirname, '../drizzle')
-    const migrationsPath = fs.existsSync(migrationsPathInDist) ? migrationsPathInDist : migrationsPathInParent
-    console.log('[MIGRATIONS] Migrations folder:', migrationsPath)
-    console.log('[MIGRATIONS] Database URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET')
-    
-    try {
-      const migrationFiles = fs.readdirSync(migrationsPath)
-        .filter(f => f.endsWith('.sql') && !f.startsWith('.'))
-        .sort()
-      console.log(`[MIGRATIONS] Available migration files: ${migrationFiles.length}`)
-      migrationFiles.forEach(f => {
-        console.log(`[MIGRATIONS]   - ${f}`)
-      })
-    } catch (fsError) {
-      console.error('[MIGRATIONS] Could not read migrations folder:', fsError)
-    }
-    
-    const appliedMigrations = await getAppliedMigrations(pool)
-    console.log(`[MIGRATIONS] Already applied: ${appliedMigrations.length} migrations`)
-    if (appliedMigrations.length > 0) {
-      appliedMigrations.forEach(m => {
-        console.log(`[MIGRATIONS]   ✓ ${m.name} (applied at ${m.created_at})`)
-      })
-    } else {
-      console.log('[MIGRATIONS]   No migrations applied yet')
-    }
-    
-    const columnExists = await checkColumnExists(pool, 'users', 'is_active')
-    console.log('[MIGRATIONS] Column is_active exists before migration:', columnExists)
-    
-    console.log('[MIGRATIONS] Running Drizzle migrations...')
-    await migrate(db, { migrationsFolder: migrationsPath })
-    console.log('[MIGRATIONS] ✓ Drizzle migrations completed')
-    
-    const afterMigrations = await getAppliedMigrations(pool)
-    console.log(`[MIGRATIONS] Total migrations in database: ${afterMigrations.length}`)
-    if (afterMigrations.length > 0) {
-      console.log('[MIGRATIONS] Most recent migrations:')
-      afterMigrations.slice(0, 5).forEach(m => {
-        console.log(`[MIGRATIONS]   ✓ ${m.name} (${m.created_at})`)
-      })
-    }
-    
-    await ensureUserColumns(pool)
-    await ensureClientContactColumns(pool)
-    await ensureFinanceTables(pool)
-    await ensureClickUpTables(pool)
-    await ensureProjectBotTables(pool)
-    const columnExistsAfter = await checkColumnExists(pool, 'users', 'is_active')
-    if (columnExistsAfter) {
-      console.log('[MIGRATIONS] ✓ Column is_active verified - exists in database')
-    }
-
-    console.log('========================================')
-    console.log('[MIGRATIONS] ✓ All migrations completed successfully!')
-    console.log('========================================')
-  } catch (error) {
-    const err = error as Error & { code?: string; detail?: string }
-    console.error('========================================')
-    console.error('[MIGRATIONS] ✗ Migration error occurred!')
-    console.error('========================================')
-    console.error('[MIGRATIONS] Error message:', err.message)
-    console.error('[MIGRATIONS] Error code:', err.code)
-    console.error('[MIGRATIONS] Error detail:', err.detail)
-    console.error('[MIGRATIONS] Full error:', error)
-    console.error('========================================')
-
-    try {
-      await ensureUserColumns(pool)
-      await ensureClientContactColumns(pool)
-      await ensureFinanceTables(pool)
-      await ensureClickUpTables(pool)
-      await ensureProjectBotTables(pool)
-      console.log('[MIGRATIONS] ✓ Added missing user columns, finance tables, ClickUp tables, and project bot tables as fallback')
-    } catch (fallbackError) {
-      console.error('[MIGRATIONS] Fallback failed:', fallbackError)
-    }
-  }
-}
 
 const PgSession = connectPgSimple(session)
 
@@ -264,39 +175,19 @@ const captureRawBody = (req: express.Request, _res: express.Response, buffer: Bu
 app.use(express.json({ limit: '10mb', verify: captureRawBody }))
 app.use(express.urlencoded({ extended: true, limit: '10mb', verify: captureRawBody }))
 
-app.use((req, res, next) => {
-  try {
-    const isSlackProjectBotRequest = req.url.startsWith('/api/project-bot/slack/')
-    console.log(`[${new Date().toISOString()}] [INCOMING REQUEST] ${req.method} ${req.url}`)
-    if (req.url?.includes('/google')) {
-      console.log(`[GOOGLE OAUTH DEBUG] Request received for: ${req.url}`)
-      console.log(`[GOOGLE OAUTH DEBUG] Full path: ${req.path}`)
-      console.log(`[GOOGLE OAUTH DEBUG] Original URL: ${req.originalUrl}`)
-    }
-    if (!isSlackProjectBotRequest) {
-      console.log(`[INCOMING REQUEST] Headers:`, JSON.stringify(req.headers, null, 2))
-    }
-    if (!isSlackProjectBotRequest && req.body && Object.keys(req.body).length > 0) {
-      console.log(`[INCOMING REQUEST] Body:`, JSON.stringify(req.body, null, 2))
-    }
-  } catch (err) {
-    console.error('[LOGGER ERROR]', err)
-  }
-  next()
-})
-
 const isProduction = process.env.NODE_ENV === 'production'
 const isStaging = process.env.NODE_ENV === 'staging'
 const isHttps = isProduction || isStaging || process.env.FORCE_HTTPS === 'true'
+if (isHttps && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) throw new Error('SESSION_SECRET must contain at least 32 characters outside local development')
 
-app.use(session({
+const sessionMiddleware = session({
   store: new PgSession({
     pool,
     tableName: 'user_sessions',
     schemaName: 'public',
     createTableIfMissing: true,
   }),
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
   resave: false,
   saveUninitialized: false,
   name: 'vestov.sid',
@@ -307,30 +198,19 @@ app.use(session({
     sameSite: isHttps ? 'none' : 'lax',
     domain: process.env.COOKIE_DOMAIN || undefined,
   },
-}))
+})
+app.use(sessionMiddleware)
 
 setupPassport(pool)
 app.use(passport.initialize())
 app.use(passport.session())
-
-// Debug middleware for Google OAuth routes
-app.use('/api', (req, res, next) => {
-  if (req.path === '/google' || req.path === '/auth/google' || req.url?.includes('google')) {
-    console.log('========================================')
-    console.log('[ROUTE DEBUG] Request path:', req.path)
-    console.log('[ROUTE DEBUG] Request URL:', req.url)
-    console.log('[ROUTE DEBUG] Original URL:', req.originalUrl)
-    console.log('[ROUTE DEBUG] Method:', req.method)
-    console.log('========================================')
-  }
-  next()
-})
 
 app.use('/api', authRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/client', clientRouter)
 app.use('/api/services', servicesRouter)
 app.use('/api/invoices', invoiceRouter)
+app.use('/api/vacation', clientCalendarRouter)
 app.use('/api/vacation', vacationRouter)
 app.use('/api/documents', documentsRouter)
 app.use('/api/client-contacts', clientContactsRouter)
@@ -345,9 +225,8 @@ app.use('/api/search', searchRouter)
 app.use('/api/clickup', clickupRouter)
 app.use('/api/project-bot', projectBotRouter)
 
-const uploadsPath = path.join(process.cwd(), 'uploads')
-app.use('/api/uploads', express.static(uploadsPath))
-app.use('/uploads', express.static(uploadsPath))
+app.use('/api/uploads', uploadsRouter)
+app.use('/uploads', uploadsRouter)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -362,16 +241,9 @@ app.use((err: unknown, req: express.Request, res: express.Response, next: expres
   console.error('[GLOBAL ERROR HANDLER] Request:', {
     method: req.method,
     path: req.path,
-    url: req.url,
     origin: req.headers.origin,
   })
   console.error('========================================')
-  
-  const origin = req.headers.origin
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin)
-    res.header('Access-Control-Allow-Credentials', 'true')
-  }
   
   res.status(500).json({ 
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message 
@@ -382,165 +254,10 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-async function runOrphanedTeamMembersFix() {
-  try {
-    // Check if script has already run
-    const result = await pool.query(`
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.tables 
-        WHERE table_name = 'script_execution_log'
-      ) as table_exists
-    `)
-    
-    if (!result.rows[0]?.table_exists) {
-      // Create log table if it doesn't exist
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS script_execution_log (
-          id SERIAL PRIMARY KEY,
-          script_name VARCHAR(255) UNIQUE NOT NULL,
-          executed_at TIMESTAMP DEFAULT NOW(),
-          status VARCHAR(50) NOT NULL
-        )
-      `)
-    }
-
-    // Check if this script has already run
-    const checkResult = await pool.query(`
-      SELECT executed_at FROM script_execution_log 
-      WHERE script_name = 'fix-orphaned-team-members'
-    `)
-
-    if (checkResult.rows.length > 0) {
-      console.log('[ORPHANED FIX] Script already executed at:', checkResult.rows[0].executed_at)
-      return
-    }
-
-    console.log('[ORPHANED FIX] Running fix for orphaned team members...')
-    await pool.query(`
-      INSERT INTO script_execution_log (script_name, status) 
-      VALUES ('fix-orphaned-team-members', 'running')
-      ON CONFLICT (script_name) DO NOTHING
-    `)
-
-    // Run the fix function inline (doesn't exit process, suitable for server startup)
-    const { db } = await import('./db/index.js')
-    const { teamMembers, users } = await import('./db/schema.js')
-    const { eq, isNull, sql } = await import('drizzle-orm')
-    const { createUserAccount } = await import('./services/userService.js')
-
-    // Find orphaned team members
-    const linkedTeamMemberIds = await db
-      .select({ id: users.teamMemberId })
-      .from(users)
-      .where(sql`${users.teamMemberId} IS NOT NULL`)
-
-    const linkedIds = new Set(linkedTeamMemberIds.map(u => u.id).filter((id): id is number => id !== null))
-    const allMembers = await db.select().from(teamMembers)
-    const orphanedMembers = allMembers.filter(member => !linkedIds.has(member.id))
-
-    if (orphanedMembers.length === 0) {
-      console.log('[ORPHANED FIX] ✅ No orphaned team members found. All team members are linked to users.')
-      await pool.query(`
-        UPDATE script_execution_log 
-        SET status = 'completed', executed_at = NOW()
-        WHERE script_name = 'fix-orphaned-team-members'
-      `)
-      return
-    }
-
-    console.log(`[ORPHANED FIX] 📊 Found ${orphanedMembers.length} orphaned team member(s) to process`)
-
-    console.log(`[ORPHANED FIX] Found ${orphanedMembers.length} orphaned team member(s)`)
-
-    let created = 0
-    let deleted = 0
-    let errors = 0
-
-    for (const member of orphanedMembers) {
-      if (!member.email || member.email.trim() === '') {
-        console.log(`[ORPHANED FIX] 🗑️  Deleting team member ${member.id} (${member.name}) - no email address`)
-        await db.delete(teamMembers).where(eq(teamMembers.id, member.id))
-        deleted++
-        continue
-      }
-
-      const normalizedEmail = member.email.trim().toLowerCase()
-      const [existingUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, normalizedEmail))
-        .limit(1)
-
-      if (existingUser && existingUser.role === 'team_member' && !existingUser.teamMemberId) {
-        await db
-          .update(users)
-          .set({ teamMemberId: member.id, updatedAt: new Date() })
-          .where(eq(users.id, existingUser.id))
-        created++
-        console.log(`[ORPHANED FIX] ✅ Linked existing user ${existingUser.id} to team member ${member.id}`)
-      } else if (!existingUser) {
-        try {
-          const username = normalizedEmail.split('@')[0]
-          await createUserAccount({
-            username,
-            password: crypto.randomUUID(),
-            fullName: member.name,
-            email: normalizedEmail,
-            role: 'team_member',
-            position: member.position || 'Team Member',
-            teamMemberId: member.id,
-            source: 'orphaned_fix',
-            isActive: true
-          })
-          created++
-          console.log(`[ORPHANED FIX] ✅ Created user for team member ${member.id} (${normalizedEmail})`)
-        } catch (error) {
-          console.error(`[ORPHANED FIX] ❌ Error creating user for team member ${member.id} (${normalizedEmail}):`, error)
-          errors++
-        }
-      } else {
-        const reason = existingUser.role !== 'team_member' 
-          ? `User has role '${existingUser.role}' instead of 'team_member'`
-          : existingUser.teamMemberId 
-            ? `User already linked to team member ${existingUser.teamMemberId}`
-            : 'Unknown reason'
-        console.warn(`[ORPHANED FIX] ⚠️  Skipping team member ${member.id} (${normalizedEmail}): ${reason}`)
-        errors++
-      }
-    }
-
-    console.log(`[ORPHANED FIX] 📋 Summary:`)
-    console.log(`[ORPHANED FIX]   ✅ Users created/linked: ${created}`)
-    console.log(`[ORPHANED FIX]   🗑️  Team members deleted: ${deleted}`)
-    console.log(`[ORPHANED FIX]   ⚠️  Errors (require manual review): ${errors}`)
-    
-    const finalStatus = errors > 0 ? 'completed_with_errors' : 'completed'
-    await pool.query(`
-      UPDATE script_execution_log 
-      SET status = $1, executed_at = NOW()
-      WHERE script_name = 'fix-orphaned-team-members'
-    `, [finalStatus])
-    
-    if (errors > 0) {
-      console.log(`[ORPHANED FIX] ⚠️  Script completed with ${errors} error(s). Please review the logs above.`)
-    } else {
-      console.log(`[ORPHANED FIX] ✅ Script completed successfully!`)
-    }
-  } catch (error) {
-    console.error('[ORPHANED FIX] Error:', error)
-    await pool.query(`
-      UPDATE script_execution_log 
-      SET status = 'failed', executed_at = NOW()
-      WHERE script_name = 'fix-orphaned-team-members'
-    `)
-  }
-}
-
-runMigrations().then(async () => {
-  await runOrphanedTeamMembersFix()
+runDatabaseMigrations(pool).then(async () => {
 
   // Initialize Socket.IO
-  initializeSocket(httpServer, corsOrigin)
+  initializeSocket(httpServer, corsOrigin, sessionMiddleware)
   startClickUpScheduler()
   startProjectBotScheduler()
 

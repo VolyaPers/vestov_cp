@@ -9,7 +9,7 @@
     "dev:server": "tsx watch server/src/index.ts",
     "build": "npm run build:client && npm run build:server",
     "build:client": "tsc && vite build",
-    "build:server": "tsc --project server/tsconfig.json",
+    "build:server": "npm --prefix server run build",
     "preview": "vite preview",
     "start": "node server/dist/index.js",
     "db:generate": "drizzle-kit generate",
@@ -34,7 +34,8 @@
     "pw:test": "playwright test",
     "pw:test:sidebar": "playwright test playwright/sidebar-navigation.spec.ts",
     "pw:test:impersonation": "playwright test playwright/admin-impersonation.spec.ts",
-    "pw:test:shifts": "playwright test playwright/shift-management.spec.ts"
+    "pw:test:shifts": "playwright test playwright/shift-management.spec.ts",
+    "test:functional": "node tests/run-functional.mjs"
   },
   "dependencies": {
     "@clerk/backend": "^3.2.2",

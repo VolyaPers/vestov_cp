@@ -22,6 +22,8 @@ interface User {
   position?: string
   timezone?: string
   avatarUrl?: string
+  clerkUserId?: string | null
+  authProvider?: string | null
   teamMemberId?: number
   isActive: boolean
   lastLoginAt?: string
@@ -46,6 +48,12 @@ export function UsersPage() {
   const [location] = useLocation()
   const { showAlert, showConfirm } = useCustomAlert()
   const [users, setUsers] = useState<UserWithClientAssignments[]>([])
+  const [loadError, setLoadError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [invitationUrl, setInvitationUrl] = useState('')
+  const [invitingUser, setInvitingUser] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pages, setPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [roleFilter, setRoleFilter] = useState('')
@@ -53,7 +61,6 @@ export function UsersPage() {
   const [isEditingUser, setIsEditingUser] = useState<User | null>(null)
   const [userFormData, setUserFormData] = useState({
     username: '',
-    password: '',
     fullName: '',
     email: '',
     role: 'client' as 'admin' | 'team_member' | 'client',
@@ -70,7 +77,6 @@ export function UsersPage() {
   })
 
   useEffect(() => {
-    loadUsers()
     loadAvailableClients()
   }, [])
 
@@ -80,10 +86,13 @@ export function UsersPage() {
     loadUsers(nextQuery, roleFilter)
   }, [location])
 
-  const loadUsers = async (nextSearchTerm = searchTerm, nextRoleFilter = roleFilter) => {
+  const loadUsers = async (nextSearchTerm = searchTerm, nextRoleFilter = roleFilter, nextPage = 1) => {
     try {
       setIsLoading(true)
-      const response = await api.getUsers({ search: nextSearchTerm, role: nextRoleFilter })
+      setLoadError('')
+      const response = await api.getUsers({ search: nextSearchTerm, role: nextRoleFilter, page: nextPage, limit: 50 })
+      setPage(nextPage)
+      setPages(response.pagination?.pages || 1)
       const usersData = response.users || []
 
       // For each client user, load their client assignments
@@ -97,7 +106,7 @@ export function UsersPage() {
                 clientAssignments: assignments.clientAssignments || []
               }
             } catch (error) {
-              console.error(`Failed to load assignments for user ${user.id}:`, error)
+              setLoadError('Some client assignments could not be loaded. Please retry.')
               return { ...user, clientAssignments: [] }
             }
           }
@@ -107,7 +116,7 @@ export function UsersPage() {
 
       setUsers(usersWithAssignments)
     } catch (error) {
-      console.error('Failed to load users:', error)
+      setLoadError('Unable to load users. Please retry.')
     } finally {
       setIsLoading(false)
     }
@@ -118,7 +127,7 @@ export function UsersPage() {
       const response = await api.getClients()
       setAvailableClients(response.map((client: any) => ({ id: client.id, name: client.name })))
     } catch (error) {
-      console.error('Failed to load clients:', error)
+      setLoadError('Unable to load available clients. Please reload before assigning access.')
     }
   }
 
@@ -127,12 +136,13 @@ export function UsersPage() {
   }
 
   const handleCreateUser = async () => {
-    if (!userFormData.username || !userFormData.password || !userFormData.fullName || !userFormData.email) {
+    if (!userFormData.username || !userFormData.fullName || !userFormData.email) {
       await showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
 
     try {
+      setIsSaving(true)
       await api.createUser(userFormData)
 
       // Clear filters to ensure new user is visible
@@ -142,18 +152,17 @@ export function UsersPage() {
       await loadUsers()
       setIsUserDialogOpen(false)
       resetUserForm()
-      await showAlert({ message: 'User created successfully!', type: 'success' })
+      await showAlert({ message: 'Internal access created. Link an employee profile or assign client access, then generate a Clerk invitation link.', type: 'success' })
     } catch (error: any) {
       console.error('Failed to create user:', error)
       await showAlert({ message: error.message || 'Failed to create user', type: 'error' })
-    }
+    } finally { setIsSaving(false) }
   }
 
   const handleEditUser = (user: User) => {
     setIsEditingUser(user)
     setUserFormData({
       username: user.username,
-      password: '', // Don't prefill password for security
       fullName: user.fullName,
       email: user.email,
       role: user.role,
@@ -179,13 +188,8 @@ export function UsersPage() {
         timezone: userFormData.timezone || undefined,
       }
 
+      setIsSaving(true)
       await api.updateUser(isEditingUser.id, updateData)
-
-      // Update password separately if provided
-      if (userFormData.password) {
-        // Note: This would require a different API call in a real app
-        // For now, we'll skip password update in edit mode
-      }
 
       await loadUsers()
       setIsUserDialogOpen(false)
@@ -194,7 +198,7 @@ export function UsersPage() {
     } catch (error: any) {
       console.error('Failed to update user:', error)
       await showAlert({ message: error.message || 'Failed to update user', type: 'error' })
-    }
+    } finally { setIsSaving(false) }
   }
 
   const handleToggleUserStatus = async (user: User) => {
@@ -211,7 +215,7 @@ export function UsersPage() {
   const handleDeleteUserPermanently = async (user: User) => {
     const confirmed = await showConfirm({
       title: 'Delete User Permanently',
-      message: `Are you sure you want to permanently delete "${user.fullName}" (${user.email})?\n\nThis action cannot be undone and will delete:\n• All user data\n• All related records\n• All assignments\n• All history`,
+      message: `Remove the unused account "${user.fullName}"? Only an unlinked account with no history or related records can be removed. Other accounts must be deactivated to preserve their records.`,
       type: 'error',
       confirmText: 'Delete Permanently',
       cancelText: 'Cancel',
@@ -230,11 +234,20 @@ export function UsersPage() {
     }
   }
 
+  const handleInvitation = async (user: User) => {
+    try {
+      setInvitingUser(user.id)
+      const result = await api.request(`/users/${user.id}/invitation`, { method: 'POST' })
+      setInvitationUrl(result.url)
+    } catch (error: any) {
+      await showAlert({ message: error.message || 'Unable to generate invitation link', type: 'error' })
+    } finally { setInvitingUser(null) }
+  }
+
   const resetUserForm = () => {
     setUserFormData({
       username: '',
-      password: '',
-      fullName: '',
+        fullName: '',
       email: '',
       role: 'client',
       position: '',
@@ -495,6 +508,8 @@ export function UsersPage() {
                           <Badge className={getRoleBadgeClass(user.role)}>
                             {user.role.replace('_', ' ')}
                           </Badge>
+                          <Badge variant="outline">{user.clerkUserId ? 'Clerk linked' : 'Pending Clerk sign-in'}</Badge>
+                          {user.role === 'team_member' && !user.teamMemberId && <Badge variant="outline">Employee profile required</Badge>}
                           {!user.isActive && (
                             <Badge variant="outline" className="text-red-600">
                               Inactive
@@ -512,6 +527,7 @@ export function UsersPage() {
                       </div>
                     </div>
                     <div className="flex w-full shrink-0 flex-wrap items-center gap-2 self-start sm:w-auto">
+                      {!user.clerkUserId && <Button variant="outline" size="sm" disabled={!user.isActive || invitingUser !== null || (user.role === 'team_member' && !user.teamMemberId)} onClick={() => handleInvitation(user)}>{invitingUser === user.id ? 'Generating…' : 'Generate invite link'}</Button>}
                       {user.role === 'client' && (
                         <Button
                           variant="outline"
@@ -655,6 +671,9 @@ export function UsersPage() {
         </CardContent>
       </Card>
 
+      {loadError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-900">{loadError}<Button variant="outline" className="ml-3" onClick={() => { loadUsers(); loadAvailableClients() }}>Retry</Button></div>}
+      {pages > 1 && <div className="flex items-center justify-center gap-4"><Button variant="outline" disabled={page <= 1 || isLoading} onClick={() => loadUsers(searchTerm, roleFilter, page - 1)}>Previous</Button><span>Page {page} of {pages}</span><Button variant="outline" disabled={page >= pages || isLoading} onClick={() => loadUsers(searchTerm, roleFilter, page + 1)}>Next</Button></div>}
+      <Dialog open={!!invitationUrl} onOpenChange={open => { if (!open) setInvitationUrl('') }}><DialogContent><DialogHeader><DialogTitle>Clerk invitation link</DialogTitle><DialogDescription>No email was sent. Copy this link and share it with the intended user. It expires according to the Clerk invitation policy.</DialogDescription></DialogHeader><Input aria-label="Invitation link" value={invitationUrl} readOnly /><Button onClick={async () => { try { await navigator.clipboard.writeText(invitationUrl); await showAlert({ message: 'Invitation link copied', type: 'success' }) } catch { await showAlert({ message: 'Copy the link from the field above', type: 'warning' }) } }}>Copy link</Button></DialogContent></Dialog>
       {/* Create/Edit User Dialog */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
         <DialogContent>
@@ -678,18 +697,7 @@ export function UsersPage() {
                   placeholder="johndoe"
                 />
               </div>
-              <div>
-                <Label htmlFor="userPassword">
-                  Password {isEditingUser ? '(leave empty to keep current)' : '*'}
-                </Label>
-                <Input
-                  id="userPassword"
-                  type="password"
-                  value={userFormData.password}
-                  onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                  placeholder="********"
-                />
-              </div>
+              <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">Sign-in and passwords are managed by Clerk. To reset a password, use “Forgot password” on the sign-in page.</div>
             </div>
 
             <div>
@@ -794,8 +802,8 @@ export function UsersPage() {
             >
               Cancel
             </Button>
-            <Button onClick={isEditingUser ? handleUpdateUser : handleCreateUser}>
-              {isEditingUser ? 'Update User' : 'Create User'}
+            <Button disabled={isSaving} onClick={isEditingUser ? handleUpdateUser : handleCreateUser}>
+              {isSaving ? 'Saving…' : isEditingUser ? 'Update User' : 'Create User'}
             </Button>
           </DialogFooter>
         </DialogContent>

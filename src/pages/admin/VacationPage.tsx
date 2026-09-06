@@ -13,7 +13,7 @@ import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns'
-import { convertTime, getBrowserTimezone } from '@/lib/timezone'
+import { convertTime, getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 import type { TeamMember, LeaveType, CreateLeaveRequestData, Client } from '@/types/common'
 import type { LeaveRequestWithNested } from '@/types/vacation'
 
@@ -73,14 +73,14 @@ export function VacationPage() {
     leaveTypeId: '',
     startDate: '',
     endDate: '',
-    reason: '',
+    reason: '', halfDayStart: false, halfDayEnd: false,
   })
   const [requestFormData, setRequestFormData] = useState({
     employeeId: '',
     leaveTypeId: '',
     startDate: '',
     endDate: '',
-    reason: '',
+    reason: '', halfDayStart: false, halfDayEnd: false,
     autoApprove: false,
   })
   const [editFormData, setEditFormData] = useState({
@@ -88,7 +88,7 @@ export function VacationPage() {
     leaveTypeId: '',
     startDate: '',
     endDate: '',
-    reason: '',
+    reason: '', halfDayStart: false, halfDayEnd: false,
     status: '',
   })
   const queryClient = useQueryClient()
@@ -138,6 +138,10 @@ export function VacationPage() {
     queryFn: () => api.getAllShiftOverrides(currentMonthStr),
   })
 
+  const { data: effectiveCalendar, isLoading: calendarLoading, error: calendarError } = useQuery<{ members: Array<{ employee: { id: number }; days: any[] }> }>({
+    queryKey: ['adminEffectiveCalendar', currentMonthStr, selectedClientNumericId ?? 'all'],
+    queryFn: () => api.request(`/shifts/calendar/all?month=${currentMonthStr}${selectedClientNumericId ? `&clientId=${selectedClientNumericId}` : ''}`),
+  })
   const viewerTimezone = currentUser?.timezone || getBrowserTimezone()
 
   const projectClients = useMemo(() => {
@@ -195,37 +199,12 @@ export function VacationPage() {
   const getShiftTimeForMember = (memberId: number, date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
 
-    // Check overrides first
-    const override = overridesData?.overrides?.find(
-      (o: any) => o.override.employeeId === memberId && o.override.overrideDate === dateStr
-    )
-    if (override) {
-      if (override.override.isDayOff) return { isDayOff: true, startTime: '', endTime: '', isOverride: true, memberTz: '' }
-      const memberData = preferredShiftsData?.members?.find((m: any) => m.employee.id === memberId)
-      const memberTz = memberData?.employee?.timezone
-      if (memberTz) {
-        const start = convertTime(override.override.startTime, memberTz, viewerTimezone)
-        const end = convertTime(override.override.endTime, memberTz, viewerTimezone)
-        return { isDayOff: false, startTime: start.time, endTime: end.time, isOverride: true, memberTz, abbreviation: start.abbreviation }
-      }
-      return { isDayOff: false, startTime: override.override.startTime, endTime: override.override.endTime, isOverride: true, memberTz: '' }
-    }
-
-    // Fall back to preferred schedule
-    const memberData = preferredShiftsData?.members?.find((m: any) => m.employee.id === memberId)
-    if (!memberData) return null
-
-    const dayOfWeek = date.getDay() // 0=Sun, 1=Mon, ...
-    const schedule = memberData.schedules.find((s: any) => s.dayOfWeek === dayOfWeek && s.isActive)
-    if (!schedule) return null
-
-    const memberTz = memberData.employee?.timezone
-    if (memberTz) {
-      const start = convertTime(schedule.startTime, memberTz, viewerTimezone)
-      const end = convertTime(schedule.endTime, memberTz, viewerTimezone)
-      return { isDayOff: false, startTime: start.time, endTime: end.time, isOverride: false, memberTz, abbreviation: start.abbreviation }
-    }
-    return { isDayOff: false, startTime: schedule.startTime, endTime: schedule.endTime, isOverride: false, memberTz: '' }
+    const day = effectiveCalendar?.members.find(m => m.employee.id === memberId)?.days.find(d => d.date === dateStr)
+    if (!day) return null
+    const formatter = new Intl.DateTimeFormat('en-GB', { timeZone: viewerTimezone, hour: '2-digit', minute: '2-digit' })
+    const start = day.expectedStartAt || day.startAt
+    const end = day.endAt && day.absenceUnits === 0.5 && day.expectedStartAt === day.startAt ? new Date(Date.parse(day.startAt) + day.workingMinutes * 60000).toISOString() : day.endAt
+    return { isDayOff: day.isDayOff, isOverride: day.isOverride, startTime: start ? formatter.format(new Date(start)) : '', endTime: end ? formatter.format(new Date(end)) : '', memberTz: day.timezone, abbreviation: start ? getTimezoneAbbreviation(viewerTimezone, new Date(start)) : '', workingMinutes: day.workingMinutes, absenceUnits: day.absenceUnits }
   }
 
   // Mutations for leave request actions
@@ -234,6 +213,8 @@ export function VacationPage() {
       api.approveLeaveRequest(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
       queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
       queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
       // Force refetch immediately
@@ -251,6 +232,8 @@ export function VacationPage() {
       api.denyLeaveRequest(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
       queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
       queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
     },
@@ -265,6 +248,8 @@ export function VacationPage() {
       api.cancelLeaveRequest(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
       queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
       queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
     },
@@ -278,16 +263,18 @@ export function VacationPage() {
     mutationFn: (id: string) => api.deleteLeaveRequest(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
     },
     onError: (error: Error) => {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      showAlert({ message: `Failed to delete request: ${errorMessage}`, type: 'error' })
+      showAlert({ message: `Failed to archive request: ${errorMessage}`, type: 'error' })
     },
   })
 
   // Create leave request mutation (for calendar)
   const createLeaveMutation = useMutation({
-    mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string }) => {
+    mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string; halfDayStart?: boolean; halfDayEnd?: boolean }) => {
       // Use the new admin auto-approve endpoint
       return api.request('/vacation/admin/create-and-approve', {
         method: 'POST',
@@ -296,13 +283,15 @@ export function VacationPage() {
           leaveTypeId: parseInt(data.leaveTypeId),
           startDate: data.startDate,
           endDate: data.endDate,
-          reason: data.reason || null,
+          reason: data.reason || null, halfDayStart: !!data.halfDayStart, halfDayEnd: !!data.halfDayEnd,
           autoApprove: true,
         }),
       })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
       queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
       queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
       setShowCalendarModal(false)
@@ -311,7 +300,7 @@ export function VacationPage() {
         leaveTypeId: '',
         startDate: '',
         endDate: '',
-        reason: '',
+        reason: '', halfDayStart: false, halfDayEnd: false,
       })
     },
     onError: (error: Error) => {
@@ -322,27 +311,20 @@ export function VacationPage() {
 
   // Create leave request mutation (for admin request form)
   const createRequestMutation = useMutation({
-    mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string; autoApprove?: boolean }) => {
+    mutationFn: async (data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; reason: string; halfDayStart?: boolean; halfDayEnd?: boolean; autoApprove?: boolean }) => {
       const endpoint = data.autoApprove
         ? '/api/vacation/admin/create-and-approve'
         : '/api/vacation/requests'
 
-      return fetch(endpoint, {
+      return api.request(endpoint.replace('/api', ''), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          employeeId: parseInt(data.employeeId),
-          leaveTypeId: parseInt(data.leaveTypeId),
-          startDate: data.startDate,
-          endDate: data.endDate,
-          reason: data.reason || null,
-          autoApprove: data.autoApprove,
-        }),
+        body: JSON.stringify({ ...data, employeeId: Number(data.employeeId), leaveTypeId: Number(data.leaveTypeId) }),
       })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
       queryClient.invalidateQueries({ queryKey: ['myVacationBalance'] })
       queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance'] })
       setShowRequestModal(false)
@@ -351,7 +333,7 @@ export function VacationPage() {
         leaveTypeId: '',
         startDate: '',
         endDate: '',
-        reason: '',
+        reason: '', halfDayStart: false, halfDayEnd: false,
         autoApprove: false,
       })
     },
@@ -369,11 +351,13 @@ export function VacationPage() {
         leaveTypeId: parseInt(data.leaveTypeId),
         startDate: data.startDate,
         endDate: data.endDate,
-        reason: data.reason || null,
+        reason: data.reason || null, halfDayStart: !!data.halfDayStart, halfDayEnd: !!data.halfDayEnd,
       })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaveRequests'] })
+      queryClient.invalidateQueries({ queryKey: ['adminEffectiveCalendar'] })
+      queryClient.invalidateQueries({ queryKey: ['sickLeaveBalance'] })
       setShowEditModal(false)
       setSelectedVacation(null)
     },
@@ -432,10 +416,10 @@ export function VacationPage() {
 
   const handleDelete = async (requestId: string, employeeName: string) => {
     const confirmed = await showConfirm({
-      title: 'Delete Leave Request',
-      message: `Are you sure you want to permanently delete this leave request for ${employeeName}?\n\nThis action cannot be undone.`,
+      title: 'Archive Leave Request',
+      message: `Archive this leave request for ${employeeName}? The request and its audit history will be retained.`,
       type: 'warning',
-      confirmText: 'Delete',
+      confirmText: 'Archive',
       cancelText: 'Cancel',
       destructive: true,
     })
@@ -456,7 +440,7 @@ export function VacationPage() {
       leaveTypeId: leaveType?.id?.toString() || '',
       startDate: request.startDate || '',
       endDate: request.endDate || '',
-      reason: request.reason || '',
+      reason: request.reason || '', halfDayStart: !!request.halfDayStart, halfDayEnd: !!request.halfDayEnd,
       status: request.status || '',
     })
     setShowEditModal(true)
@@ -558,48 +542,7 @@ export function VacationPage() {
 
   // Get working team members for a specific date
   const getWorkingTeamMembersForDate = (date: Date) => {
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-    const dayName = dayNames[date.getDay()]
-
-    // Check if it's a public holiday - no one works on public holidays
-    if (isPublicHoliday(date)) {
-      return []
-    }
-
-    // Get employees on vacation/sick leave on this date
-    const vacationsOnDate = getCalendarDayEvents(date)
-    const vacationingEmployeeIds = vacationsOnDate
-      .filter((item: any) => {
-        const request = item.request || item
-        return request.status === 'approved'
-      })
-      .map((item: any) => item.employee?.id)
-
-    return teamMembers.filter((member: any) => {
-      if (!matchesCalendarMemberFilter(member.id)) {
-        return false
-      }
-
-      // Skip if hidden from calendar
-      if (member.showOnCalendar === false) {
-        return false
-      }
-
-      // Skip if on approved vacation or sick leave
-      if (vacationingEmployeeIds.includes(member.id)) {
-        return false
-      }
-
-      // Check work schedule - if not set, default to Monday-Friday full time
-      if (!member.workSchedule) {
-        // Default schedule: Monday-Friday are working days
-        return dayName === 'monday' || dayName === 'tuesday' || dayName === 'wednesday' ||
-               dayName === 'thursday' || dayName === 'friday'
-      }
-
-      const schedule = member.workSchedule[dayName]
-      return schedule === 'full' || schedule === 'half'
-    })
+    return teamMembers.filter((member: any) => matchesCalendarMemberFilter(member.id) && member.showOnCalendar !== false && (getShiftTimeForMember(member.id, date)?.workingMinutes || 0) > 0)
   }
 
   const calendarDays = eachDayOfInterval({
@@ -627,6 +570,9 @@ export function VacationPage() {
 
   return (
     <div className="space-y-6">
+      {calendarError && <p role="alert" className="text-sm text-red-600">Calendar failed to load: {calendarError.message}</p>}
+      {calendarLoading && <p role="status" className="text-sm text-muted-foreground">Loading work calendar…</p>}
+
       {/* Header Section - Stripe style */}
       <div className="stripe-card p-8">
         <div className="flex items-center justify-between">
@@ -821,18 +767,18 @@ export function VacationPage() {
                           </Button>
                         )}
                         {(request.status === 'denied' || request.status === 'canceled') && (
-                          <span className="text-sm text-gray-500 italic px-4">No actions available</span>
+                          <span className="text-sm text-gray-500 italic px-4">History retained</span>
                         )}
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleDelete(String(request.id), employee?.name || 'this employee')}
-                          disabled={deleteMutation.isPending}
+                          disabled={deleteMutation.isPending || request.status === 'approved'}
                           className="border-red-300 text-red-600 hover:bg-red-50"
-                          title="Delete this leave request"
+                          title={request.status === 'approved' ? 'Cancel this approved leave before archiving' : 'Archive this leave request'}
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
+                          Archive
                         </Button>
                       </div>
                     </div>
@@ -1160,7 +1106,7 @@ export function VacationPage() {
                                     ? 'bg-red-500'
                                     : 'bg-yellow-500'
                                 )}
-                                title={`${employee?.name || 'Unknown'} - ${leaveType?.name || 'N/A'}${isPending ? ' (PENDING)' : ''} (click to edit)`}
+                                title={`${employee?.name || 'Unknown'} - ${leaveType?.name || 'N/A'}${isPending ? ' (PENDING)' : ''}${request.halfDayStart || request.halfDayEnd ? ' · ½ day boundary' : ''} (click to edit)`}
                               >
                                 <span className="flex items-center justify-between gap-1">
                                   <span className="flex items-center gap-2 truncate">
@@ -1197,7 +1143,7 @@ export function VacationPage() {
                               {workingMembers.slice(0, 2).map((member: TeamMember) => {
                                 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
                                 const dayName = dayNames[date.getDay()]
-                                const isHalfDay = (member as any).workSchedule?.[dayName] === 'half'
+                                const isHalfDay = (getShiftTimeForMember(member.id, date)?.absenceUnits || 0) === 0.5
                                 const shiftInfo = getShiftTimeForMember(member.id, date)
 
                                 return (
@@ -1277,7 +1223,7 @@ export function VacationPage() {
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowCalendarModal(false)}
         >
-          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <CardHeader>
               <CardTitle>Add Leave Request</CardTitle>
               <CardDescription>Select date and team member to add leave</CardDescription>
@@ -1376,6 +1322,10 @@ export function VacationPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={calendarFormData.halfDayStart} onChange={e => setCalendarFormData({ ...calendarFormData, halfDayStart: e.target.checked, ...(calendarFormData.startDate === calendarFormData.endDate && e.target.checked ? { halfDayEnd: false } : {}) })} />Start after noon (½ day)</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={calendarFormData.halfDayEnd} onChange={e => setCalendarFormData({ ...calendarFormData, halfDayEnd: e.target.checked, ...(calendarFormData.startDate === calendarFormData.endDate && e.target.checked ? { halfDayStart: false } : {}) })} />End at noon (½ day)</label>
+                </div>
                 {/* Reason */}
                 <div>
                   <label className="block text-sm font-medium mb-2">Reason (optional)</label>
@@ -1422,7 +1372,7 @@ export function VacationPage() {
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowRequestModal(false)}
         >
-          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <CardHeader>
               <CardTitle>Add Leave Request</CardTitle>
               <CardDescription>Create a new leave request for a team member</CardDescription>
@@ -1521,6 +1471,10 @@ export function VacationPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={requestFormData.halfDayStart} onChange={e => setRequestFormData({ ...requestFormData, halfDayStart: e.target.checked, ...(requestFormData.startDate === requestFormData.endDate && e.target.checked ? { halfDayEnd: false } : {}) })} />Start after noon (½ day)</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={requestFormData.halfDayEnd} onChange={e => setRequestFormData({ ...requestFormData, halfDayEnd: e.target.checked, ...(requestFormData.startDate === requestFormData.endDate && e.target.checked ? { halfDayStart: false } : {}) })} />End at noon (½ day)</label>
+                </div>
                 {/* Reason */}
                 <div>
                   <label className="block text-sm font-medium mb-2">Reason (optional)</label>
@@ -1589,7 +1543,7 @@ export function VacationPage() {
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowEditModal(false)}
         >
-          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <Card className="w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <CardHeader>
               <CardTitle>Edit Leave Request</CardTitle>
               <CardDescription>
@@ -1605,7 +1559,7 @@ export function VacationPage() {
                     value={editFormData.employeeId}
                     onChange={(e) => setEditFormData({ ...editFormData, employeeId: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    disabled={isLoadingTeamMembers}
+                    disabled
                   >
                     <option value="">Select team member</option>
                     {teamMembers.map((emp: any) => (
@@ -1654,6 +1608,10 @@ export function VacationPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={editFormData.halfDayStart} onChange={e => setEditFormData({ ...editFormData, halfDayStart: e.target.checked, ...(editFormData.startDate === editFormData.endDate && e.target.checked ? { halfDayEnd: false } : {}) })} />Start after noon (½ day)</label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={editFormData.halfDayEnd} onChange={e => setEditFormData({ ...editFormData, halfDayEnd: e.target.checked, ...(editFormData.startDate === editFormData.endDate && e.target.checked ? { halfDayStart: false } : {}) })} />End at noon (½ day)</label>
+                </div>
                 {/* Reason */}
                 <div>
                   <label className="block text-sm font-medium mb-2">Reason (optional)</label>

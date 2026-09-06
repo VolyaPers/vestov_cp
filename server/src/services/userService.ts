@@ -1,5 +1,3 @@
-import bcrypt from 'bcryptjs'
-import crypto from 'crypto'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { clientUsers, teamMembers, users } from '../db/schema.js'
@@ -14,7 +12,6 @@ interface CreateUserOptions {
   fullName: string
   role: UserRole
   username?: string
-  password?: string
   position?: string
   avatarUrl?: string
   teamMemberId?: number
@@ -35,7 +32,6 @@ export async function createUserAccount(
     fullName,
     role,
     username,
-    password,
     position,
     avatarUrl,
     teamMemberId,
@@ -44,8 +40,12 @@ export async function createUserAccount(
     isActive = true,
   } = options
 
+  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || typeof fullName !== 'string' || !fullName.trim()) throw new Error('Valid email and full name are required')
+  if (!['admin', 'team_member', 'client'].includes(role)) throw new Error('Invalid role')
+  if (teamMemberId !== undefined && (!Number.isSafeInteger(Number(teamMemberId)) || Number(teamMemberId) <= 0 || role === 'client')) throw new Error('A valid employee profile can only be linked to an employee or admin user')
   const normalizedEmail = normalizeEmail(email)
-  const normalizedUsername = normalizeUsername(username || normalizedEmail)
+  if (username !== undefined && (typeof username !== 'string' || !username.trim() || username.trim().length > 50)) throw new Error('Username must contain 1–50 characters')
+  const normalizedUsername = normalizeUsername(username || normalizedEmail.split('@')[0]).slice(0, 50)
 
   return db.transaction(async (tx) => {
     // Check for existing user - this should only find users that weren't hard-deleted
@@ -90,32 +90,33 @@ export async function createUserAccount(
         throw new Error('This team member already has a user account')
       }
 
+      if (teamMember.email.toLowerCase() !== normalizedEmail) throw new Error('Employee profile email must match the user email')
       finalTeamMemberId = Number(teamMemberId)
     } else if (role === 'team_member' && !teamMemberId) {
       // Don't create team member automatically - user can be linked later from Team page
       // Leave teamMemberId as null - it can be set later when adding the user as a team member
-      finalTeamMemberId = null
+      const [member] = await tx.select({ id: teamMembers.id }).from(teamMembers).where(eq(teamMembers.email, normalizedEmail)).limit(1)
+      if (member) {
+        const [linked] = await tx.select({ id: users.id }).from(users).where(eq(users.teamMemberId, member.id)).limit(1)
+        if (linked) throw new Error('This team member already has a user account')
+        finalTeamMemberId = member.id
+      }
     }
-
-    const hashedPassword = await bcrypt.hash(
-      password && password.length > 0 ? password : crypto.randomUUID(),
-      12
-    )
 
     try {
       const [newUser] = await tx
         .insert(users)
         .values({
           username: normalizedUsername,
-          password: hashedPassword,
-          fullName,
+          password: null,
+          fullName: fullName.trim(),
           email: normalizedEmail,
           role,
           position,
           avatarUrl,
           teamMemberId: finalTeamMemberId,
           isActive,
-          authProvider: 'local',
+          authProvider: 'clerk',
         })
         .returning()
 

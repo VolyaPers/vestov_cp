@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardSkeleton, MetricTileSkeleton, PageHero, PageHeroSkeleton } from '@/components/page-primitives'
+import { useClientWorkspace, ClientLoadError } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 
@@ -78,9 +79,11 @@ function StatCard({
 }
 
 export function ClientDashboard() {
-  const { data: dashboardData, isLoading } = useQuery({
-    queryKey: ['client', 'dashboard'],
-    queryFn: () => api.getClientDashboard(),
+  const { clientId: selectedClientId } = useClientWorkspace()
+  const { data: dashboardData, isLoading, isError, refetch } = useQuery({
+    queryKey: ['client', 'dashboard', selectedClientId],
+    queryFn: () => api.getClientDashboard(selectedClientId),
+    enabled: !!selectedClientId,
   })
 
   if (isLoading) {
@@ -102,7 +105,9 @@ export function ClientDashboard() {
     )
   }
 
-  const { client, stats, recentRequests } = dashboardData || {}
+  if (isError) return <ClientLoadError message="Unable to load your workspace overview." onRetry={() => refetch()} />
+
+  const { client, stats, recentFeedback, viewer } = dashboardData || {}
   const services = normalizeServices(client?.activeServices)
   const clientId = client?.id
 
@@ -110,8 +115,8 @@ export function ClientDashboard() {
     <div className="space-y-6">
       <PageHero
         eyebrow="Client Overview"
-        title={`Welcome back, ${client?.contactPerson || 'there'}.`}
-        description="Your workspace now highlights delivery status, billing context and the quickest paths to the documents and invoices you actually need."
+        title={viewer?.fullName ? `Welcome back, ${viewer.fullName}.` : 'Welcome to your workspace.'}
+        description="Review your active projects, team, feedback, shared documents and invoices."
         theme="teal"
         meta={(
           <>
@@ -123,14 +128,14 @@ export function ClientDashboard() {
               </>
             )}
             <span className="h-1 w-1 rounded-full bg-slate-300"></span>
-            <span>{stats?.pendingRequests || 0} pending request{stats?.pendingRequests === 1 ? '' : 's'}</span>
+            <span>{stats?.pendingFeedback || 0} feedback item{stats?.pendingFeedback === 1 ? '' : 's'} awaiting review</span>
           </>
         )}
         aside={(
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="hero-aside-card">
               <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.22em] text-muted-foreground">Contract</p>
-              <p className="mt-3 font-display text-2xl font-semibold text-foreground">Active</p>
+              <p className="mt-3 font-display text-2xl font-semibold text-foreground">{client?.status === 'active' ? 'Active' : 'Inactive'}</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {client?.contractEnd ? `Until ${formatDate(client.contractEnd)}` : 'No end date specified'}
               </p>
@@ -174,14 +179,14 @@ export function ClientDashboard() {
           icon={<Settings className="h-5 w-5" />}
         />
         <StatCard
-          title="Pending Requests"
-          value={stats?.pendingRequests || 0}
-          hint="Items waiting on a response"
+          title="Pending Feedback"
+          value={stats?.pendingFeedback || 0}
+          hint="Your feedback awaiting review"
           icon={<Clock3 className="h-5 w-5" />}
         />
         <StatCard
           title="Contract Status"
-          value="Active"
+          value={client?.status === 'active' ? 'Active' : 'Inactive'}
           hint={client?.contractEnd ? `Renews through ${formatDate(client.contractEnd)}` : 'No expiry date set'}
           icon={<CheckCircle2 className="h-5 w-5" />}
         />
@@ -234,31 +239,29 @@ export function ClientDashboard() {
                 <MessageSquareQuote className="h-5 w-5" />
               </div>
               <div>
-                <CardTitle className="text-xl">Recent requests</CardTitle>
-                <CardDescription>Latest client-side requests and their current status</CardDescription>
+                <CardTitle className="text-xl">Recent feedback</CardTitle>
+                <CardDescription>Your feedback for this company and its review status</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {recentRequests?.length ? (
+            {recentFeedback?.length ? (
               <div className="space-y-3">
-                {recentRequests.slice(0, 4).map((request: any) => (
+                {recentFeedback.slice(0, 4).map((request: any) => (
                   <div key={request.id} className="rounded-[1.2rem] border border-border/70 bg-white/72 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{request.title}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">{request.comments}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {formatDate(request.requestDate)} • {request.status}
+                          {formatDate(request.createdAt)} • {request.status}
                         </p>
                       </div>
                       <Badge
                         variant="outline"
                         className={
-                          request.status === 'approved'
+                          request.status === 'reviewed'
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : request.status === 'denied'
-                              ? 'border-rose-200 bg-rose-50 text-rose-700'
-                              : 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-amber-200 bg-amber-50 text-amber-700'
                         }
                       >
                         {request.status}
@@ -269,9 +272,10 @@ export function ClientDashboard() {
               </div>
             ) : (
               <div className="rounded-[1.2rem] border border-dashed border-border/70 bg-white/50 p-6 text-sm text-muted-foreground">
-                No recent requests found for this account.
+                You have not submitted feedback for this company yet.
               </div>
             )}
+            <Link href="/client/feedback"><Button variant="outline" className="mt-4">Open feedback</Button></Link>
           </CardContent>
         </Card>
       </div>
@@ -304,7 +308,7 @@ export function ClientDashboard() {
             </div>
             <div className="rounded-[1.2rem] border border-border/70 bg-white/70 p-4">
               <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-muted-foreground">Team size</p>
-              <p className="mt-2 text-sm font-semibold text-foreground">{client?.teamSize || stats?.totalTeamMembers || 0} members</p>
+              <p className="mt-2 text-sm font-semibold text-foreground">{stats?.totalTeamMembers || 0} members</p>
             </div>
           </CardContent>
         </Card>

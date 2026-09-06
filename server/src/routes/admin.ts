@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq, desc, and, sql } from 'drizzle-orm'
+import { eq, desc, and, sql, isNull } from 'drizzle-orm'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
@@ -21,8 +21,13 @@ import {
   invoices,
   financialTransactions,
   clientServices,
+  clientServiceTeamMembers,
 } from '../db/schema.js'
 import { requireAdmin, requireAuth } from '../middleware/auth.js'
+import leaveLifecycleRouter from './leaveLifecycle.js'
+import { updateMonthlySalaryFromProfile } from '../services/payroll.js'
+import { effectiveProjectPredicate, resolveEmployeeId } from '../services/access.js'
+import { uploadsDirectory } from '../utils/uploads.js'
 import { calculateDays } from '../utils/dateUtils.js'
 
 const router = Router()
@@ -75,7 +80,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
 
     // Allow update if user is admin OR if user is updating their own profile (email matches)
     const isAdmin = req.user.role === 'admin'
-    const isOwner = existingMember.email === req.user.email
+    const isOwner = await resolveEmployeeId(req.user) === existingMember.id
 
     if (!isAdmin && !isOwner) {
       return res.status(403).json({ error: 'You can only update your own profile' })
@@ -129,17 +134,24 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
       }
     }
 
-    const [member] = await db
-      .update(teamMembers)
-      .set(updateData)
-      .where(eq(teamMembers.id, memberId))
-      .returning()
+    const requestedMonthlyRate = updateData.monthlyRate
+    delete updateData.monthlyRate
+    if (updateData.timezone) {
+      try { new Intl.DateTimeFormat('en-US',{timeZone:updateData.timezone}).format() }
+      catch { return res.status(400).json({error:'Invalid timezone'}) }
+    }
+    const member = await db.transaction(async tx => {
+      if (requestedMonthlyRate !== undefined) await updateMonthlySalaryFromProfile(tx, memberId, requestedMonthlyRate, req.user!.id)
+      const [updated] = await tx.update(teamMembers).set(updateData).where(eq(teamMembers.id, memberId)).returning()
+      return updated
+    })
 
     if (!member) {
       return res.status(404).json({ error: 'Team member not found' })
     }
     res.json(member)
   } catch (error) {
+    if((error as any).status) return res.status((error as any).status).json({error:(error as Error).message})
     console.error('Error updating team member:', error)
     res.status(500).json({ error: 'Failed to update team member' })
   }
@@ -151,7 +163,7 @@ router.use(requireAdmin)
 // Configure multer for logo uploads
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), 'uploads', 'logos')
+    const uploadPath = path.join(uploadsDirectory, 'logos')
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true })
     }
@@ -211,7 +223,7 @@ router.get('/dashboard', async (req, res) => {
       stats: {
         totalClients: clientCount.count,
         totalTeamMembers: teamMemberCount.count,
-        activeTeamMembers: activeTeamMembers[0].count,
+        activeTeamMembers: activeTeamMembers.count,
         pendingLeaveRequests: pendingLeaveRequests.count,
       }
     })
@@ -228,12 +240,13 @@ router.get('/dashboard/summary', async (req, res) => {
     const endDate = `${currentYear}-12-31`
 
     const txDateConditions = [
+      sql`${financialTransactions.voidedAt} IS NULL`,
       sql`${financialTransactions.transactionDate} >= ${startDate}`,
       sql`${financialTransactions.transactionDate} <= ${endDate}`,
     ]
     const invoiceDateConditions = [
-      sql`${invoices.invoiceDate} >= ${startDate}`,
-      sql`${invoices.invoiceDate} <= ${endDate}`,
+      sql`${invoices.paidAt} >= ${startDate}::date`,
+      sql`${invoices.paidAt} < (${endDate}::date + interval '1 day')`,
     ]
     const paidInvoiceConditions = [
       sql`${invoices.status} = 'paid'`,
@@ -353,19 +366,19 @@ router.get('/dashboard/summary', async (req, res) => {
         .where(and(...paidInvoiceConditions)),
       db
         .select({
-          month: sql<number>`EXTRACT(MONTH FROM ${invoices.invoiceDate})::int`,
-          year: sql<number>`EXTRACT(YEAR FROM ${invoices.invoiceDate})::int`,
+          month: sql<number>`EXTRACT(MONTH FROM ${invoices.paidAt})::int`,
+          year: sql<number>`EXTRACT(YEAR FROM ${invoices.paidAt})::int`,
           total: sql<string>`COALESCE(SUM(CAST(${invoices.amount} AS DECIMAL)), 0)`,
         })
         .from(invoices)
         .where(and(...paidInvoiceConditions))
         .groupBy(
-          sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
-          sql`EXTRACT(YEAR FROM ${invoices.invoiceDate})`,
+          sql`EXTRACT(MONTH FROM ${invoices.paidAt})`,
+          sql`EXTRACT(YEAR FROM ${invoices.paidAt})`,
         )
         .orderBy(
-          sql`EXTRACT(YEAR FROM ${invoices.invoiceDate})`,
-          sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
+          sql`EXTRACT(YEAR FROM ${invoices.paidAt})`,
+          sql`EXTRACT(MONTH FROM ${invoices.paidAt})`,
         ),
     ])
 
@@ -499,8 +512,6 @@ router.get('/clients/:id', async (req, res) => {
 
 router.post('/clients', async (req, res) => {
   try {
-    console.log('[POST /admin/clients] Request body:', req.body)
-
     // Clean up empty strings for optional fields
     const cleanedData = { ...req.body }
 
@@ -517,18 +528,12 @@ router.post('/clients', async (req, res) => {
     if (cleanedData.address === '') cleanedData.address = null
     if (cleanedData.billingCycle === '') cleanedData.billingCycle = null
 
-    console.log('[POST /admin/clients] Cleaned data:', cleanedData)
-
     const [client] = await db.insert(clients).values(cleanedData).returning()
     console.log('[POST /admin/clients] Client created successfully:', client.id)
     res.json(client)
   } catch (error) {
-    console.error('[POST /admin/clients] Error creating client:', error)
-    console.error('[POST /admin/clients] Request body was:', req.body)
-
-    // Send more specific error message
-    const errorMessage = error instanceof Error ? error.message : 'Failed to create client'
-    res.status(500).json({ error: errorMessage })
+    console.error('[POST /admin/clients] Creation failed', { errorType: error instanceof Error ? error.name : 'UnknownError' })
+    res.status(500).json({ error: 'Failed to create client' })
   }
 })
 
@@ -573,7 +578,7 @@ router.post('/clients/:id/logo', logoUpload.single('logo'), async (req, res) => 
 
     // Delete old logo if it exists
     if (client.logoUrl) {
-      const oldLogoPath = path.join(process.cwd(), 'uploads', 'logos', path.basename(client.logoUrl))
+      const oldLogoPath = path.join(uploadsDirectory, 'logos', path.basename(client.logoUrl))
       try {
         if (fs.existsSync(oldLogoPath)) {
           fs.unlinkSync(oldLogoPath)
@@ -660,7 +665,11 @@ router.get('/team-members', async (req, res) => {
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(teamMembers.createdAt))
 
-    res.json(members)
+    const assignments = await db.select({employeeId:clientServiceTeamMembers.teamMemberId,clientId:clientServices.clientId})
+      .from(clientServiceTeamMembers).innerJoin(clientServices,eq(clientServices.id,clientServiceTeamMembers.clientServiceId))
+      .where(and(eq(clientServiceTeamMembers.isActive,true),effectiveProjectPredicate(),
+        sql`${clientServiceTeamMembers.startDate} <= CURRENT_DATE`,sql`(${clientServiceTeamMembers.endDate} IS NULL OR ${clientServiceTeamMembers.endDate} >= CURRENT_DATE)`))
+    res.json(members.map(member=>({...member,clientIds:[...new Set(assignments.filter(row=>row.employeeId===member.id).map(row=>row.clientId))]})))
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch team members' })
   }
@@ -763,66 +772,22 @@ router.post('/team-members', async (req, res) => {
 
 router.delete('/team-members/:id', async (req, res) => {
   try {
-    console.log(`Attempting to delete team member with ID: ${req.params.id}`)
-    const memberId = parseInt(req.params.id)
-
-    // First, check if the team member exists
-    const existingMember = await db
-      .select()
-      .from(teamMembers)
-      .where(eq(teamMembers.id, memberId))
-      .limit(1)
-
-    if (existingMember.length === 0) {
-      console.log(`Team member with ID ${req.params.id} not found`)
-      return res.status(404).json({ error: 'Team member not found' })
-    }
-
-    // Delete all related records to avoid foreign key constraint violations
-    console.log(`Deleting related records for team member ${memberId}`)
-
-    // 1. Delete leave request events first (they reference leave requests)
-    const memberLeaveRequests = await db
-      .select({ id: leaveRequests.id })
-      .from(leaveRequests)
-      .where(eq(leaveRequests.employeeId, memberId))
-
-    for (const request of memberLeaveRequests) {
-      await db.delete(leaveRequestEvents).where(eq(leaveRequestEvents.leaveRequestId, request.id))
-    }
-
-    // 2. Delete leave requests
-    await db.delete(leaveRequests).where(eq(leaveRequests.employeeId, memberId))
-
-    // 3. Delete leave balances
-    await db.delete(leaveBalances).where(eq(leaveBalances.employeeId, memberId))
-
-    // 4. Delete employment cycles
-    await db.delete(employmentCycles).where(eq(employmentCycles.employeeId, memberId))
-
-    // 5. Delete feedback records
-    await db.delete(feedback).where(eq(feedback.teamMemberId, memberId))
-
-    // 6. Update time entries to remove team member reference (set to null instead of deleting)
-    await db.update(timeEntries)
-      .set({ teamMemberId: null })
-      .where(eq(timeEntries.teamMemberId, memberId))
-
-    // Now delete the team member
-    const [member] = await db
-      .delete(teamMembers)
-      .where(eq(teamMembers.id, memberId))
-      .returning()
-
-    console.log(`Successfully deleted team member: ${member.id}`)
-    res.json({ message: 'Team member deleted successfully', id: member.id })
-  } catch (error) {
-    console.error('Error deleting team member:', error)
-    res.status(500).json({ error: 'Failed to delete team member' })
+    const memberId=Number(req.params.id)
+    if(!Number.isSafeInteger(memberId)||memberId<=0) return res.status(400).json({error:'Invalid employee ID'})
+    const deleted=await db.transaction(async tx=>{
+      const linked=await tx.select({id:users.id}).from(users).where(eq(users.teamMemberId,memberId)).limit(1)
+      if(linked.length) return null
+      const [row]=await tx.delete(teamMembers).where(eq(teamMembers.id,memberId)).returning()
+      return row
+    })
+    if(!deleted)return res.status(409).json({error:'This employee is linked to a user. Deactivate the account to preserve its history.'})
+    res.json({message:'Employee deleted',id:memberId})
+  } catch(error:any) {
+    if(error.code==='23503'||error.cause?.code==='23503')return res.status(409).json({error:'This employee has employment or accounting history. Deactivate the account to preserve it.'})
+    res.status(500).json({error:'Failed to delete employee'})
   }
 })
 
-// Leave Management
 router.get('/leave-requests', async (req, res) => {
   try {
     const requests = await db
@@ -850,6 +815,7 @@ router.get('/leave-requests', async (req, res) => {
       .from(leaveRequests)
       .leftJoin(teamMembers, eq(leaveRequests.employeeId, teamMembers.id))
       .leftJoin(leaveTypes, eq(leaveRequests.leaveTypeId, leaveTypes.id))
+      .where(isNull(leaveRequests.archivedAt))
       .orderBy(desc(leaveRequests.createdAt))
 
     res.json(requests)
@@ -858,164 +824,19 @@ router.get('/leave-requests', async (req, res) => {
   }
 })
 
-router.post('/leave-requests', async (req, res) => {
-  try {
-    const { employeeId, leaveTypeId, startDate, endDate, halfDayStart, halfDayEnd, reason } = req.body
-
-    // Calculate days count
-    const daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd)
-
-    const [request] = await db.insert(leaveRequests).values({
-      employeeId,
-      leaveTypeId,
-      startDate,
-      endDate,
-      halfDayStart: halfDayStart || false,
-      halfDayEnd: halfDayEnd || false,
-      daysCount: daysCount.toString(),
-      reason,
-      requestedBy: req.user!.id,
-    }).returning()
-
-    // Create audit trail event
-    await db.insert(leaveRequestEvents).values({
-      leaveRequestId: request.id,
-      status: 'pending',
-      actorId: req.user!.id,
-      note: 'Leave request created',
-    })
-
-    res.json(request)
-  } catch (error) {
-    console.error('Create leave request error:', error)
-    res.status(500).json({ error: 'Failed to create leave request' })
-  }
-})
-
-router.patch('/leave-requests/:id', async (req, res) => {
-  try {
-    const { startDate, endDate, halfDayStart, halfDayEnd, reason } = req.body
-
-    // Recalculate days if dates changed
-    let updateData = req.body
-    if (startDate && endDate) {
-      updateData.daysCount = calculateDays(startDate, endDate, halfDayStart, halfDayEnd).toString()
-    }
-
-    const [request] = await db
-      .update(leaveRequests)
-      .set({ ...updateData, updatedAt: new Date() })
-      .where(eq(leaveRequests.id, parseInt(req.params.id)))
-      .returning()
-
-    if (!request) {
-      return res.status(404).json({ error: 'Leave request not found' })
-    }
-
-    res.json(request)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update leave request' })
-  }
-})
-
-router.patch('/leave-requests/:id/approve', async (req, res) => {
-  try {
-    const { reason } = req.body
-
-    const [request] = await db
-      .update(leaveRequests)
-      .set({
-        status: 'approved',
-        decisionBy: req.user!.id,
-        decisionAt: new Date(),
-        decisionReason: reason,
-        updatedAt: new Date(),
-      })
-      .where(eq(leaveRequests.id, parseInt(req.params.id)))
-      .returning()
-
-    if (!request) {
-      return res.status(404).json({ error: 'Leave request not found' })
-    }
-
-    // Create audit trail event
-    await db.insert(leaveRequestEvents).values({
-      leaveRequestId: request.id,
-      status: 'approved',
-      actorId: req.user!.id,
-      note: reason || 'Leave request approved',
-    })
-
-    res.json(request)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to approve leave request' })
-  }
-})
-
-router.patch('/leave-requests/:id/deny', async (req, res) => {
-  try {
-    const { reason } = req.body
-
-    const [request] = await db
-      .update(leaveRequests)
-      .set({
-        status: 'denied',
-        decisionBy: req.user!.id,
-        decisionAt: new Date(),
-        decisionReason: reason,
-        updatedAt: new Date(),
-      })
-      .where(eq(leaveRequests.id, parseInt(req.params.id)))
-      .returning()
-
-    if (!request) {
-      return res.status(404).json({ error: 'Leave request not found' })
-    }
-
-    // Create audit trail event
-    await db.insert(leaveRequestEvents).values({
-      leaveRequestId: request.id,
-      status: 'denied',
-      actorId: req.user!.id,
-      note: reason || 'Leave request denied',
-    })
-
-    res.json(request)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to deny leave request' })
-  }
-})
-
-router.patch('/leave-requests/:id/cancel', async (req, res) => {
-  try {
-    const { reason } = req.body
-
-    const [request] = await db
-      .update(leaveRequests)
-      .set({
-        status: 'canceled',
-        updatedAt: new Date(),
-      })
-      .where(eq(leaveRequests.id, parseInt(req.params.id)))
-      .returning()
-
-    if (!request) {
-      return res.status(404).json({ error: 'Leave request not found' })
-    }
-
-    // Create audit trail event
-    await db.insert(leaveRequestEvents).values({
-      leaveRequestId: request.id,
-      status: 'canceled',
-      actorId: req.user!.id,
-      note: reason || 'Leave request canceled',
-    })
-
-    res.json(request)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to cancel leave request' })
-  }
-})
+// Compatibility routes share the same validated lifecycle as the current calendar.
+const forwardLeave = (method: string, target: (req: any) => string, status?: string) => (req: any, res: any, next: any) => {
+  req.method = method
+  req.url = target(req)
+  if (status) req.body = { ...req.body, status, decisionReason: req.body.reason }
+  if (method === 'POST') req.body = { ...req.body, autoApprove: false }
+  leaveLifecycleRouter(req, res, next)
+}
+router.post('/leave-requests', forwardLeave('POST', () => '/admin/create-and-approve'))
+router.patch('/leave-requests/:id', forwardLeave('PUT', req => `/requests/${req.params.id}`))
+router.patch('/leave-requests/:id/approve', forwardLeave('PUT', req => `/requests/${req.params.id}/status`, 'approved'))
+router.patch('/leave-requests/:id/deny', forwardLeave('PUT', req => `/requests/${req.params.id}/status`, 'denied'))
+router.patch('/leave-requests/:id/cancel', forwardLeave('PUT', req => `/requests/${req.params.id}/cancel`))
 
 // Leave Balances
 router.get('/leave-balances', async (req, res) => {
@@ -1073,6 +894,7 @@ router.delete('/clients/:id', async (req, res) => {
 
     res.json({ message: 'Client deleted successfully', clientId })
   } catch (error) {
+    if ((error as any).code === '23503' || (error as any).cause?.code === '23503') return res.status(409).json({error:'This client has project or financial history. Set the client inactive to preserve those records.'})
     console.error('Error deleting client:', error)
     res.status(500).json({ error: 'Failed to delete client' })
   }

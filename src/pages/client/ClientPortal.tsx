@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ClientLoadError, isCurrentAssignment, useClientDocumentPreview } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate, parseLocalDate } from '@/lib/utils'
 import { convertClientToClientDetails, type ClientDetails } from '@/lib/clientHelpers'
@@ -30,7 +31,7 @@ interface Document {
   id: number
   name: string
   type: string
-  fileSize: number
+  fileSize: number | null
   url: string
   createdAt: string
   lastUpdated: string
@@ -85,6 +86,9 @@ export function ClientPortal() {
     return <div>Client ID not found</div>
   }
   const clientId = getRouteParam(params, 'clientId')
+  const [loadError, setLoadError] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [showHistory, setShowHistory] = useState(false)
   const [client, setClient] = useState<ClientDetails | null>(null)
   const [isClientLoading, setIsClientLoading] = useState(true)
   const [serviceDevelopers, setServiceDevelopers] = useState<Record<number, ServiceDeveloper[]>>({})
@@ -98,17 +102,21 @@ export function ClientPortal() {
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
   const [previewDocument, setPreviewDocument] = useState<DocumentWithService | null>(null)
 
+  const preview = useClientDocumentPreview(previewDocument?.document.id, isPreviewDialogOpen)
+
   useEffect(() => {
     const loadClientData = async () => {
       if (!clientId) return
 
       try {
+        setLoadError('')
+        setIsClientLoading(true)
         // Load client details
         const clientResponse = await api.getClient(clientId)
         setClient(convertClientToClientDetails(clientResponse))
         setIsClientLoading(false)
 
-        const activeServices = clientResponse.services.filter((service: any) => service.isActive)
+        const activeServices = (clientResponse.services || []).filter(service => isCurrentAssignment(service))
 
         // Load service developers, documents, contacts, and invoices independently so each
         // section can reveal as soon as its own data is ready.
@@ -120,7 +128,7 @@ export function ClientPortal() {
         const developersPromise = (async () => {
           const developersData = await api.getServiceDeveloperAssignments({ clientId: parseInt(clientId) })
           setServiceDevelopers(developersData as Record<number, ServiceDeveloper[]>)
-        })().finally(() => {
+        })().catch(() => setLoadError('Unable to load team assignments. Please retry.')).finally(() => {
           setIsDevelopersLoading(false)
         })
 
@@ -148,12 +156,12 @@ export function ClientPortal() {
                   }
                 }
               } catch (error) {
-                console.error(`Failed to load documents for service ${service.id}:`, error)
+                setLoadError('Unable to load some project documents. Please retry.')
               }
             }
             setDocuments(allDocs)
           } catch (error) {
-            console.error('Failed to load documents:', error)
+            setLoadError('Unable to load documents. Please retry.')
           }
         })().finally(() => {
           setIsDocumentsLoading(false)
@@ -164,7 +172,7 @@ export function ClientPortal() {
             const contactsResponse = await api.request(`/client-contacts/client/${clientId}`)
             setContacts(contactsResponse)
           } catch (error) {
-            console.error('Failed to load contacts:', error)
+            setLoadError('Unable to load contacts. Please retry.')
           }
         })().finally(() => {
           setIsContactsLoading(false)
@@ -175,7 +183,7 @@ export function ClientPortal() {
             const invoicesResponse = await api.request(`/invoices/client/${clientId}`)
             setInvoices(invoicesResponse)
           } catch (error) {
-            console.error('Failed to load invoices:', error)
+            setLoadError('Unable to load invoices. Please retry.')
           }
         })().finally(() => {
           setIsInvoicesLoading(false)
@@ -183,7 +191,7 @@ export function ClientPortal() {
 
         await Promise.allSettled([developersPromise, documentsPromise, contactsPromise, invoicesPromise])
       } catch (error) {
-        console.error('Failed to load client data:', error)
+        setLoadError('Unable to load this client workspace. Please retry.')
         setIsClientLoading(false)
       } finally {
         setIsClientLoading(false)
@@ -191,7 +199,7 @@ export function ClientPortal() {
     }
 
     loadClientData()
-  }, [clientId])
+  }, [clientId, retry])
 
   const handleDocumentDownload = async (documentId: number, filename: string) => {
     try {
@@ -217,7 +225,7 @@ export function ClientPortal() {
   }
 
   const getPreviewUrl = (documentId: number) => {
-    return `/api/documents/preview/${documentId}`
+    return preview.url || 'about:blank'
   }
 
   const canPreview = (filename: string) => {
@@ -225,11 +233,12 @@ export function ClientPortal() {
     return ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '')
   }
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes: unknown) => {
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return 'Size unavailable'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    const i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
@@ -243,9 +252,10 @@ export function ClientPortal() {
   // Calculate unique team members across all services (no duplicates)
   const getUniqueTeamSize = () => {
     const uniqueDeveloperIds = new Set<number>()
-    Object.values(serviceDevelopers).forEach(developers => {
+    Object.entries(serviceDevelopers).forEach(([serviceId, developers]) => {
+      if (!client?.services.some(service => service.id === Number(serviceId) && isCurrentAssignment(service))) return
       developers.forEach(dev => {
-        if (dev.isActive) {
+        if (isCurrentAssignment(dev)) {
           uniqueDeveloperIds.add(dev.developerId)
         }
       })
@@ -277,6 +287,8 @@ export function ClientPortal() {
     )
   }
 
+  if (!client && loadError) return <ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />
+
   if (!client) {
     return (
       <EmptyState
@@ -288,6 +300,7 @@ export function ClientPortal() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {loadError && <ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />}
       <PageHero
         eyebrow="Client Portal"
         title={client.name}
@@ -320,7 +333,7 @@ export function ClientPortal() {
           )}
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
-          <MetricTile label="Active Services" value={client.services.filter(s => s.isActive).length} hint="Current delivery lanes" icon={<Building className="h-5 w-5" />} tone="emerald" />
+          <MetricTile label="Active Services" value={client.services.filter(service => isCurrentAssignment(service)).length} hint="Current delivery lanes" icon={<Building className="h-5 w-5" />} tone="emerald" />
         </div>
         <div className="min-w-[15.5rem] shrink-0 snap-start sm:min-w-0">
           {isDocumentsLoading ? (
@@ -380,24 +393,25 @@ export function ClientPortal() {
           <SectionHeading title="Your Services" description="Services and team members assigned to your project" icon={<Building className="h-5 w-5" />} />
         </CardHeader>
         <CardContent>
+          <label className="mb-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={showHistory} onChange={event => setShowHistory(event.target.checked)} />Show past and upcoming projects and assignments</label>
           {isDevelopersLoading ? (
             <CardSkeleton titleWidth="w-32" lines={4} tall />
-          ) : client.services.length > 0 ? (
+          ) : client.services.filter(service => showHistory || isCurrentAssignment(service)).length > 0 ? (
             <div className="space-y-6">
-              {client.services.map((service) => (
+              {client.services.filter(service => showHistory || isCurrentAssignment(service)).map((service) => (
                 <div key={service.id} className="overflow-hidden rounded-[1.25rem] border border-border/70 bg-white/70">
                   <div className="border-b border-border/60 bg-muted/45 p-4">
                     <div className="mb-2 flex flex-wrap items-center gap-2.5 sm:gap-3">
-                      <h4 className="font-medium text-foreground">{service.serviceTypeName}</h4>
+                      <h4 className="font-medium text-foreground">{service.serviceTitle || service.serviceTypeName}</h4>
                       <Badge className={service.serviceCategory === 'outstaffing' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}>
                         {service.serviceCategory}
                       </Badge>
                       <Badge variant="outline">
                         {service.billingModel}
                       </Badge>
-                      {!service.isActive && (
+                      {!isCurrentAssignment(service) && (
                         <Badge variant="outline" className="text-red-600">
-                          Ended
+                          {service.startDate > new Date().toISOString().slice(0, 10) ? 'Scheduled' : 'Ended'}
                         </Badge>
                       )}
                     </div>
@@ -415,9 +429,9 @@ export function ClientPortal() {
                   {/* Team Members */}
                   <div className="p-4">
                     <h5 className="mb-3 text-sm font-medium text-foreground">Your Team</h5>
-                    {serviceDevelopers[service.id] && serviceDevelopers[service.id].length > 0 ? (
+                    {serviceDevelopers[service.id] && serviceDevelopers[service.id].some(developer => showHistory || isCurrentAssignment(developer)) ? (
                       <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
-                        {serviceDevelopers[service.id].map((developer) => (
+                        {serviceDevelopers[service.id].filter(developer => showHistory || isCurrentAssignment(developer)).map((developer) => (
                           <div key={developer.id} className="rounded-[1rem] border border-border/60 bg-white/80 p-3">
                             <div className="mb-2 flex items-center gap-3">
                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
@@ -430,11 +444,11 @@ export function ClientPortal() {
                             </div>
                             <div className="mb-2 flex flex-wrap items-center gap-2">
                               <Badge variant={developer.employmentType === 'fulltime' ? 'default' : 'secondary'} className="text-xs">
-                                {developer.employmentType === 'fulltime' ? 'Full-time' : 'Part-time'}
+                                {developer.employmentType === 'fulltime' ? 'Full-time' : developer.employmentType === 'part_time' ? 'Part-time' : 'Freelancer'}
                               </Badge>
-                              {!developer.isActive && (
+                              {!isCurrentAssignment(developer) && (
                                 <Badge variant="outline" className="text-red-600 text-xs">
-                                  Inactive
+                                  {developer.startDate > new Date().toISOString().slice(0, 10) ? 'Scheduled' : 'Ended'}
                                 </Badge>
                               )}
                             </div>
@@ -646,6 +660,8 @@ export function ClientPortal() {
               </DialogTitle>
             </DialogHeader>
             <div className="w-full h-[70vh] border rounded">
+              {preview.error && <ClientLoadError message={preview.error} onRetry={preview.retry} />}
+              {!preview.url && !preview.error && <p role="status">Loading preview…</p>}
               {previewDocument.document.name.toLowerCase().endsWith('.pdf') ? (
                 <iframe
                   src={getPreviewUrl(previewDocument.document.id)}

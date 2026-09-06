@@ -1,3 +1,4 @@
+import { ShiftHistory } from '@/components/ShiftHistory'
 import { useState, useEffect } from 'react'
 import {
   Calendar,
@@ -22,6 +23,8 @@ import { api } from '@/lib/api'
 import { PreferredShiftsEditor } from '@/components/PreferredShiftsEditor'
 import { TimezoneSelect } from '@/components/TimezoneSelect'
 import { Label } from '@/components/ui/label'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCustomAlert } from '@/components/ui/custom-alert'
 import type { ShiftSchedule } from '@/types/common'
 import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, SectionHeading } from '@/components/page-primitives'
 
@@ -42,6 +45,8 @@ interface DashboardData {
     nextMilestoneDate: string
   }
   vacations: {
+    available: number
+    remaining: number
     used: number
     pending: number
     upcoming: Array<{
@@ -74,7 +79,10 @@ interface DashboardData {
 }
 
 export function EmployeeDashboard() {
+  const queryClient = useQueryClient()
+  const { showAlert } = useCustomAlert()
   const [data, setData] = useState<DashboardData | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentTime, setCurrentTime] = useState(new Date())
   const [preferredShifts, setPreferredShifts] = useState<ShiftSchedule[]>([])
@@ -111,8 +119,11 @@ export function EmployeeDashboard() {
         }))
       )
       setPreferredShifts(result.schedules || [])
+      await queryClient.invalidateQueries({ queryKey: ['myPreferredShifts'] })
+      showAlert({ message: 'Working schedule saved', type: 'success' })
     } catch (error) {
-      console.error('Error saving preferred shifts:', error)
+      showAlert({ message: error instanceof Error ? error.message : 'Failed to save shifts', type: 'error' })
+      throw error
     } finally {
       setSavingShifts(false)
     }
@@ -121,13 +132,15 @@ export function EmployeeDashboard() {
   const handleTimezoneChange = async (timezone: string) => {
     try {
       setSavingTimezone(true)
-      setShiftTimezone(timezone)
       await api.request('/shifts/timezone/me', {
         method: 'PUT',
         body: JSON.stringify({ timezone }),
       })
+      setShiftTimezone(timezone)
+      await queryClient.invalidateQueries({ queryKey: ['myPreferredShifts'] })
+      showAlert({ message: 'Timezone saved', type: 'success' })
     } catch (error) {
-      console.error('Error updating timezone:', error)
+      showAlert({ message: error instanceof Error ? error.message : 'Failed to save timezone', type: 'error' })
     } finally {
       setSavingTimezone(false)
     }
@@ -136,49 +149,35 @@ export function EmployeeDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true)
+      setLoadError(null)
 
       // Load all data in parallel
-      const [profile, roadmap, vacationRequests, reimbursementData] = await Promise.all([
+      const [profile, roadmap, vacationRequests, reimbursementData, vacationBalance] = await Promise.all([
         api.request('/vacation/my-profile'),
         api.request('/roadmap'),
         api.request('/vacation/my-requests'),
-        api.request('/reimbursements/my-requests')
+        api.request('/reimbursements/my-requests'),
+        api.getMyVacationBalance()
       ])
 
       // Handle case where reimbursements might be empty array
       const reimbursements = Array.isArray(reimbursementData) ? reimbursementData : []
 
       // Calculate vacation stats - only count actual vacation requests, not sick leave
-      const isVacationType = (type: string) => /^(vacation|annual leave|paid time off|pto)$/i.test(type)
-      const approvedVacations = vacationRequests.filter((v: any) => v.status === 'approved')
-      const pendingVacations = vacationRequests.filter((v: any) => v.status === 'pending')
+      const isVacationType = (type: string) => /^(vacation(?: leave)?|annual leave|paid time off|pto)$/i.test(type)
+      const approvedVacations = vacationRequests.filter((v: any) => v.status === 'approved' && isVacationType(v.type))
+      const pendingVacations = vacationRequests.filter((v: any) => v.status === 'pending' && isVacationType(v.type))
       const upcomingVacations = approvedVacations.filter((v: any) =>
         new Date(v.startDate) > new Date()
       )
 
-      let vacationDaysUsed = 0
-      approvedVacations
-        .filter((v: any) => isVacationType(v.type))
-        .forEach((vacation: any) => {
-          const start = new Date(vacation.startDate)
-          const end = new Date(vacation.endDate)
-          const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
-          vacationDaysUsed += days
-        })
+      const balance = vacationBalance as { totalUsed: number; totalAllocated: number; totalRemaining: number; currentlyAvailable: number }
+      const vacationDaysUsed = Number(balance.totalUsed)
 
-      // Calculate reimbursement stats - only count reimbursements from current career year
-      // If careerYear is null (migration not run yet), count all approved reimbursements
-      const currentCareerYear = roadmap.yearsAtCompany
-      const currentYearReimbursements = reimbursements.filter((r: any) => {
-        // If careerYear is null/undefined, include all (fallback for before migration)
-        if (r.careerYear === null || r.careerYear === undefined) {
-          return true
-        }
-        return r.careerYear === currentCareerYear
-      })
-      const approvedReimbursements = currentYearReimbursements.filter((r: any) => r.status === 'approved' || r.status === 'confirmed')
+      const limit = await api.request(`/reimbursements/limits/${new Date().getFullYear()}`)
+      const currentYearReimbursements = reimbursements.filter((r: any) => r.careerYear === roadmap.yearsAtCompany)
       const pendingReimbursements = currentYearReimbursements.filter((r: any) => r.status === 'pending')
-      const reimbursementUsed = approvedReimbursements.reduce((sum: number, r: any) => sum + parseFloat(r.reimbursementAmount || '0'), 0)
+      const reimbursementUsed = Number(limit.usedAmount || 0)
 
       setData({
         profile: {
@@ -188,11 +187,13 @@ export function EmployeeDashboard() {
           role: profile.role,
           startDate: profile.startDate
         },
-        roadmap,
+        roadmap: { ...roadmap, currentVacationDays: Number(balance.totalAllocated) },
         vacations: {
+          available: Number(balance.currentlyAvailable),
+          remaining: Number(balance.totalRemaining),
           used: vacationDaysUsed,
           pending: pendingVacations.length,
-          upcoming: upcomingVacations.slice(0, 3),
+          upcoming: upcomingVacations.sort((a: any, b: any) => a.startDate.localeCompare(b.startDate)).slice(0, 3),
           recent: vacationRequests.slice(0, 5)
         },
         reimbursements: {
@@ -203,6 +204,7 @@ export function EmployeeDashboard() {
       })
     } catch (error) {
       console.error('Error loading dashboard data:', error)
+      setLoadError(error instanceof Error ? error.message : 'Dashboard could not be loaded')
     } finally {
       setLoading(false)
     }
@@ -268,14 +270,14 @@ export function EmployeeDashboard() {
   if (!data) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Unable to load dashboard data</p>
+        <p className="text-gray-500">{loadError || 'Unable to load dashboard data'}</p><Button variant="outline" onClick={loadDashboardData}>Retry</Button>
       </div>
     )
   }
 
-  const vacationRemaining = data.roadmap.currentVacationDays - data.vacations.used
-  const vacationProgress = (data.vacations.used / data.roadmap.currentVacationDays) * 100
-  const reimbursementRemaining = data.roadmap.currentReimbursementLimit - data.reimbursements.used
+  const vacationRemaining = data.vacations.available
+  const vacationProgress = data.roadmap.currentVacationDays > 0 ? (data.vacations.used / data.roadmap.currentVacationDays) * 100 : 0
+  const reimbursementRemaining = Math.max(0, data.roadmap.currentReimbursementLimit - data.reimbursements.used)
   const reimbursementProgress = (data.reimbursements.used / data.roadmap.currentReimbursementLimit) * 100
   const yearLabel = data.roadmap.yearsAtCompany >= 5 ? 'Year 5+' : `Year ${data.roadmap.yearsAtCompany}`
 
@@ -320,7 +322,7 @@ export function EmployeeDashboard() {
           <MetricTile
             label="Vacation Days"
             value={<>{vacationRemaining} <span className="text-lg text-muted-foreground">/ {data.roadmap.currentVacationDays}</span></>}
-            hint={<>{Math.round(100 - vacationProgress)}% remaining</>}
+            hint={<>{data.vacations.remaining} days remaining this cycle • {vacationRemaining} available now</>}
             trend={<Badge variant="outline" className="text-xs">{data.vacations.pending} pending</Badge>}
             icon={<Calendar className="w-5 h-5" />}
             tone="primary"
@@ -603,6 +605,7 @@ export function EmployeeDashboard() {
           </div>
         </CardContent>
       </Card>
+      <ShiftHistory />
     </div>
   )
 }

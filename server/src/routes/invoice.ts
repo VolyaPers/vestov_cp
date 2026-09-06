@@ -17,67 +17,39 @@ import {
   pickInvoiceSnapshot,
 } from '../lib/financeAudit.js'
 import { requireAuth } from '../middleware/auth.js'
+import { canAccessClient, accessibleClientIds } from '../services/access.js'
+import { calculateInvoice } from '../services/invoiceCalculator.js'
+import { cents, money, positiveId, validDate, FinanceValidationError, financeError } from '../lib/money.js'
 
 const router = Router()
 
-// Test endpoint without auth to debug
-router.get('/test-totals/:clientId', async (req, res) => {
-  try {
-    const { clientId } = req.params
-
-    const totals = await db
-      .select({
-        totalInvoiced: sql<number>`COALESCE(SUM(CAST(${invoices.amount} as DECIMAL)), 0)`,
-        totalPaid: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.paidAt} IS NOT NULL THEN CAST(${invoices.amount} as DECIMAL) ELSE 0 END), 0)`
-      })
-      .from(invoices)
-      .where(eq(invoices.clientId, parseInt(clientId)))
-
-    const result = totals[0] || { totalInvoiced: 0, totalPaid: 0 }
-
-    res.json({
-      totalInvoiced: parseFloat(result.totalInvoiced.toString()),
-      totalPaid: parseFloat(result.totalPaid.toString())
-    })
-  } catch (error) {
-    console.error('Test totals error:', error)
-    res.status(500).json({ error: 'Failed to fetch test totals' })
-  }
-})
-
-// Test service totals endpoint without auth
-router.get('/test-service-totals/:clientId', async (req, res) => {
-  try {
-    const { clientId } = req.params
-
-    const serviceTotals = await db
-      .select({
-        serviceId: invoiceServices.clientServiceId,
-        serviceTypeName: serviceTypes.name,
-        totalAmount: sql<number>`COALESCE(SUM(CAST(${invoiceServices.calculatedAmount} as DECIMAL)), 0)`
-      })
-      .from(invoiceServices)
-      .innerJoin(invoices, eq(invoiceServices.invoiceId, invoices.id))
-      .innerJoin(clientServices, eq(invoiceServices.clientServiceId, clientServices.id))
-      .innerJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-      .where(eq(invoices.clientId, parseInt(clientId)))
-      .groupBy(invoiceServices.clientServiceId, serviceTypes.name)
-
-    const result = serviceTotals.map(total => ({
-      serviceId: total.serviceId,
-      serviceTypeName: total.serviceTypeName,
-      totalAmount: parseFloat(total.totalAmount.toString())
-    }))
-
-    res.json(result)
-  } catch (error) {
-    console.error('Test service totals error:', error)
-    res.status(500).json({ error: 'Failed to fetch test service totals' })
-  }
-})
-
-// Apply authentication middleware to all remaining routes
 router.use(requireAuth)
+const issuedStatuses=['sent','overdue','paid']
+async function allowClient(req:any, clientId:number) {if(!['admin','client'].includes(req.user?.role)||!await canAccessClient(req.user,clientId)) throw new FinanceValidationError('Access denied',403)}
+function invoiceStatus(status:string, paidAt:any, dueDate:any){ if(status==='paid'&&paidAt) return 'paid'; if(['sent','overdue'].includes(status)&&dueDate) return dueDate<new Date().toISOString().slice(0,10)?'overdue':'sent'; return status }
+function financialState(input:any, prior?:any) {
+  const status=input.status ?? prior?.status ?? 'draft'
+  if(!['draft','sent','paid','overdue','cancelled'].includes(status)) throw new FinanceValidationError('Invalid invoice status')
+  const paidAt=input.paidAt!==undefined ? input.paidAt : prior?.paidAt
+  if(status==='paid'&&!paidAt) throw new FinanceValidationError('A payment date is required to mark an invoice paid')
+  if(paidAt && status!=='paid') throw new FinanceValidationError('Clear the payment date before changing a paid invoice status')
+  if(paidAt&&typeof paidAt!=='string'&&!(paidAt instanceof Date))throw new FinanceValidationError('Invalid payment date')
+  if(paidAt)validDate(typeof paidAt==='string'?paidAt.slice(0,10):paidAt.toISOString().slice(0,10),'Payment date')
+  if(paidAt&&!Number.isFinite(new Date(paidAt).getTime())) throw new FinanceValidationError('Invalid payment date')
+  return {status,paidAt:paidAt?new Date(paidAt):null}
+}
+async function totalsForClient(clientId:number, admin:boolean){
+  const rows=await db.select().from(invoices).where(and(eq(invoices.clientId,clientId),admin?undefined:inArray(invoices.status,issuedStatuses)))
+  const totals={totalInvoiced:0,totalPaid:0,pendingAmount:0,overdueAmount:0}
+  for(const row of rows){if(row.status==='cancelled')continue; const amount=cents(row.amount); totals.totalInvoiced+=amount; if(row.status==='paid'&&row.paidAt)totals.totalPaid+=amount;else if(row.status!=='draft'){totals.pendingAmount+=amount;if(invoiceStatus(row.status,row.paidAt,row.dueDate)==='overdue')totals.overdueAmount+=amount}}
+  return Object.fromEntries(Object.entries(totals).map(([key,value])=>[key,Number(money(value))]))
+}
+async function persistLines(tx:any,invoiceId:number,calculation:any){
+  for(const service of calculation.services){
+    const [row]=await tx.insert(invoiceServices).values({invoiceId,clientServiceId:service.serviceId,serviceLevelPrice:service.serviceLevelPrice===undefined?null:String(service.serviceLevelPrice),calculatedAmount:money(cents(service.finalAmount))}).returning()
+    for(const dev of service.developers)await tx.insert(invoiceDevelopers).values({invoiceServiceId:row.id,clientServiceTeamMemberId:dev.id,hourlyRate:dev.hourlyRate,fixedPrice:dev.fixedPrice,hoursWorked:dev.hoursWorked,calculatedAmount:money(cents(dev.amount))})
+  }
+}
 
 // Get all invoices (admin only)
 router.get('/', async (req, res) => {
@@ -125,10 +97,10 @@ router.get('/', async (req, res) => {
       .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
       .orderBy(desc(invoices.createdAt))
 
-    res.json(allInvoices)
+    res.json(allInvoices.map(row=>({...row,amount:Number(row.amount),status:invoiceStatus(row.status,row.paidAt,row.dueDate)})))
   } catch (error) {
     console.error('Get invoices error:', error)
-    res.status(500).json({ error: 'Failed to fetch invoices' })
+    financeError(res,error,'Failed to fetch invoices')
   }
 })
 
@@ -138,9 +110,7 @@ router.get('/client/:clientId', async (req, res) => {
     const clientId = parseInt(req.params.clientId)
 
     // Check if user has access to this client's data
-    if (req.user!.role !== 'admin' && req.user!.clientId !== clientId) {
-      return res.status(403).json({ error: 'Access denied' })
-    }
+    await allowClient(req,clientId)
 
     const clientInvoices = await db
       .select({
@@ -160,60 +130,18 @@ router.get('/client/:clientId', async (req, res) => {
         updatedAt: invoices.updatedAt,
       })
       .from(invoices)
-      .where(eq(invoices.clientId, clientId))
+      .where(and(eq(invoices.clientId, clientId),req.user!.role==='admin'?undefined:inArray(invoices.status,issuedStatuses)))
       .orderBy(desc(invoices.createdAt))
 
-    res.json(clientInvoices)
+    res.json(clientInvoices.map(row=>({...row,amount:Number(row.amount),status:invoiceStatus(row.status,row.paidAt,row.dueDate)})))
   } catch (error) {
     console.error('Get client invoices error:', error)
-    res.status(500).json({ error: 'Failed to fetch client invoices' })
+    financeError(res,error,'Failed to fetch client invoices')
   }
 })
 
-router.get('/totals', async (req, res) => {
-  try {
-    const requestedClientIds = typeof req.query.clientIds === 'string'
-      ? req.query.clientIds
-          .split(',')
-          .map((value) => Number.parseInt(value.trim(), 10))
-          .filter((value) => Number.isFinite(value))
-      : []
-
-    let visibleClientIds = requestedClientIds
-
-    if (req.user!.role === 'client') {
-      if (!req.user!.clientId) {
-        return res.json([])
-      }
-
-      if (requestedClientIds.length > 0 && !requestedClientIds.includes(req.user!.clientId)) {
-        return res.status(403).json({ error: 'Access denied' })
-      }
-
-      visibleClientIds = [req.user!.clientId]
-    } else if (req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' })
-    }
-
-    const totals = await db
-      .select({
-        clientId: invoices.clientId,
-        totalInvoiced: sql<number>`COALESCE(SUM(CAST(${invoices.amount} as DECIMAL)), 0)`,
-        totalPaid: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.paidAt} IS NOT NULL THEN CAST(${invoices.amount} as DECIMAL) ELSE 0 END), 0)`,
-      })
-      .from(invoices)
-      .where(visibleClientIds.length > 0 ? inArray(invoices.clientId, visibleClientIds) : undefined)
-      .groupBy(invoices.clientId)
-
-    res.json(totals.map((row) => ({
-      clientId: row.clientId,
-      totalInvoiced: parseFloat(row.totalInvoiced.toString()),
-      totalPaid: parseFloat(row.totalPaid.toString()),
-    })))
-  } catch (error) {
-    console.error('Get batched client invoice totals error:', error)
-    res.status(500).json({ error: 'Failed to fetch batched client invoice totals' })
-  }
+router.get('/totals',async(req,res)=>{
+  try{ if(!['admin','client'].includes(req.user!.role))throw new FinanceValidationError('Access denied',403);const requested=typeof req.query.clientIds==='string'?req.query.clientIds.split(',').map(id=>positiveId(id)):await accessibleClientIds(req.user);for(const id of requested)await allowClient(req,id);res.json(await Promise.all(requested.map(async id=>({clientId:id,...await totalsForClient(id,req.user!.role==='admin')}))))}catch(error){financeError(res,error,'Failed to fetch invoice totals')}
 })
 
 // Get a specific invoice
@@ -249,9 +177,8 @@ router.get('/:id', async (req, res) => {
     }
 
     // Check if user has access to this invoice
-    if (req.user!.role !== 'admin' && req.user!.clientId !== invoice.clientId) {
-      return res.status(403).json({ error: 'Access denied' })
-    }
+    await allowClient(req,invoice.clientId)
+    if(req.user!.role!=='admin'&&!issuedStatuses.includes(invoice.status)) throw new FinanceValidationError('Invoice not found',404)
 
     const services = await db
       .select({
@@ -269,18 +196,23 @@ router.get('/:id', async (req, res) => {
       .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
       .where(eq(invoiceServices.invoiceId, invoiceId))
 
+    const detailedServices = await Promise.all(services.map(async service => ({
+      ...service,
+      serviceName: service.serviceTitle || service.serviceName,
+      serviceTypeName: service.serviceName,
+      developers: await db.select({id: invoiceDevelopers.id, developerId: invoiceDevelopers.clientServiceTeamMemberId, developerName: teamMembers.name, hourlyRate: invoiceDevelopers.hourlyRate, fixedPrice: invoiceDevelopers.fixedPrice, hoursWorked: invoiceDevelopers.hoursWorked, calculatedAmount: invoiceDevelopers.calculatedAmount}).from(invoiceDevelopers).leftJoin(clientServiceTeamMembers, eq(invoiceDevelopers.clientServiceTeamMemberId, clientServiceTeamMembers.id)).leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id)).where(eq(invoiceDevelopers.invoiceServiceId, service.id)),
+    })))
     res.json({
       ...invoice,
+      amount:Number(invoice.amount),
+      status:invoiceStatus(invoice.status,invoice.paidAt,invoice.dueDate),
+      ...(req.user!.role==='admin'?{}:{createdBy:undefined}),
       serviceIds: services.map((service) => service.serviceId),
-      services: services.map((service) => ({
-        ...service,
-        serviceName: service.serviceTitle || service.serviceName,
-        serviceTypeName: service.serviceName,
-      })),
+      services: detailedServices,
     })
   } catch (error) {
     console.error('Get invoice error:', error)
-    res.status(500).json({ error: 'Failed to fetch invoice' })
+    financeError(res,error,'Failed to fetch invoice')
   }
 })
 
@@ -309,7 +241,9 @@ router.post('/', async (req, res) => {
       status
     } = req.body
 
-    if (!clientId || !amount) {
+    positiveId(clientId,'Client ID')
+    if(useServicePricing!==undefined&&typeof useServicePricing!=='boolean')throw new FinanceValidationError('useServicePricing must be boolean')
+    if (!clientId || (!useServicePricing && amount === undefined)) {
       return res.status(400).json({ error: 'Client ID and amount are required' })
     }
 
@@ -317,132 +251,41 @@ router.post('/', async (req, res) => {
     const today = new Date().toISOString().split('T')[0]
     const lastMonth = new Date()
     lastMonth.setMonth(lastMonth.getMonth() - 1)
-    const lastMonthStart = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0]
-    const lastMonthEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0]
+    const lastMonthStart = new Date(Date.UTC(lastMonth.getFullYear(), lastMonth.getMonth(), 1)).toISOString().split('T')[0]
+    const lastMonthEnd = new Date(Date.UTC(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0)).toISOString().split('T')[0]
 
-    // Generate invoice number
-    const year = new Date().getFullYear()
-    const latestInvoice = await db
-      .select({ invoiceNumber: invoices.invoiceNumber })
-      .from(invoices)
-      .where(sql`invoice_number LIKE ${`INV-${year}-%`}`)
-      .orderBy(desc(invoices.invoiceNumber))
-      .limit(1)
-
-    let nextNumber = 1
-    if (latestInvoice.length > 0 && latestInvoice[0].invoiceNumber) {
-      const lastNumber = parseInt(latestInvoice[0].invoiceNumber.split('-')[2])
-      nextNumber = lastNumber + 1
-    }
-
-    const invoiceNumber = `INV-${year}-${String(nextNumber).padStart(4, '0')}`
-
-    // Determine status based on paidAt
-    let invoiceStatus = status || 'draft'
-    let paidAtDate = null
-    if (paidAt) {
-      invoiceStatus = 'paid'
-      paidAtDate = new Date(paidAt)
-    }
-
+    const selectedDate=validDate(invoiceDate || today,'Invoice date')
+    const selectedStart=validDate(periodStart || lastMonthStart,'Period start'), selectedEnd=validDate(periodEnd || lastMonthEnd,'Period end')
+    if(selectedStart>selectedEnd)throw new FinanceValidationError('Invalid invoice period')
+    if(dueDate)validDate(dueDate,'Due date')
+    const state=financialState({...req.body,status:paidAt?'paid':status})
     const createdInvoice = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(71421, 1)`)
+      const [client]=await tx.select({id:clients.id}).from(clients).where(eq(clients.id,positiveId(clientId)))
+      if(!client)throw new FinanceValidationError('Client not found',404)
+      const year=new Date().getFullYear()
+      const [latest]=await tx.select({invoiceNumber:invoices.invoiceNumber}).from(invoices).where(sql`${invoices.invoiceNumber} LIKE ${`INV-${year}-%`}`).orderBy(desc(invoices.id)).limit(1)
+      const next=latest?Number(latest.invoiceNumber.split('-')[2])+1:1
+      const invoiceNumber=`INV-${year}-${String(next).padStart(4,'0')}`
+      const calculation=useServicePricing?await calculateInvoice(tx,positiveId(clientId),{...req.body,periodStart:selectedStart,periodEnd:selectedEnd}):null
+      const total=calculation?cents(calculation.totalAmount):cents(amount,'Invoice amount',false)
+      if(total===0)throw new FinanceValidationError('Invoice total must be greater than zero')
       const [newInvoice] = await tx.insert(invoices).values({
         clientId: parseInt(clientId),
         invoiceNumber,
-        amount: amount.toString(),
-        invoiceDate: invoiceDate || today,
-        periodStart: periodStart || lastMonthStart,
-        periodEnd: periodEnd || lastMonthEnd,
+        amount: money(total),
+        invoiceDate: selectedDate,
+        periodStart: selectedStart,
+        periodEnd: selectedEnd,
         description: description || null,
         dueDate: dueDate || null,
         notes: notes || null,
-        status: invoiceStatus,
-        paidAt: paidAtDate,
+        status: state.status,
+        paidAt: state.paidAt,
         createdBy: req.user!.id,
       }).returning()
 
-      // If service-based pricing is used, create invoice_services and invoice_developers records
-      if (useServicePricing && serviceIds) {
-        for (const serviceId of serviceIds) {
-          // Get service details
-          const [serviceDetail] = await tx
-            .select({
-              id: clientServices.id,
-              serviceTypeId: clientServices.serviceTypeId,
-              serviceLevelPrice: clientServices.serviceLevelPrice,
-            })
-            .from(clientServices)
-            .where(eq(clientServices.id, serviceId))
-
-          if (!serviceDetail) continue
-
-          // Calculate service amount
-          let serviceAmount = 0
-
-          // Get assigned developers
-          const assignedDevelopers = await tx
-            .select({
-              id: clientServiceTeamMembers.id,
-              teamMemberId: clientServiceTeamMembers.teamMemberId,
-              hourlyRate: clientServiceTeamMembers.hourlyRate,
-              fixedPrice: clientServiceTeamMembers.fixedPrice,
-            })
-            .from(clientServiceTeamMembers)
-            .where(and(
-              eq(clientServiceTeamMembers.clientServiceId, serviceId),
-              eq(clientServiceTeamMembers.isActive, true)
-            ))
-
-          // Create invoice_services record
-          const [invoiceService] = await tx.insert(invoiceServices).values({
-            invoiceId: newInvoice.id,
-            clientServiceId: serviceId,
-            serviceLevelPrice: servicePrices[serviceId] !== undefined
-              ? Number(servicePrices[serviceId]).toString()
-              : serviceDetail.serviceLevelPrice || null,
-            calculatedAmount: '0', // Will be updated after calculating developers
-          }).returning()
-
-          // Create invoice_developers records and calculate total
-          let developerTotal = 0
-          for (const developer of assignedDevelopers) {
-            const devRates = developerRates?.[developer.teamMemberId] || developerRates?.[developer.id] || {}
-            const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
-            const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
-            const hoursWorked = devRates.hoursWorked || 0
-
-            let devAmount = 0
-            if (fixedPrice > 0) {
-              devAmount = fixedPrice
-            } else if (hourlyRate > 0 && hoursWorked > 0) {
-              devAmount = hourlyRate * hoursWorked
-            }
-
-            developerTotal += devAmount
-
-            // Create invoice_developers record
-            await tx.insert(invoiceDevelopers).values({
-              invoiceServiceId: invoiceService.id,
-              clientServiceTeamMemberId: developer.id,
-              hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
-              fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
-              hoursWorked: hoursWorked > 0 ? hoursWorked : null,
-              calculatedAmount: devAmount.toString(),
-            })
-          }
-
-          // Use service-level price if available, otherwise use developer total
-          serviceAmount = servicePrices[serviceId] !== undefined
-            ? Number(servicePrices[serviceId])
-            : parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
-
-          // Update invoice_services with calculated amount
-          await tx
-            .update(invoiceServices)
-            .set({ calculatedAmount: serviceAmount.toString() })
-            .where(eq(invoiceServices.id, invoiceService.id))
-        }
-      }
+      if(calculation) await persistLines(tx,newInvoice.id,calculation)
 
       await logFinanceActivity(tx, {
         action: 'invoice_created',
@@ -465,281 +308,64 @@ router.post('/', async (req, res) => {
     res.json(createdInvoice)
   } catch (error) {
     console.error('Create invoice error:', error)
-    res.status(500).json({ error: 'Failed to create invoice' })
+    financeError(res,error,'Failed to create invoice')
   }
 })
 
-// Update an invoice (admin only)
+// Financial state and its persisted breakdown are changed under the same invoice lock.
 router.put('/:id', async (req, res) => {
   try {
-    // Only admins can update invoices
-    if (req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' })
-    }
-
-    const invoiceId = parseInt(req.params.id)
-    const { serviceIds, useServicePricing, developerRates, servicePrices = {} } = req.body
-    const updateData: any = {}
-
-    // Only update fields that are provided
-    const allowedFields = ['amount', 'invoiceDate', 'periodStart', 'periodEnd', 'description', 'status', 'dueDate', 'paidAt', 'notes']
-
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        if (field === 'amount') {
-          updateData[field] = req.body[field].toString()
-        } else if (field === 'paidAt') {
-          // Handle paidAt - can be ISO string or null
-          if (req.body[field] && req.body[field] !== '') {
-            updateData[field] = new Date(req.body[field])
-          } else {
-            updateData[field] = null
-          }
-        } else if (['invoiceDate', 'periodStart', 'periodEnd', 'dueDate'].includes(field)) {
-          // Handle date fields - convert empty strings to null
-          if (req.body[field] && req.body[field] !== '') {
-            updateData[field] = req.body[field]
-          } else {
-            updateData[field] = null
-          }
-        } else {
-          updateData[field] = req.body[field]
-        }
+    if (req.user!.role !== 'admin') throw new FinanceValidationError('Access denied', 403)
+    const invoiceId = positiveId(req.params.id), input = req.body
+    if(input.useServicePricing!==undefined&&typeof input.useServicePricing!=='boolean')throw new FinanceValidationError('useServicePricing must be boolean')
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(71422, ${invoiceId})`)
+      const [prior] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for('update')
+      if (!prior) throw new FinanceValidationError('Invoice not found', 404)
+      const update: any = { ...financialState(input, prior), updatedAt: new Date() }
+      for (const field of ['description', 'notes']) if (input[field] !== undefined) update[field] = input[field] || null
+      for (const field of ['invoiceDate', 'periodStart', 'periodEnd']) if (input[field] !== undefined) update[field] = validDate(input[field], field)
+      if (input.dueDate !== undefined) update.dueDate = input.dueDate ? validDate(input.dueDate, 'Due date') : null
+      const periodStart = update.periodStart || prior.periodStart, periodEnd = update.periodEnd || prior.periodEnd
+      if (periodStart > periodEnd) throw new FinanceValidationError('Invalid invoice period')
+      const oldLines = await tx.select({id:invoiceServices.id}).from(invoiceServices).where(eq(invoiceServices.invoiceId, invoiceId))
+      const amountChanged = input.amount !== undefined && cents(input.amount, 'Invoice amount', false) !== cents(prior.amount)
+      if (prior.status === 'paid' && (input.useServicePricing !== undefined || amountChanged)) throw new FinanceValidationError('Reopen the paid invoice before changing its amount or lines', 409)
+      if (oldLines.length && input.useServicePricing === undefined && amountChanged) throw new FinanceValidationError('Change the service prices to update an invoice with a saved breakdown')
+      if (input.serviceIds !== undefined && input.useServicePricing === undefined) throw new FinanceValidationError('Service changes require a pricing calculation')
+      if (input.amount !== undefined) update.amount = money(cents(input.amount, 'Invoice amount', false))
+      const calculation = input.useServicePricing === true ? await calculateInvoice(tx, prior.clientId, {...input, periodStart, periodEnd}) : null
+      if (calculation) update.amount = money(cents(calculation.totalAmount, 'Invoice total', false))
+      if (calculation || input.useServicePricing === false) {
+        for (const line of oldLines) await tx.delete(invoiceDevelopers).where(eq(invoiceDevelopers.invoiceServiceId, line.id))
+        await tx.delete(invoiceServices).where(eq(invoiceServices.invoiceId, invoiceId))
+        if (calculation) await persistLines(tx, invoiceId, calculation)
       }
-    }
-
-    if (Object.keys(updateData).length === 0 && !useServicePricing) {
-      return res.status(400).json({ error: 'No fields to update' })
-    }
-
-    updateData.updatedAt = new Date()
-
-    const [existingInvoice] = await db
-      .select()
-      .from(invoices)
-      .where(eq(invoices.id, invoiceId))
-      .limit(1)
-
-    if (!existingInvoice) {
-      return res.status(404).json({ error: 'Invoice not found' })
-    }
-
-    const updatedInvoice = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(invoices)
-        .set(updateData)
-        .where(eq(invoices.id, invoiceId))
-        .returning()
-
-      if (!row) return null
-
-      // Handle service-based pricing updates
-      if (useServicePricing && serviceIds && serviceIds.length > 0) {
-        // First, delete existing invoice_services and invoice_developers
-        const existingServices = await tx
-          .select({ id: invoiceServices.id })
-          .from(invoiceServices)
-          .where(eq(invoiceServices.invoiceId, invoiceId))
-
-        for (const service of existingServices) {
-          // Delete invoice_developers first
-          await tx
-            .delete(invoiceDevelopers)
-            .where(eq(invoiceDevelopers.invoiceServiceId, service.id))
-        }
-
-        // Delete invoice_services
-        await tx
-          .delete(invoiceServices)
-          .where(eq(invoiceServices.invoiceId, invoiceId))
-
-        // Now create new invoice_services and invoice_developers
-        for (const serviceId of serviceIds) {
-          // Get service details
-          const [serviceDetail] = await tx
-            .select({
-              id: clientServices.id,
-              serviceTypeId: clientServices.serviceTypeId,
-              serviceLevelPrice: clientServices.serviceLevelPrice,
-            })
-            .from(clientServices)
-            .where(eq(clientServices.id, serviceId))
-
-          if (!serviceDetail) continue
-
-          // Get assigned developers
-          const assignedDevelopers = await tx
-            .select({
-              id: clientServiceTeamMembers.id,
-              teamMemberId: clientServiceTeamMembers.teamMemberId,
-              hourlyRate: clientServiceTeamMembers.hourlyRate,
-              fixedPrice: clientServiceTeamMembers.fixedPrice,
-            })
-            .from(clientServiceTeamMembers)
-            .where(and(
-              eq(clientServiceTeamMembers.clientServiceId, serviceId),
-              eq(clientServiceTeamMembers.isActive, true)
-            ))
-
-          // Create invoice_services record
-          const [invoiceService] = await tx.insert(invoiceServices).values({
-            invoiceId: invoiceId,
-            clientServiceId: serviceId,
-            serviceLevelPrice: servicePrices[serviceId] !== undefined
-              ? Number(servicePrices[serviceId]).toString()
-              : serviceDetail.serviceLevelPrice || null,
-            calculatedAmount: '0', // Will be updated after calculating developers
-          }).returning()
-
-          // Create invoice_developers records and calculate total
-          let developerTotal = 0
-          for (const developer of assignedDevelopers) {
-            const devRates = developerRates?.[developer.teamMemberId] || developerRates?.[developer.id] || {}
-            const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
-            const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
-            const hoursWorked = devRates.hoursWorked || 0
-
-            let devAmount = 0
-            if (fixedPrice > 0) {
-              devAmount = fixedPrice
-            } else if (hourlyRate > 0 && hoursWorked > 0) {
-              devAmount = hourlyRate * hoursWorked
-            }
-
-            developerTotal += devAmount
-
-            // Create invoice_developers record
-            if (devAmount > 0) {
-              await tx.insert(invoiceDevelopers).values({
-                invoiceServiceId: invoiceService.id,
-                clientServiceTeamMemberId: developer.id,
-                hourlyRate: hourlyRate > 0 ? hourlyRate.toString() : null,
-                fixedPrice: fixedPrice > 0 ? fixedPrice.toString() : null,
-                hoursWorked: hoursWorked > 0 ? hoursWorked : null,
-                calculatedAmount: devAmount.toString(),
-              })
-            }
-          }
-
-          // Use service-level price if available, otherwise use developer total
-          const serviceAmount = servicePrices[serviceId] !== undefined
-            ? Number(servicePrices[serviceId])
-            : parseFloat(serviceDetail.serviceLevelPrice || '0') || developerTotal
-
-          // Update invoice_services with calculated amount
-          await tx
-            .update(invoiceServices)
-            .set({ calculatedAmount: serviceAmount.toString() })
-            .where(eq(invoiceServices.id, invoiceService.id))
-        }
-      }
-
-      await logFinanceActivity(tx, {
-        action: 'invoice_updated',
-        entityType: 'invoice',
-        entityId: row.id,
-        invoiceId: row.id,
-        clientId: row.clientId,
-        actorId: req.user!.id,
-        summary: `Updated invoice ${row.invoiceNumber}`,
-        beforeData: pickInvoiceSnapshot(existingInvoice),
-        afterData: pickInvoiceSnapshot(row),
-        metadata: {
-          changes: diffRecord(pickInvoiceSnapshot(existingInvoice), pickInvoiceSnapshot(row)),
-          useServicePricing: Boolean(useServicePricing),
-          serviceIds: serviceIds || [],
-        },
-      })
-
+      const [row] = await tx.update(invoices).set(update).where(eq(invoices.id, invoiceId)).returning()
+      await logFinanceActivity(tx, {action:'invoice_updated',entityType:'invoice',entityId:row.id,invoiceId:row.id,clientId:row.clientId,actorId:req.user!.id,summary:`Updated invoice ${row.invoiceNumber}`,beforeData:pickInvoiceSnapshot(prior),afterData:pickInvoiceSnapshot(row),metadata:{changes:diffRecord(pickInvoiceSnapshot(prior),pickInvoiceSnapshot(row)),useServicePricing:input.useServicePricing,serviceIds:input.serviceIds}})
       return row
     })
-
-    if (!updatedInvoice) {
-      return res.status(404).json({ error: 'Invoice not found' })
-    }
-
-    res.json(updatedInvoice)
-  } catch (error) {
-    console.error('Update invoice error:', error)
-    res.status(500).json({ error: 'Failed to update invoice' })
-  }
+    res.json(result)
+  } catch(error) { financeError(res,error,'Failed to update invoice') }
 })
 
-// Delete an invoice (admin only)
+// Cancellation preserves invoice numbering, line items, and the financial audit trail.
 router.delete('/:id', async (req, res) => {
   try {
-    // Only admins can delete invoices
-    if (req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' })
-    }
-
-    const invoiceId = parseInt(req.params.id)
-
-    const deletedInvoice = await db.transaction(async (tx) => {
-      const [existingInvoice] = await tx
-        .select()
-        .from(invoices)
-        .where(eq(invoices.id, invoiceId))
-        .limit(1)
-
-      if (!existingInvoice) {
-        return null
-      }
-
-      const invoiceServiceIds = await tx
-        .select({ id: invoiceServices.id })
-        .from(invoiceServices)
-        .where(eq(invoiceServices.invoiceId, invoiceId))
-
-      // Delete related records in the correct order
-      if (invoiceServiceIds.length > 0) {
-        const serviceIds = invoiceServiceIds.map(is => is.id)
-
-        // Delete invoice developers first (references invoice_services)
-        for (const serviceId of serviceIds) {
-          await tx
-            .delete(invoiceDevelopers)
-            .where(eq(invoiceDevelopers.invoiceServiceId, serviceId))
-        }
-
-        // Delete invoice services (references invoices)
-        await tx
-          .delete(invoiceServices)
-          .where(eq(invoiceServices.invoiceId, invoiceId))
-      }
-
-      // Finally delete the invoice itself
-      const [row] = await tx
-        .delete(invoices)
-        .where(eq(invoices.id, invoiceId))
-        .returning({ id: invoices.id })
-
-      if (!row) return null
-
-      await logFinanceActivity(tx, {
-        action: 'invoice_deleted',
-        entityType: 'invoice',
-        entityId: existingInvoice.id,
-        invoiceId: existingInvoice.id,
-        clientId: existingInvoice.clientId,
-        actorId: req.user!.id,
-        summary: `Deleted invoice ${existingInvoice.invoiceNumber}`,
-        beforeData: pickInvoiceSnapshot(existingInvoice),
-      })
-
+    if (req.user!.role !== 'admin') throw new FinanceValidationError('Access denied', 403)
+    const invoiceId = positiveId(req.params.id)
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(71422, ${invoiceId})`)
+      const [prior] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for('update')
+      if (!prior) throw new FinanceValidationError('Invoice not found', 404)
+      if (prior.paidAt || prior.status === 'paid') throw new FinanceValidationError('Reopen the paid invoice and clear its payment date before cancelling', 409)
+      if (prior.status === 'cancelled') return prior
+      const [row] = await tx.update(invoices).set({status:'cancelled',updatedAt:new Date()}).where(eq(invoices.id, invoiceId)).returning()
+      await logFinanceActivity(tx,{action:'invoice_cancelled',entityType:'invoice',entityId:row.id,invoiceId:row.id,clientId:row.clientId,actorId:req.user!.id,summary:`Cancelled invoice ${row.invoiceNumber}`,beforeData:pickInvoiceSnapshot(prior),afterData:pickInvoiceSnapshot(row)})
       return row
     })
-
-    if (!deletedInvoice) {
-      return res.status(404).json({ error: 'Invoice not found' })
-    }
-
-    console.log('Invoice deleted successfully:', deletedInvoice.id)
-    res.json({ message: 'Invoice deleted successfully' })
-  } catch (error) {
-    console.error('Delete invoice error:', error)
-    res.status(500).json({ error: 'Failed to delete invoice' })
-  }
+    res.json({message:'Invoice cancelled',invoice:result})
+  } catch(error) { financeError(res,error,'Failed to cancel invoice') }
 })
 
 // Get client service options for invoice creation
@@ -748,9 +374,9 @@ router.get('/client-service-options/:clientId', async (req, res) => {
     const clientId = parseInt(req.params.clientId)
 
     // Check if user has access to this client's data
-    if (req.user!.role !== 'admin' && req.user!.clientId !== clientId) {
-      return res.status(403).json({ error: 'Access denied' })
-    }
+    await allowClient(req,clientId)
+
+    if(req.user!.role!=='admin') throw new FinanceValidationError('Admin access required',403)
 
     // Get client's active services with their developers
     const clientServicesWithDevelopers = await db
@@ -817,256 +443,25 @@ router.get('/client-service-options/:clientId', async (req, res) => {
     })
   } catch (error) {
     console.error('Get client service options error:', error)
-    res.status(500).json({ error: 'Failed to fetch service options' })
+    financeError(res,error,'Failed to fetch service options')
   }
 })
 
 // Calculate pricing for services
-router.post('/calculate-pricing/:clientId', async (req, res) => {
-  try {
-    // Only admins can calculate pricing
-    if (req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' })
-    }
-
-    const clientId = parseInt(req.params.clientId)
-    const { serviceIds, periodStart, periodEnd, developerRates = {}, servicePrices = {} } = req.body
-
-    console.log('Calculate pricing request:', {
-      clientId,
-      serviceIds,
-      periodStart,
-      periodEnd,
-      developerRates,
-      developerRateKeys: Object.keys(developerRates)
-    })
-
-    if (!serviceIds || serviceIds.length === 0) {
-      return res.status(400).json({ error: 'Service IDs are required' })
-    }
-
-    const calculations = []
-    let totalAmount = 0
-
-    for (const serviceId of serviceIds) {
-      // Get service details
-      const [serviceDetail] = await db
-        .select({
-          id: clientServices.id,
-          serviceId: clientServices.serviceTypeId,
-          serviceName: serviceTypes.name,
-          serviceTitle: clientServices.serviceTitle,
-          serviceCategory: serviceTypes.category,
-          billingModel: serviceTypes.billingModel,
-          serviceLevelPrice: clientServices.serviceLevelPrice,
-        })
-        .from(clientServices)
-        .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-        .where(and(
-          eq(clientServices.clientId, clientId),
-          eq(clientServices.id, serviceId)
-        ))
-
-      if (!serviceDetail) continue
-
-      // Get assigned developers for this service
-      const assignedDevelopers = await db
-        .select({
-          id: clientServiceTeamMembers.id,
-          teamMemberId: clientServiceTeamMembers.teamMemberId,
-          developerName: teamMembers.name,
-          currentHourlyRate: clientServiceTeamMembers.hourlyRate,
-          currentFixedPrice: clientServiceTeamMembers.fixedPrice,
-        })
-        .from(clientServiceTeamMembers)
-        .leftJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
-        .where(and(
-          eq(clientServiceTeamMembers.clientServiceId, serviceId),
-          eq(clientServiceTeamMembers.isActive, true)
-        ))
-
-      console.log('Developer filtering start:', {
-        serviceId,
-        allAssignedDevelopers: assignedDevelopers.map(d => ({ id: d.id, teamMemberId: d.teamMemberId, name: d.developerName })),
-        developerRateKeys: Object.keys(developerRates)
-      })
-
-      // Filter developers to only include those that have entries in developerRates
-      // This ensures that when developers are removed from the UI, they're not included in calculations
-      const activeDevelopers = assignedDevelopers.filter(dev => {
-        // Check both developer ID formats to be safe
-        const hasRatesByDeveloperId = Object.prototype.hasOwnProperty.call(developerRates, dev.teamMemberId.toString())
-        const hasRatesById = Object.prototype.hasOwnProperty.call(developerRates, dev.id.toString())
-        const shouldInclude = hasRatesByDeveloperId || hasRatesById
-
-        console.log('Developer filter check:', {
-          devId: dev.id,
-          teamMemberId: dev.teamMemberId,
-          name: dev.developerName,
-          hasRatesByDeveloperId,
-          hasRatesById,
-          shouldInclude
-        })
-
-        return shouldInclude
-      })
-
-      console.log('Developer filtering end:', {
-        activeDevelopers: activeDevelopers.map(d => ({ id: d.id, teamMemberId: d.teamMemberId, name: d.developerName }))
-      })
-
-      // Calculate developer costs
-      let developerTotal = 0
-      const developerCalculations = activeDevelopers.map(dev => {
-        // Check both ID formats for developer rates
-        const customRate = developerRates[dev.teamMemberId] || developerRates[dev.id] || {}
-        const hourlyRate = customRate.hourlyRate !== undefined ? customRate.hourlyRate : parseFloat(dev.currentHourlyRate || '0')
-        const fixedPrice = customRate.fixedPrice !== undefined ? customRate.fixedPrice : parseFloat(dev.currentFixedPrice || '0')
-        const hoursWorked = customRate.hoursWorked || 0
-
-        console.log('Processing developer in pricing:', {
-          devId: dev.id,
-          teamMemberId: dev.teamMemberId,
-          developerName: dev.developerName,
-          customRate,
-          hourlyRate,
-          fixedPrice,
-          hoursWorked,
-          serviceModel: serviceDetail.billingModel
-        })
-
-        let amount = 0
-
-        // Check if user has provided custom rates - prioritize user input
-        const hasCustomRates = Object.keys(customRate).length > 0
-
-        if (hasCustomRates) {
-          // User has provided custom rates - determine their intended mode
-          // Check if user has explicitly set fixed price (including 0)
-          if (customRate.fixedPrice !== undefined && customRate.hourlyRate === undefined && customRate.hoursWorked === undefined) {
-            // User is in fixed mode - use fixed price even if 0
-            amount = customRate.fixedPrice
-          } else if (customRate.hourlyRate !== undefined || customRate.hoursWorked !== undefined) {
-            // User is in hourly mode - use hourly calculation
-            const userHourlyRate = customRate.hourlyRate || 0
-            const userHoursWorked = customRate.hoursWorked || 0
-            amount = userHourlyRate * userHoursWorked
-          } else if (customRate.fixedPrice !== undefined && customRate.fixedPrice > 0) {
-            // Fallback: user set a positive fixed price
-            amount = customRate.fixedPrice
-          }
-        } else {
-          // No custom rates - use defaults based on service billing model
-          if (fixedPrice > 0) {
-            amount = fixedPrice
-          } else if (hourlyRate > 0 && hoursWorked > 0) {
-            amount = hourlyRate * hoursWorked
-          } else if (serviceDetail.billingModel === 'monthly' && hourlyRate > 0) {
-            // Assume 160 hours per month for monthly billing
-            amount = hourlyRate * 160
-          }
-        }
-
-        console.log('Calculated amount for developer:', {
-          hasCustomRates,
-          customRate,
-          finalAmount: amount
-        })
-
-        developerTotal += amount
-        return {
-          id: dev.id,
-          name: dev.developerName,
-          hourlyRate: hourlyRate || undefined,
-          fixedPrice: fixedPrice || undefined,
-          hoursWorked: hoursWorked || undefined,
-          amount
-        }
-      })
-
-      // Use service-level price if available, otherwise use developer total
-      const serviceLevelPrice = parseFloat(serviceDetail.serviceLevelPrice || '0')
-      const customServicePrice = servicePrices[serviceId] !== undefined
-        ? Number(servicePrices[serviceId])
-        : undefined
-      const finalAmount = customServicePrice !== undefined
-        ? customServicePrice
-        : serviceLevelPrice > 0
-          ? serviceLevelPrice
-          : developerTotal
-
-      totalAmount += finalAmount
-
-      calculations.push({
-        serviceId,
-        serviceName: serviceDetail.serviceTitle || serviceDetail.serviceName,
-        serviceTypeName: serviceDetail.serviceName,
-        serviceTitle: serviceDetail.serviceTitle,
-        serviceLevelPrice: serviceLevelPrice > 0 ? serviceLevelPrice : undefined,
-        developerTotal,
-        finalAmount,
-        developers: developerCalculations
-      })
-    }
-
-    console.log('Pricing calculation response:', {
-      totalAmount,
-      servicesCount: calculations.length,
-      calculations: calculations.map(c => ({
-        serviceId: c.serviceId,
-        serviceName: c.serviceName,
-        developerCount: c.developers.length,
-        developerTotal: c.developerTotal,
-        finalAmount: c.finalAmount
-      }))
-    })
-
-    res.json({
-      totalAmount,
-      services: calculations
-    })
-  } catch (error) {
-    console.error('Calculate pricing error:', error)
-    res.status(500).json({ error: 'Failed to calculate pricing' })
-  }
+router.post('/calculate-pricing/:clientId',async(req,res)=>{
+  try{if(req.user!.role!=='admin')throw new FinanceValidationError('Admin access required',403);res.json(await calculateInvoice(db,positiveId(req.params.clientId),req.body))}catch(error){financeError(res,error,'Failed to calculate invoice')}
 })
 
 // Get client invoice totals
-router.get('/client/:clientId/totals', async (req, res) => {
-  try {
-    const { clientId } = req.params
-    console.log('=== GET CLIENT INVOICE TOTALS ===')
-    console.log('Client ID:', clientId)
-
-    const totals = await db
-      .select({
-        totalInvoiced: sql<number>`COALESCE(SUM(CAST(${invoices.amount} as DECIMAL)), 0)`,
-        totalPaid: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.paidAt} IS NOT NULL THEN CAST(${invoices.amount} as DECIMAL) ELSE 0 END), 0)`
-      })
-      .from(invoices)
-      .where(eq(invoices.clientId, parseInt(clientId)))
-
-    console.log('Raw totals from DB:', totals)
-    const result = totals[0] || { totalInvoiced: 0, totalPaid: 0 }
-    console.log('Result object:', result)
-
-    const response = {
-      totalInvoiced: parseFloat(result.totalInvoiced.toString()),
-      totalPaid: parseFloat(result.totalPaid.toString())
-    }
-    console.log('Response being sent:', response)
-
-    res.json(response)
-  } catch (error) {
-    console.error('Get client invoice totals error:', error)
-    res.status(500).json({ error: 'Failed to fetch client invoice totals' })
-  }
+router.get('/client/:clientId/totals',async(req,res)=>{
+  try{const id=positiveId(req.params.clientId);await allowClient(req,id);res.json(await totalsForClient(id,req.user!.role==='admin'))}catch(error){financeError(res,error,'Failed to fetch invoice totals')}
 })
 
 // Get service totals for a client
 router.get('/client/:clientId/service-totals', async (req, res) => {
   try {
     const { clientId } = req.params
+    await allowClient(req,positiveId(clientId))
 
     const serviceTotals = await db
       .select({
@@ -1078,7 +473,7 @@ router.get('/client/:clientId/service-totals', async (req, res) => {
       .innerJoin(invoices, eq(invoiceServices.invoiceId, invoices.id))
       .innerJoin(clientServices, eq(invoiceServices.clientServiceId, clientServices.id))
       .innerJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-      .where(eq(invoices.clientId, parseInt(clientId)))
+      .where(and(eq(invoices.clientId, parseInt(clientId)),req.user!.role==='admin'?undefined:inArray(invoices.status,issuedStatuses)))
       .groupBy(invoiceServices.clientServiceId, serviceTypes.name)
 
     const result = serviceTotals.map(total => ({
@@ -1090,7 +485,7 @@ router.get('/client/:clientId/service-totals', async (req, res) => {
     res.json(result)
   } catch (error) {
     console.error('Get service totals error:', error)
-    res.status(500).json({ error: 'Failed to fetch service totals' })
+    financeError(res,error,'Failed to fetch service totals')
   }
 })
 

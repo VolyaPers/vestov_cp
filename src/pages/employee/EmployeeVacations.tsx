@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VacationBalanceCard } from '@/components/VacationBalanceCard'
@@ -51,6 +52,12 @@ interface LeaveBalance {
 
 interface LeaveRequest {
   id: number
+  leaveTypeId: number
+  halfDayStart: boolean
+  halfDayEnd: boolean
+  canEdit?: boolean
+  canCancel?: boolean
+  canArchive?: boolean
   leaveTypeName: string
   startDate: string
   endDate: string
@@ -128,22 +135,18 @@ export function EmployeeVacations() {
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([])
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
+  const [loadErrors, setLoadErrors] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [activeTab, setActiveTab] = useState('balance')
   const [showCalendarModal, setShowCalendarModal] = useState(false)
+  const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null)
+  const [editingRequestId, setEditingRequestId] = useState<number | null>(null)
   const [showShiftModal, setShowShiftModal] = useState(false)
   const [selectedShiftDate, setSelectedShiftDate] = useState<Date | null>(null)
   const [shiftFormData, setShiftFormData] = useState({ startTime: '09:00', endTime: '18:00', isDayOff: false })
   const [savingShift, setSavingShift] = useState(false)
-
-  // Fetch current user for timezone
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: api.getCurrentUser,
-  })
-  const employeeTzAbbr = getTimezoneAbbreviation(currentUser?.timezone || getBrowserTimezone())
 
   // Fetch preferred shifts
   const { data: preferredShiftsData } = useQuery({
@@ -158,10 +161,19 @@ export function EmployeeVacations() {
     queryFn: () => api.getMyShiftOverrides(currentMonthStr),
   })
 
+  const { data: calendarData, error: calendarError } = useQuery<{ timezone: string; days: Array<{ date: string; startTime: string | null; endTime: string | null; isDayOff: boolean; isOverride: boolean; absenceUnits: number }> }>({
+    queryKey: ['myEffectiveCalendar', currentMonthStr],
+    queryFn: () => api.request(`/shifts/calendar/me?month=${currentMonthStr}`),
+  })
+  const employeeTimezone = calendarData?.timezone || preferredShiftsData?.timezone || getBrowserTimezone()
+
   // Helper: get shift info for a specific date
   const getShiftForDate = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
     const dayOfWeek = date.getDay()
+
+    const effective = calendarData?.days.find(day => day.date === dateStr)
+    if (effective) return effective
 
     // Check overrides first
     const override = overridesData?.overrides?.find((o: any) => o.overrideDate === dateStr)
@@ -207,6 +219,7 @@ export function EmployeeVacations() {
       const dateStr = format(selectedShiftDate, 'yyyy-MM-dd')
       await api.updateMyShiftOverride(dateStr, shiftFormData)
       queryClient.invalidateQueries({ queryKey: ['myShiftOverrides'] })
+      queryClient.invalidateQueries({ queryKey: ['myEffectiveCalendar'] })
       setShowShiftModal(false)
       showAlert({ message: 'Shift override saved', type: 'success' })
     } catch (error) {
@@ -223,6 +236,7 @@ export function EmployeeVacations() {
       const dateStr = format(selectedShiftDate, 'yyyy-MM-dd')
       await api.deleteMyShiftOverride(dateStr)
       queryClient.invalidateQueries({ queryKey: ['myShiftOverrides'] })
+      queryClient.invalidateQueries({ queryKey: ['myEffectiveCalendar'] })
       setShowShiftModal(false)
       showAlert({ message: 'Shift reset to default', type: 'success' })
     } catch (error) {
@@ -279,12 +293,15 @@ export function EmployeeVacations() {
     leaveTypeId: '',
     startDate: '',
     endDate: '',
-    reason: ''
+    reason: '',
+    halfDayStart: false,
+    halfDayEnd: false
   })
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
+      setLoadErrors([])
 
       // Get employee profile
       const member = await api.request('/vacation/my-profile')
@@ -301,6 +318,7 @@ export function EmployeeVacations() {
           setEmploymentCycle(null)
         } else {
           console.error('Failed to load employment cycle:', error)
+          setLoadErrors(previous => [...previous, error instanceof Error ? error.message : 'Failed to load employment cycle:'])
         }
       }
 
@@ -316,6 +334,7 @@ export function EmployeeVacations() {
           setLeaveBalances([])
         } else {
           console.error('Failed to load balances:', error)
+          setLoadErrors(previous => [...previous, error instanceof Error ? error.message : 'Failed to load balances:'])
           setLeaveBalances([])
         }
       }
@@ -327,6 +346,9 @@ export function EmployeeVacations() {
         interface ApiRequestItem {
           request: {
             id: number
+            leaveTypeId: number
+            halfDayStart: boolean
+            halfDayEnd: boolean
             startDate: string
             endDate: string
             daysCount: number
@@ -338,6 +360,9 @@ export function EmployeeVacations() {
           leaveType: {
             name: string
           }
+          canEdit?: boolean
+          canCancel?: boolean
+          canArchive?: boolean
           isOldCycle?: boolean
           isFutureCycle?: boolean
           cycleInfo?: {
@@ -346,10 +371,16 @@ export function EmployeeVacations() {
             isActive: boolean
           } | null
         }
-        
+
         const transformedRequests = Array.isArray(requestsData)
           ? (requestsData as ApiRequestItem[]).map((item) => ({
               id: item.request.id,
+              leaveTypeId: item.request.leaveTypeId,
+              halfDayStart: item.request.halfDayStart,
+              halfDayEnd: item.request.halfDayEnd,
+              canEdit: item.canEdit,
+              canCancel: item.canCancel,
+              canArchive: item.canArchive,
               leaveTypeName: item.leaveType.name,
               startDate: item.request.startDate,
               endDate: item.request.endDate,
@@ -366,6 +397,7 @@ export function EmployeeVacations() {
         setLeaveRequests(transformedRequests)
       } catch (error) {
         console.error('Failed to load requests:', error)
+          setLoadErrors(previous => [...previous, error instanceof Error ? error.message : 'Failed to load requests:'])
         setLeaveRequests([])
       }
 
@@ -375,6 +407,7 @@ export function EmployeeVacations() {
 
     } catch (error) {
       console.error('Error loading data:', error)
+          setLoadErrors(previous => [...previous, error instanceof Error ? error.message : 'Error loading data:'])
     } finally {
       setLoading(false)
     }
@@ -391,6 +424,31 @@ export function EmployeeVacations() {
       startDate: formattedDate,
       endDate: formattedDate
     })
+    setEditingRequestId(null)
+    setShowCalendarModal(true)
+  }
+
+  const refreshBalances = () => {
+    for (const key of ['myVacationBalance', 'sickLeaveBalance', 'myEffectiveCalendar']) queryClient.invalidateQueries({ queryKey: [key] })
+  }
+
+  const handleLeaveAction = async (request: LeaveRequest, action: 'cancel' | 'archive') => {
+    try {
+      setSubmitting(true)
+      if (action === 'cancel') await api.cancelLeaveRequest(String(request.id))
+      else await api.deleteLeaveRequest(String(request.id))
+      setSelectedLeave(null)
+      await loadData()
+      refreshBalances()
+      showAlert({ message: action === 'cancel' ? 'Leave request canceled' : 'Request archived; history retained', type: 'success' })
+    } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Failed to update request', type: 'error' }) }
+    finally { setSubmitting(false) }
+  }
+
+  const editLeave = (request: LeaveRequest) => {
+    setEditingRequestId(request.id)
+    setFormData({ leaveTypeId: String(request.leaveTypeId), startDate: request.startDate, endDate: request.endDate, reason: request.reason || '', halfDayStart: request.halfDayStart, halfDayEnd: request.halfDayEnd })
+    setSelectedLeave(null)
     setShowCalendarModal(true)
   }
 
@@ -405,29 +463,37 @@ export function EmployeeVacations() {
     try {
       setSubmitting(true)
 
-      await api.createLeaveRequest({
+      const payload = {
         employeeId: teamMember.id,
         leaveTypeId: parseInt(formData.leaveTypeId),
         startDate: formData.startDate,
         endDate: formData.endDate,
-        reason: formData.reason
-      })
+        reason: formData.reason,
+        halfDayStart: formData.halfDayStart,
+        halfDayEnd: formData.halfDayEnd
+      }
+      if (editingRequestId) await api.request(`/vacation/requests/${editingRequestId}`, { method: 'PUT', body: JSON.stringify(payload) })
+      else await api.createLeaveRequest(payload)
 
       // Reset form
       setFormData({
         leaveTypeId: '',
         startDate: '',
         endDate: '',
-        reason: ''
+        reason: '',
+        halfDayStart: false,
+        halfDayEnd: false
       })
 
       // Reload data
       await loadData()
 
+      refreshBalances()
+      setEditingRequestId(null)
       // Close modal
       setShowCalendarModal(false)
 
-      showAlert({ message: 'Leave request submitted successfully!', type: 'success' })
+      showAlert({ message: 'Leave request saved successfully', type: 'success' })
     } catch (error) {
       console.error('Error submitting leave request:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.'
@@ -441,7 +507,7 @@ export function EmployeeVacations() {
     if (!formData.startDate || !formData.endDate) return 0
     const start = parseISO(formData.startDate)
     const end = parseISO(formData.endDate)
-    return differenceInDays(end, start) + 1
+    return Math.max(0, differenceInDays(end, start) + 1 - (formData.halfDayStart ? 0.5 : 0) - (formData.halfDayEnd ? 0.5 : 0))
   }
 
   const getStatusBadge = (status: string) => {
@@ -471,7 +537,7 @@ export function EmployeeVacations() {
     return leaveRequests.filter(request => {
       const startDate = parseISO(request.startDate)
       const endDate = parseISO(request.endDate)
-      return day >= startDate && day <= endDate
+      return day >= startDate && day <= endDate && ['approved', 'pending'].includes(request.status)
     })
   }
 
@@ -493,6 +559,7 @@ export function EmployeeVacations() {
 
   return (
     <div className="space-y-6">
+      {(loadErrors.length > 0 || calendarError) && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><p>Some calendar data could not be loaded: {[...loadErrors, calendarError?.message].filter(Boolean).join('; ')}</p><Button variant="outline" size="sm" onClick={() => { loadData(); queryClient.invalidateQueries({ queryKey: ['myEffectiveCalendar'] }) }}>Retry</Button></div>}
       {/* Header Section - Stripe style */}
       <div className="stripe-card p-8">
         <div className="flex items-center justify-between">
@@ -703,6 +770,7 @@ export function EmployeeVacations() {
                             return (
                               <button
                                 key={leave.id}
+                                onClick={() => setSelectedLeave(leave)}
                                 className={cn(
                                   'w-full px-2 py-1 rounded text-white truncate text-left hover:opacity-80 transition-all relative',
                                   isPending && 'border-2 border-dashed border-yellow-300 opacity-75 animate-pulse',
@@ -724,7 +792,7 @@ export function EmployeeVacations() {
                       )}
 
                       {/* Shift Time Badge - hidden when employee has approved leave */}
-                      {isWeekday && !holiday && !hasApprovedLeave && shiftInfo && (
+                      {shiftInfo && (
                         <button
                           onClick={() => handleShiftClick(day)}
                           className={cn(
@@ -737,13 +805,13 @@ export function EmployeeVacations() {
                           )}
                           title="Click to edit shift for this day"
                         >
-                          {shiftInfo.isDayOff ? 'Day Off' : `${shiftInfo.startTime} - ${shiftInfo.endTime} ${employeeTzAbbr}`}
+                          {shiftInfo.isDayOff ? 'Day Off' : `${shiftInfo.startTime} - ${shiftInfo.endTime} ${getTimezoneAbbreviation(employeeTimezone, day)}`}
                           {shiftInfo.isOverride && !shiftInfo.isDayOff && (
                             <span className="ml-1 text-[8px] text-amber-500">*</span>
                           )}
                         </button>
                       )}
-                      {isWeekday && !holiday && !hasApprovedLeave && !shiftInfo && (
+                      {!shiftInfo && (
                         <button
                           onClick={() => handleShiftClick(day)}
                           className="w-full mt-1 px-1.5 py-1 rounded text-[10px] text-gray-400 border border-dashed border-gray-200 hover:bg-gray-50 transition-colors"
@@ -765,7 +833,7 @@ export function EmployeeVacations() {
           {/* Request Form */}
           <Card className="bg-white shadow-sm border border-gray-200">
             <CardHeader>
-              <CardTitle>New Leave Request</CardTitle>
+              <CardTitle>{editingRequestId ? 'Edit Leave Request' : 'New Leave Request'}</CardTitle>
               <CardDescription>Submit a request for time off</CardDescription>
             </CardHeader>
             <CardContent>
@@ -781,7 +849,7 @@ export function EmployeeVacations() {
                         <SelectValue placeholder="Select leave type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {leaveTypes.filter(lt => lt.name === 'Vacation' || lt.name === 'Sick Leave').map((type) => (
+                        {leaveTypes.map((type) => (
                           <SelectItem key={type.id} value={type.id.toString()}>
                             {type.name}
                           </SelectItem>
@@ -820,6 +888,10 @@ export function EmployeeVacations() {
                     />
                   </div>
 
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={formData.halfDayStart} onChange={e => setFormData({ ...formData, halfDayStart: e.target.checked, halfDayEnd: formData.startDate === formData.endDate && e.target.checked ? false : formData.halfDayEnd })} />Start leave in the afternoon (half day)</label>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={formData.halfDayEnd} onChange={e => setFormData({ ...formData, halfDayEnd: e.target.checked, halfDayStart: formData.startDate === formData.endDate && e.target.checked ? false : formData.halfDayStart })} />End leave at midday (half day)</label>
+                  </div>
                   <div className="md:col-span-2">
                     <Label>Reason (Optional)</Label>
                     <Textarea
@@ -833,7 +905,7 @@ export function EmployeeVacations() {
 
                 <Button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || calculateRequestDays() <= 0}
                   className="w-full md:w-auto"
                 >
                   <FileText className="h-4 w-4 mr-2" />
@@ -883,7 +955,7 @@ export function EmployeeVacations() {
                           </div>
                           {(request.isOldCycle || request.isFutureCycle) && (
                             <p className="text-xs text-amber-600 mt-1 italic">
-                              {request.isOldCycle 
+                              {request.isOldCycle
                                 ? 'This request is from a previous cycle and does not count toward your current balance.'
                                 : 'This request is from a future cycle and will count toward that cycle\'s balance.'}
                             </p>
@@ -897,6 +969,7 @@ export function EmployeeVacations() {
                             </p>
                           )}
                         </div>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedLeave(request)}>View details</Button>
                       </div>
                     ))}
                 </div>
@@ -905,6 +978,25 @@ export function EmployeeVacations() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!selectedLeave} onOpenChange={open => { if (!open) setSelectedLeave(null) }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{selectedLeave?.leaveTypeName}</DialogTitle><DialogDescription>Leave request details</DialogDescription></DialogHeader>
+          {selectedLeave && <div className="space-y-4">
+            <div>{getStatusBadge(selectedLeave.status)}</div>
+            <p>{selectedLeave.startDate} – {selectedLeave.endDate} · {selectedLeave.totalDays} days</p>
+            {selectedLeave.halfDayStart && <p>Starts in the afternoon.</p>}
+            {selectedLeave.halfDayEnd && <p>Ends at midday.</p>}
+            {selectedLeave.reason && <p>{selectedLeave.reason}</p>}
+            {selectedLeave.decisionReason && <p>Response: {selectedLeave.decisionReason}</p>}
+            <div className="flex flex-wrap gap-2">
+              {selectedLeave.canEdit && <Button onClick={() => editLeave(selectedLeave)}>Edit request</Button>}
+              {selectedLeave.canCancel && <Button variant="outline" disabled={submitting} onClick={() => handleLeaveAction(selectedLeave, 'cancel')}>Cancel leave request</Button>}
+              {selectedLeave.canArchive && <Button variant="outline" disabled={submitting} onClick={() => handleLeaveAction(selectedLeave, 'archive')}>Archive request</Button>}
+            </div>
+          </div>}
+        </DialogContent>
+      </Dialog>
 
       {/* Calendar Add Leave Modal */}
       {showCalendarModal && (
@@ -930,7 +1022,7 @@ export function EmployeeVacations() {
                       <SelectValue placeholder="Select leave type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {leaveTypes.filter(lt => lt.name === 'Vacation' || lt.name === 'Sick Leave').map((type) => (
+                      {leaveTypes.map((type) => (
                         <SelectItem key={type.id} value={type.id.toString()}>
                           {type.name}
                         </SelectItem>
@@ -971,6 +1063,11 @@ export function EmployeeVacations() {
                   />
                 </div>
 
+                <div className="space-y-2 md:col-span-2">
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={formData.halfDayStart} onChange={e => setFormData({ ...formData, halfDayStart: e.target.checked, halfDayEnd: formData.startDate === formData.endDate && e.target.checked ? false : formData.halfDayEnd })} />Start leave in the afternoon (half day)</label>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={formData.halfDayEnd} onChange={e => setFormData({ ...formData, halfDayEnd: e.target.checked, halfDayStart: formData.startDate === formData.endDate && e.target.checked ? false : formData.halfDayStart })} />End leave at midday (half day)</label>
+                  </div>
+
                 {/* Reason */}
                 <div>
                   <Label>Reason (Optional)</Label>
@@ -994,7 +1091,7 @@ export function EmployeeVacations() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || calculateRequestDays() <= 0}
                     className="flex-1"
                   >
                     {submitting ? 'Submitting...' : 'Submit Request'}

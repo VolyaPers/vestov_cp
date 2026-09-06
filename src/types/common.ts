@@ -422,6 +422,8 @@ export interface CreateLeaveRequestData {
 }
 
 export interface UpdateLeaveRequestData extends Partial<CreateLeaveRequestData> {
+  halfDayStart?: boolean
+  halfDayEnd?: boolean
   status?: LeaveRequestStatus
   decisionReason?: string
 }

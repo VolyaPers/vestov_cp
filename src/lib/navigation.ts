@@ -72,6 +72,7 @@ export const adminNavigation: NavItem[] = [
 ]
 
 export const teamMemberNavigation: NavItem[] = [
+  { name: 'My Salary', href: '/employee/salary', icon: Wallet, section: 'Operations' },
   { name: 'Dashboard', href: '/employee/dashboard', icon: BarChart3, section: 'Overview' },
   { name: 'Roadmap', href: '/employee/roadmap', icon: TrendingUp, section: 'Growth' },
   { name: 'Calendar', href: '/employee/vacations', icon: Calendar, section: 'Operations' },

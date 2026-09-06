@@ -1,45 +1,22 @@
-/**
- * Calculate employment-related milestones using a strict 365-day year.
- * - careerYear: 1-based year at company (1 for first 365 days, 2 after 365, etc.)
- * - nextMilestoneYear: the year the user will enter on the next 365-day boundary
- * - nextMilestoneDate: date of the next 365-day boundary
- * - daysUntilNextMilestone: whole days remaining until that boundary (0 if passed)
- */
-export function calculateEmploymentMetrics(startDate: string | Date) {
-  const start = new Date(startDate)
-  if (Number.isNaN(start.getTime())) {
-    return {
-      careerYear: 1,
-      daysAtCompany: 0,
-      nextMilestoneYear: 2,
-      nextMilestoneDate: new Date(),
-      daysUntilNextMilestone: 0,
-    }
-  }
-
-  const now = new Date()
-  const MS_PER_DAY = 1000 * 60 * 60 * 24
-  const diffDays = Math.max(0, Math.floor((now.getTime() - start.getTime()) / MS_PER_DAY))
-
-  const completedYears = Math.floor(diffDays / 365)
-  const careerYear = completedYears + 1
-
-  const nextMilestoneYear = careerYear + 1
-  const nextMilestoneDate = new Date(start.getTime() + careerYear * 365 * MS_PER_DAY)
-  const daysUntilNextMilestone = Math.max(
-    0,
-    Math.ceil((nextMilestoneDate.getTime() - now.getTime()) / MS_PER_DAY)
-  )
-
+import { addDays, daysBetween, employmentCycleForDate, isoDate } from './calendar.js';
+/** Benefits and cycles use the same employment anniversary, including leap years. */
+export function calculateEmploymentMetrics(startDate: string | Date, currentDate: Date = new Date()) {
+  const start = isoDate(startDate);
+  const today = isoDate(currentDate);
+  if (today < start) return {
+    careerYear: 1,
+    daysAtCompany: 0,
+    nextMilestoneYear: 2,
+    nextMilestoneDate: new Date(`${addDays(employmentCycleForDate(start, start).cycleEnd, 1)}T00:00:00Z`),
+    daysUntilNextMilestone: daysBetween(today, addDays(employmentCycleForDate(start, start).cycleEnd, 1))
+  };
+  const cycle = employmentCycleForDate(start, today);
+  const next = addDays(cycle.cycleEnd, 1);
   return {
-    careerYear,
-    daysAtCompany: diffDays,
-    nextMilestoneYear,
-    nextMilestoneDate,
-    daysUntilNextMilestone,
-  }
+    careerYear: cycle.careerYear,
+    daysAtCompany: daysBetween(start, today),
+    nextMilestoneYear: cycle.careerYear + 1,
+    nextMilestoneDate: new Date(`${next}T00:00:00Z`),
+    daysUntilNextMilestone: daysBetween(today, next)
+  };
 }
-
-
-
-

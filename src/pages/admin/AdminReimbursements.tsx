@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { CheckCircle, XCircle, Clock, AlertCircle, Search, Filter } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,7 +37,7 @@ interface ReimbursementRequest {
   reimbursementAmount: string
   description: string
   category: string | null
-  status: 'pending' | 'approved' | 'rejected' | 'confirmed'
+  status: 'pending' | 'approved' | 'rejected' | 'confirmed' | 'paid'
   requestedAt: string
   requestedByName: string
   approvedAt: string | null
@@ -46,6 +47,7 @@ interface ReimbursementRequest {
 }
 
 export function AdminReimbursements() {
+  const [loadError,setLoadError]=useState('')
   const { showAlert } = useCustomAlert()
   const [requests, setRequests] = useState<ReimbursementRequest[]>([])
   const [filteredRequests, setFilteredRequests] = useState<ReimbursementRequest[]>([])
@@ -74,10 +76,11 @@ export function AdminReimbursements() {
   const loadRequests = async () => {
     try {
       setLoading(true)
+      setLoadError('')
       const data = await api.request('/reimbursements')
       setRequests(data)
     } catch (error) {
-      console.error('Error loading reimbursement requests:', error)
+      setLoadError(error instanceof Error?error.message:'Unable to load reimbursement requests')
     } finally {
       setLoading(false)
     }
@@ -107,6 +110,12 @@ export function AdminReimbursements() {
     }
 
     setFilteredRequests(filtered)
+  }
+
+  const handleRecordPayment = async (request: ReimbursementRequest) => {
+    const date=window.prompt('Record a completed reimbursement payment. Payment date (YYYY-MM-DD):',new Date().toISOString().slice(0,10))
+    if(!date)return
+    try{setProcessing(request.id);await api.request(`/reimbursements/${request.id}/pay`,{method:'POST',body:JSON.stringify({transactionDate:date,idempotencyKey:`reimbursement-payment-${request.id}`})});await loadRequests();showAlert({message:'Payment recorded in Finances',type:'success'})}catch(error){showAlert({message:error instanceof Error?error.message:'Payment could not be recorded',type:'error'})}finally{setProcessing(null)}
   }
 
   const handleApproveClick = (request: ReimbursementRequest) => {
@@ -155,6 +164,7 @@ export function AdminReimbursements() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'paid': return <Badge className="bg-green-100 text-green-700">Paid</Badge>
       case 'pending':
         return (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
@@ -194,15 +204,8 @@ export function AdminReimbursements() {
   }
 
   const getStats = () => {
-    return {
-      pending: requests.filter(r => r.status === 'pending').length,
-      approved: requests.filter(r => r.status === 'approved').length,
-      confirmed: requests.filter(r => r.status === 'confirmed').length,
-      rejected: requests.filter(r => r.status === 'rejected').length,
-      totalAmount: requests
-        .filter(r => r.status === 'confirmed')
-        .reduce((sum, r) => sum + parseFloat(r.reimbursementAmount), 0)
-    }
+    const scope=requests.filter(r=>yearFilter==='all'||r.year.toString()===yearFilter)
+    return {pending:scope.filter(r=>r.status==='pending').length,approved:scope.filter(r=>r.status==='approved').length,confirmed:scope.filter(r=>r.status==='confirmed').length,rejected:scope.filter(r=>r.status==='rejected').length,totalAmount:scope.filter(r=>r.status==='paid').reduce((sum,r)=>sum+Number(r.reimbursementAmount),0)}
   }
 
   if (loading) {
@@ -212,6 +215,8 @@ export function AdminReimbursements() {
       </div>
     )
   }
+
+  if(loadError)return <div role="alert" className="p-4 text-red-600">{loadError} <Button onClick={loadRequests}>Retry</Button></div>
 
   const stats = getStats()
 
@@ -247,7 +252,7 @@ export function AdminReimbursements() {
         </Card>
         <Card className="bg-green-50 border-green-200">
           <CardContent className="pt-6">
-            <div className="text-sm text-green-700 mb-1">Confirmed</div>
+            <div className="text-sm text-green-700 mb-1">Ready for Payment</div>
             <div className="text-3xl font-bold text-green-900">{stats.confirmed}</div>
           </CardContent>
         </Card>
@@ -292,7 +297,7 @@ export function AdminReimbursements() {
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem><SelectItem value="confirmed">Confirmed</SelectItem>
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
@@ -415,6 +420,7 @@ export function AdminReimbursements() {
                     </div>
                   )}
 
+                  {request.status === 'confirmed' && <Button onClick={()=>handleRecordPayment(request)} disabled={processing===request.id}>Record completed payment</Button>}
                   {request.status === 'pending' && (
                     <div className="flex gap-2 pt-3 border-t border-gray-200">
                       <Button

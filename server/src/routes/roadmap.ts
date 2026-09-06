@@ -1,82 +1,42 @@
-import { Router } from 'express'
-import { db } from '../db/index.js'
-import { teamMembers } from '../db/schema.js'
-import { eq } from 'drizzle-orm'
-import { calculateEmploymentMetrics } from '../utils/employment.js'
-
-const router = Router()
-
-// Helper function to get vacation days based on years
-function getVacationDays(yearsAtCompany: number): number {
-  if (yearsAtCompany >= 3) return 24
-  if (yearsAtCompany >= 2) return 20
-  return 16 // Year 1
-}
-
-// Helper function to get reimbursement limit based on years
-function getReimbursementLimit(yearsAtCompany: number): number {
-  if (yearsAtCompany >= 5) return 700
-  if (yearsAtCompany >= 4) return 600
-  if (yearsAtCompany >= 3) return 500
-  if (yearsAtCompany >= 2) return 400
-  return 300 // 1 year
-}
-
-// GET /api/roadmap - Get employee roadmap data
-router.get('/', async (req, res) => {
+import { Router } from 'express';
+import { calculateEmploymentMetrics } from '../utils/employment.js';
+import { calculateVacationBalance, configuredAllocation, isVacationType, loadLeaveContext } from '../utils/vacationBalanceCalculator.js';
+import { timezoneLocalDate } from '../utils/calendar.js';
+import { requireAuth } from '../middleware/auth.js';
+import { resolveEmployeeId } from '../services/access.js';
+const router = Router();
+const reimbursementLimit = (year: number) => Math.min(700, 200 + year * 100);
+router.get('/', requireAuth, async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' })
-    }
-
-    // Try to get team member by teamMemberId first (more reliable)
-    let member
-    if ((req.user as any).teamMemberId) {
-      try {
-        const [foundMember] = await db
-          .select()
-          .from(teamMembers)
-          .where(eq(teamMembers.id, (req.user as any).teamMemberId))
-          .limit(1)
-        member = foundMember
-      } catch (error) {
-        console.error('[GET /roadmap] Error fetching by teamMemberId:', error)
-      }
-    }
-
-    // Fallback to email lookup if teamMemberId didn't work
-    if (!member) {
-      const members = await db
-        .select()
-        .from(teamMembers)
-        .where(eq(teamMembers.email, req.user.email!))
-      member = members[0]
-    }
-
-    if (!member) {
-      return res.status(404).json({ error: 'Team member not found' })
-    }
-
-    const employment = calculateEmploymentMetrics(member.startDate)
-
-    const yearsAtCompany = employment.careerYear
-    const currentVacationDays = getVacationDays(yearsAtCompany)
-    const currentReimbursementLimit = getReimbursementLimit(yearsAtCompany)
-
+    const employeeId = await resolveEmployeeId(req.user!);
+    if (!employeeId) return res.status(403).json({
+      error: 'Linked employee profile required'
+    });
+    const context = await loadLeaveContext(employeeId),
+      today = timezoneLocalDate(new Date(), context.member.timezone);
+    const employment = calculateEmploymentMetrics(context.member.startDate, new Date(`${today}T12:00:00Z`));
+    const balance = await calculateVacationBalance(employeeId),
+      type = context.types.find((t: any) => isVacationType(t.name));
     res.json({
-      currentYear: new Date().getFullYear(),
-      startDate: member.startDate,
-      yearsAtCompany,
-      currentVacationDays,
-      currentReimbursementLimit,
+      currentYear: Number(today.slice(0, 4)),
+      startDate: context.member.startDate,
+      yearsAtCompany: employment.careerYear,
+      currentVacationDays: balance?.totalAllocated || 0,
+      currentReimbursementLimit: reimbursementLimit(employment.careerYear),
       nextMilestoneYear: employment.nextMilestoneYear,
       daysUntilNextMilestone: employment.daysUntilNextMilestone,
-      nextMilestoneDate: employment.nextMilestoneDate
-    })
+      nextMilestoneDate: employment.nextMilestoneDate,
+      milestones: [1, 2, 3, 4, 5].map(year => ({
+        year,
+        vacationDays: type ? configuredAllocation(context, type, year) : 0,
+        reimbursementLimit: reimbursementLimit(year)
+      }))
+    });
   } catch (error) {
-    console.error('Error fetching roadmap data:', error)
-    res.status(500).json({ error: 'Failed to fetch roadmap data' })
+    console.error('Roadmap failed', error);
+    res.status(500).json({
+      error: 'Failed to load roadmap'
+    });
   }
-})
-
-export default router
+});
+export default router;

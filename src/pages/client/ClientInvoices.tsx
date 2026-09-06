@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ClientLoadError } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
@@ -36,6 +37,8 @@ export function ClientInvoices() {
     return <div>Client ID not found</div>
   }
   const clientId = getRouteParam(params, 'clientId')
+  const [loadError, setLoadError] = useState('')
+  const [retry, setRetry] = useState(0)
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
@@ -53,6 +56,8 @@ export function ClientInvoices() {
       if (!clientId) return
 
       try {
+        setIsLoading(true)
+        setLoadError('')
         // Load invoices
         const invoicesResponse = await api.request(`/invoices/client/${clientId}`)
         setInvoices(invoicesResponse)
@@ -61,14 +66,14 @@ export function ClientInvoices() {
         const totalsResponse = await api.getClientInvoiceTotals(parseInt(clientId))
         setTotals(totalsResponse)
       } catch (error) {
-        console.error('Failed to load invoices:', error)
+        setLoadError('Unable to load your invoices and balances. Please retry.')
       } finally {
         setIsLoading(false)
       }
     }
 
     loadInvoices()
-  }, [clientId])
+  }, [clientId, retry])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -82,6 +87,7 @@ export function ClientInvoices() {
       case 'paid':
         return 'bg-green-100 text-green-800'
       case 'pending':
+      case 'sent':
         return 'bg-yellow-100 text-yellow-800'
       case 'overdue':
         return 'bg-red-100 text-red-800'
@@ -100,12 +106,14 @@ export function ClientInvoices() {
     )
   }
 
+  if (loadError) return <ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />
+
   return (
     <div className="space-y-6">
       <PageHero
         eyebrow="Client Billing"
-        title="Invoices and payment status, redesigned for clarity."
-        description="This client billing area now follows the same visual language as the rest of the portal, with cleaner summary tiles and better invoice readability."
+        title="Invoices and payment status"
+        description="Issued invoices, outstanding balances and payment history for your selected client workspace."
         theme="ocean"
         meta={
           <>

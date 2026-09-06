@@ -494,8 +494,8 @@ class ApiClient {
     return this.request('/admin/navigation-indicators') as Promise<NavigationIndicators>
   }
 
-  async getClientDashboard() {
-    return this.request('/client/dashboard')
+  async getClientDashboard(clientId?: number) {
+    return this.request(`/client/dashboard${buildQueryString({ clientId })}`)
   }
 
   // Developers
@@ -746,6 +746,7 @@ class ApiClient {
   }
 
   async recordSalaryPayment(data: {
+    idempotencyKey: string
     teamMemberId: number
     amount: number
     transactionDate: string
@@ -1149,16 +1150,20 @@ class ApiClient {
     return this.request('/shifts/admin/late')
   }
 
-  async getClientTeamShifts() {
-    return this.request('/shifts/client/team')
+  async getClientTeamShifts(clientId?: number) {
+    return this.request(`/shifts/client/team${buildQueryString({ clientId })}`)
   }
 
-  async getClientTeamVacations() {
-    return this.request('/vacation/client/team')
+  async getClientTeamVacations(clientId?: number, month?: string) {
+    return this.request(`/vacation/client/team${buildQueryString({ clientId, month })}`)
   }
 
-  async getClientTeamSchedules() {
-    return this.request('/vacation/client/team/schedules')
+  async getClientTeamSchedules(clientId?: number, month?: string) {
+    return this.request(`/vacation/client/team/schedules${buildQueryString({ clientId, month })}`)
+  }
+
+  async getClientCalendar(clientId: number, month: string) {
+    return this.request(`/vacation/client/calendar${buildQueryString({ clientId, month })}`)
   }
 
   // Preferred Shifts Methods
@@ -1259,12 +1264,12 @@ class ApiClient {
     return this.request('/feedback/admin')
   }
 
-  async getClientFeedbacks() {
-    return this.request('/feedback/client')
+  async getClientFeedbacks(clientId?: number) {
+    return this.request(`/feedback/client${buildQueryString({ clientId })}`)
   }
 
-  async getFeedbackClientServices() {
-    return this.request('/feedback/client-services')
+  async getFeedbackClientServices(clientId?: number) {
+    return this.request(`/feedback/client-services${buildQueryString({ clientId })}`)
   }
 
   async getFeedbackServiceDevelopers(clientServiceId: number) {
@@ -1272,6 +1277,7 @@ class ApiClient {
   }
 
   async submitFeedback(data: {
+    clientId?: number
     clientServiceId?: number
     teamMemberId?: number
     rating: number

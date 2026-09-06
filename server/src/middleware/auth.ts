@@ -19,31 +19,28 @@ export interface AuthenticatedUser {
 }
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated()) {
+  if (req.isAuthenticated() && req.user?.isActive !== false) {
     return next()
   }
   res.status(401).json({ error: 'Authentication required' })
 }
 
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
-  console.log('[requireAdmin] URL:', req.url, 'User:', req.user)
-  if (req.isAuthenticated() && req.user?.role === 'admin') {
-    console.log('[requireAdmin] Access granted')
+  if (req.isAuthenticated() && req.user?.isActive !== false && req.user?.role === 'admin') {
     return next()
   }
-  console.log('[requireAdmin] Access denied')
   res.status(403).json({ error: 'Admin access required' })
 }
 
 export const requireClient = (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated() && req.user?.role === 'client') {
+  if (req.isAuthenticated() && req.user?.isActive !== false && req.user?.role === 'client') {
     return next()
   }
   res.status(403).json({ error: 'Client access required' })
 }
 
 export const requireRole = (roles: string[]) => (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated() && req.user?.role && roles.includes(req.user.role)) {
+  if (req.isAuthenticated() && req.user?.isActive !== false && req.user?.role && roles.includes(req.user.role)) {
     return next()
   }
   res.status(403).json({ error: 'Insufficient permissions' })

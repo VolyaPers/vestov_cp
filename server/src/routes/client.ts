@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq, desc, and } from 'drizzle-orm'
+import { eq, desc, and, or, inArray } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
   clients,
@@ -7,8 +7,9 @@ import {
   serviceRequests,
   documents,
   feedback,
-  messages
+  messages, clientServices, serviceTypes, clientServiceTeamMembers
 } from '../db/schema.js'
+import { resolveClientScope, coversDate, dateKey, clientAssignmentDto, clientServiceDto } from '../services/clientWorkspace.js'
 import { requireClient } from '../middleware/auth.js'
 
 const router = Router()
@@ -19,37 +20,32 @@ router.use(requireClient)
 // Dashboard
 router.get('/dashboard', async (req, res) => {
   try {
-    const clientId = req.user!.clientId
-    if (!clientId) {
-      return res.status(400).json({ error: 'No client associated with user' })
-    }
-
-    // Get client info
+    const clientId = await resolveClientScope(req, res)
+    if (!clientId) return
     const [client] = await db.select().from(clients).where(eq(clients.id, clientId))
-
-    // Get assigned team members
-    const assignedTeam = await db
-      .select()
-      .from(teamMembers)
-      .where(and(eq(teamMembers.clientId, clientId), eq(teamMembers.status, 'active')))
-
-    // Get recent service requests
-    const recentRequests = await db
-      .select()
-      .from(serviceRequests)
-      .where(eq(serviceRequests.userId, req.user!.id))
-      .orderBy(desc(serviceRequests.requestDate))
-      .limit(5)
+    if (!client) return res.status(404).json({ error: 'Client not found' })
+    const projects = await db.select({ service: clientServices, type: serviceTypes }).from(clientServices)
+      .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id)).where(eq(clientServices.clientId, clientId))
+    const activeProjects = projects.filter(row => coversDate(row.service, dateKey()))
+    const assignments = activeProjects.length ? await db.select({ assignment: clientServiceTeamMembers, employee: teamMembers }).from(clientServiceTeamMembers)
+      .innerJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
+      .where(inArray(clientServiceTeamMembers.clientServiceId, activeProjects.map(row => row.service.id))) : []
+    const assignedTeam = [...new Set(assignments.filter(row => coversDate(row.assignment, dateKey()) && row.employee.status === 'active').map(row => row.employee.id))]
+    const recentFeedback = await db.select({ id: feedback.id, comments: feedback.comments, status: feedback.status, createdAt: feedback.createdAt, adminResponse: feedback.adminResponse })
+      .from(feedback).where(and(eq(feedback.userId, req.user!.id), eq(feedback.clientId, clientId)))
+      .orderBy(desc(feedback.createdAt))
+    const contractActive = client.status === 'active' && (!client.contractStart || client.contractStart <= dateKey()) && (!client.contractEnd || client.contractEnd >= dateKey())
 
     res.json({
-      client,
+      client: { ...client, status: contractActive ? 'active' : 'inactive', activeServices: activeProjects.map(row => row.service.serviceTitle || row.type?.name || 'Project') },
+      viewer: { fullName: req.user!.fullName },
       teamSize: assignedTeam.length,
-      activeServices: client?.activeServices || [],
-      recentRequests,
+      activeServices: activeProjects.map(row => row.service.serviceTitle || row.type?.name || 'Project'),
+      recentFeedback: recentFeedback.slice(0, 5),
       stats: {
         totalTeamMembers: assignedTeam.length,
-        activeServices: (client?.activeServices as any[])?.length || 0,
-        pendingRequests: recentRequests.filter(r => r.status === 'pending').length,
+        activeServices: activeProjects.length,
+        pendingFeedback: recentFeedback.filter(item => item.status === 'pending').length,
       }
     })
   } catch (error) {
@@ -61,29 +57,15 @@ router.get('/dashboard', async (req, res) => {
 // Team Members (assigned to client)
 router.get('/team', async (req, res) => {
   try {
-    const clientId = (req.user as any)?.clientId
-    if (!clientId) {
-      return res.status(400).json({ error: 'No client associated with user' })
-    }
-
-    const team = await db
-      .select({
-        id: teamMembers.id,
-        name: teamMembers.name,
-        position: teamMembers.position,
-        email: teamMembers.email,
-        phone: teamMembers.phone,
-        skills: teamMembers.skills,
-        bio: teamMembers.bio,
-        status: teamMembers.status,
-        startDate: teamMembers.startDate,
-        location: teamMembers.location,
-        avatarUrl: teamMembers.avatarUrl,
-      })
-      .from(teamMembers)
-      .where(eq(teamMembers.clientId, clientId))
-      .orderBy(teamMembers.name)
-
+    const clientId = await resolveClientScope(req, res)
+    if (!clientId) return
+    const rows = await db.select({ employee: teamMembers, assignment: clientServiceTeamMembers, project: clientServices }).from(clientServiceTeamMembers)
+      .innerJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
+      .innerJoin(clientServices, eq(clientServiceTeamMembers.clientServiceId, clientServices.id))
+      .where(eq(clientServices.clientId, clientId))
+    const team = [...new Map(rows.filter(row => coversDate(row.project, dateKey()) && coversDate(row.assignment, dateKey()) && row.employee.status === 'active').map(({ employee }) => [employee.id, {
+      id: employee.id, employeeId: employee.id, name: employee.name, email: employee.email, position: employee.position, avatarUrl: employee.avatarUrl, skills: employee.skills,
+    }])).values()]
     res.json(team)
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch team members' })
@@ -108,6 +90,7 @@ router.get('/service-requests', async (req, res) => {
 router.post('/service-requests', async (req, res) => {
   try {
     const { title, description } = req.body
+    if (typeof title !== 'string' || !title.trim() || typeof description !== 'string' || !description.trim()) return res.status(400).json({ error: 'Title and description are required' })
 
     const [request] = await db.insert(serviceRequests).values({
       title,
@@ -124,76 +107,27 @@ router.post('/service-requests', async (req, res) => {
 // Documents (accessible to client)
 router.get('/documents', async (req, res) => {
   try {
-    const clientId = req.user!.clientId
-    if (!clientId) {
-      return res.status(400).json({ error: 'No client associated with user' })
-    }
+    const clientId = await resolveClientScope(req, res)
+    if (!clientId) return
 
     const clientDocuments = await db
       .select()
       .from(documents)
-      .where(eq(documents.clientId, clientId))
+      .where(and(eq(documents.clientId, clientId), eq(documents.visibleToClient, true)))
       .orderBy(desc(documents.lastUpdated))
 
-    res.json(clientDocuments)
+    res.json(clientDocuments.map(({ id, name, type, fileSize, documentTitle, createdAt, lastUpdated }) => ({ id, name, type, fileSize, documentTitle, createdAt, lastUpdated })))
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch documents' })
   }
 })
 
-// Feedback
+// Keep legacy URLs on the same validation/authorization path as the current UI.
 router.get('/feedback', async (req, res) => {
-  try {
-    const clientId = req.user!.clientId
-    if (!clientId) {
-      return res.status(400).json({ error: 'No client associated with user' })
-    }
-
-    const clientFeedback = await db
-      .select({
-        id: feedback.id,
-        teamMemberId: feedback.teamMemberId,
-        teamMemberName: teamMembers.name,
-        rating: feedback.rating,
-        comments: feedback.comments,
-        feedbackType: feedback.feedbackType,
-        status: feedback.status,
-        createdAt: feedback.createdAt,
-      })
-      .from(feedback)
-      .leftJoin(teamMembers, eq(feedback.teamMemberId, teamMembers.id))
-      .where(eq(feedback.clientId, clientId))
-      .orderBy(desc(feedback.createdAt))
-
-    res.json(clientFeedback)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch feedback' })
-  }
+  const clientId = await resolveClientScope(req, res)
+  if (clientId) res.redirect(307, `/api/feedback/client?clientId=${clientId}`)
 })
-
-router.post('/feedback', async (req, res) => {
-  try {
-    const clientId = req.user!.clientId
-    if (!clientId) {
-      return res.status(400).json({ error: 'No client associated with user' })
-    }
-
-    const { teamMemberId, rating, comments, feedbackType } = req.body
-
-    const [newFeedback] = await db.insert(feedback).values({
-      userId: req.user!.id,
-      clientId,
-      teamMemberId,
-      rating,
-      comments,
-      feedbackType: feedbackType || 'client_feedback',
-    }).returning()
-
-    res.json(newFeedback)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to submit feedback' })
-  }
-})
+router.post('/feedback', (req, res) => res.redirect(307, '/api/feedback'))
 
 // Messages
 router.get('/messages', async (req, res) => {
@@ -202,7 +136,7 @@ router.get('/messages', async (req, res) => {
       .select()
       .from(messages)
       .where(
-        and(
+        or(
           eq(messages.senderId, req.user!.id),
           eq(messages.receiverId, req.user!.id)
         )

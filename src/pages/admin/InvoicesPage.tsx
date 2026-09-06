@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { api } from '@/lib/api'
 import { getDatePreset, getPresetLabel, type DatePreset } from '@/lib/datePresets'
+import { InvoiceDetailsDialog } from '@/components/InvoiceDetailsDialog'
+import {sumInvoiceAmounts} from '@/lib/reportCalculations'
 import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Invoice {
@@ -21,7 +23,7 @@ interface Invoice {
   periodStart: string
   periodEnd: string
   description?: string
-  status: 'draft' | 'sent' | 'paid' | 'overdue'
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
   dueDate?: string
   paidAt?: string
   notes?: string
@@ -31,12 +33,11 @@ interface Invoice {
 
 export function InvoicesPage() {
   const [, setLocation] = useLocation()
+  const [viewInvoiceId,setViewInvoiceId]=useState<number|null>(null)
+  const [invoiceError,setInvoiceError]=useState('')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
-  const [dateRange, setDateRange] = useState({
-    startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-    endDate: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0],
-  })
+  const [dateRange, setDateRange] = useState(getDatePreset('thisYear'))
 
   useEffect(() => {
     loadInvoices()
@@ -45,13 +46,14 @@ export function InvoicesPage() {
   const loadInvoices = async () => {
     try {
       setInvoicesLoading(true)
+      setInvoiceError('')
       const response = await api.getAllInvoices({
         startDate: dateRange.startDate,
         endDate: dateRange.endDate,
       })
       setInvoices(response)
     } catch (error) {
-      console.error('Failed to load invoices:', error)
+      setInvoiceError(error instanceof Error?error.message:'Unable to load invoices')
     } finally {
       setInvoicesLoading(false)
     }
@@ -96,15 +98,15 @@ export function InvoicesPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <MetricTile
             label="Total Invoiced"
-            value={`$${invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0).toLocaleString()}`}
-            hint="Gross amount across current filter"
+            value={`$${sumInvoiceAmounts(invoices.filter(inv=>inv.status!=='cancelled')).toFixed(2)}`}
+            hint="Invoice dates in range; cancelled excluded"
             icon={<DollarSign className="h-5 w-5" />}
             tone="primary"
             className="bg-white/10 border-white/12 text-white [&_p]:text-current"
           />
           <MetricTile
             label="Total Paid"
-            value={`$${invoices.filter(inv => inv.paidAt).reduce((sum, inv) => sum + parseFloat(inv.amount), 0).toLocaleString()}`}
+            value={`$${sumInvoiceAmounts(invoices.filter(inv => inv.status==='paid' && inv.paidAt)).toFixed(2)}`}
             hint="Settled invoice value"
             icon={<TrendingUp className="h-5 w-5" />}
             tone="emerald"
@@ -112,8 +114,8 @@ export function InvoicesPage() {
           />
           <MetricTile
             label="Outstanding"
-            value={`$${(invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0) - invoices.filter(inv => inv.paidAt).reduce((sum, inv) => sum + parseFloat(inv.amount), 0)).toLocaleString()}`}
-            hint="Unpaid balance in range"
+            value={`$${sumInvoiceAmounts(invoices.filter(inv=>['sent','overdue'].includes(inv.status))).toFixed(2)}`}
+            hint="Issued invoices awaiting payment"
             icon={<Receipt className="h-5 w-5" />}
             tone="amber"
             className="bg-white/10 border-white/12 text-white [&_p]:text-current"
@@ -149,7 +151,7 @@ export function InvoicesPage() {
 
       <Card className="border-white/80 bg-white/82">
         <CardContent className="p-6">
-          {invoicesLoading ? (
+          {invoiceError ? <div role="alert" className="text-red-600">{invoiceError} <Button onClick={loadInvoices}>Retry</Button></div> : invoicesLoading ? (
             <div className="text-center py-12">
               <div className="inline-block h-10 w-10 animate-pulse rounded-full bg-slate-300/70"></div>
               <p className="mt-4 font-medium text-muted-foreground">Loading invoices...</p>
@@ -225,7 +227,7 @@ export function InvoicesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setLocation(`/admin/clients/${invoice.clientId}`)}
+                          onClick={() => setViewInvoiceId(invoice.id)}
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           View
@@ -239,6 +241,7 @@ export function InvoicesPage() {
           )}
         </CardContent>
       </Card>
+      <InvoiceDetailsDialog invoiceId={viewInvoiceId} onClose={()=>setViewInvoiceId(null)}/>
     </div>
   )
 }

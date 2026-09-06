@@ -1,18 +1,40 @@
 import { Router } from 'express'
+import { clientServiceDto } from '../services/clientWorkspace.js'
+import { canAccessClient, canAccessService, canReadDocument, isValidId } from '../services/access.js'
+import { resolveUploadPath, uploadsDirectory } from '../utils/uploads.js'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import { db } from '../db/index.js'
 import { documents, clients, users, documentFolders, clientServices, serviceTypes, clientUsers } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
-import { eq, and, desc, isNull } from 'drizzle-orm'
+import { eq, and, desc, isNull, inArray, sql } from 'drizzle-orm'
 
 const router = Router()
+for (const param of ['clientId', 'clientServiceId', 'documentId', 'folderId']) router.param(param, (_req, res, next, value) => {
+  if (!/^\d+$/.test(value) || !isValidId(Number(value))) return res.status(400).json({ error: `Invalid ${param}` })
+  next()
+})
+
+async function cleanupDeletedDocumentFiles(urls: string[]) {
+  if (!urls.length) return
+  // The database commit comes first: a failed delete must never lose the file.
+  // Historical imports can share one URL, so retain files still in use.
+  try {
+    const remaining = await db.select({ url: documents.url }).from(documents).where(inArray(documents.url, urls))
+    const retained = new Set(remaining.map(document => document.url))
+    for (const url of new Set(urls)) {
+      if (retained.has(url)) continue
+      try { await fs.promises.unlink(resolveUploadPath(url)) }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error('[DOCUMENTS] Deleted metadata; file cleanup requires retry') }
+    }
+  } catch { console.error('[DOCUMENTS] Deleted metadata; file cleanup requires retry') }
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), 'uploads', 'documents')
+    const uploadPath = path.join(uploadsDirectory, 'documents')
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true })
     }
@@ -72,7 +94,7 @@ router.get('/client/:clientId', requireAuth, async (req, res) => {
       })
       .from(documents)
       .leftJoin(users, eq(documents.userId, users.id))
-      .where(eq(documents.clientId, parseInt(clientId)))
+      .where(eq(documents.clientId, Number(clientId)))
       .orderBy(desc(documents.createdAt))
 
     res.json(clientDocuments)
@@ -89,37 +111,18 @@ router.post('/upload', requireAuth, upload.single('document'), async (req, res) 
     const { clientId, clientServiceId, folderId, visibleToClient, type, documentTitle } = req.body
 
     if (!clientId) {
+      if (req.file) fs.unlinkSync(req.file.path)
       return res.status(400).json({ error: 'Client ID is required' })
     }
 
-    // Check access permissions
-    if (user.role === 'admin' || user.role === 'team_member') {
-      // Admins and team members can upload to any client
-    } else if (user.role === 'client') {
-      // Client users need 'write' or 'admin' access level
-      const clientAccess = await db
-        .select()
-        .from(clientUsers)
-        .where(and(
-          eq(clientUsers.userId, user.id),
-          eq(clientUsers.clientId, parseInt(clientId)),
-          eq(clientUsers.isActive, true)
-        ))
-        .limit(1)
-
-      if (clientAccess.length === 0) {
-        if (req.file) fs.unlinkSync(req.file.path)
-        return res.status(403).json({ error: 'Access denied to this client' })
-      }
-
-      const accessLevel = clientAccess[0].accessLevel
-      if (accessLevel !== 'write' && accessLevel !== 'admin') {
-        if (req.file) fs.unlinkSync(req.file.path)
-        return res.status(403).json({ error: 'You do not have permission to upload documents. Write or admin access is required.' })
-      }
-    } else {
+    if (!isValidId(Number(clientId)) || (clientServiceId && !isValidId(Number(clientServiceId))) || (folderId && (!clientServiceId || !isValidId(Number(folderId))))) {
       if (req.file) fs.unlinkSync(req.file.path)
-      return res.status(403).json({ error: 'Access denied' })
+      return res.status(400).json({ error: 'Valid client, service and folder IDs are required.' })
+    }
+    if (!await canAccessClient(user, Number(clientId), 'write') ||
+        (clientServiceId && !await canAccessService(user, Number(clientServiceId), 'write'))) {
+      if (req.file) fs.unlinkSync(req.file.path)
+      return res.status(403).json({ error: 'Document upload access denied' })
     }
 
     if (!req.file) {
@@ -130,7 +133,7 @@ router.post('/upload', requireAuth, upload.single('document'), async (req, res) 
     const client = await db
       .select()
       .from(clients)
-      .where(eq(clients.id, parseInt(clientId)))
+      .where(eq(clients.id, Number(clientId)))
       .limit(1)
 
     if (client.length === 0) {
@@ -145,8 +148,8 @@ router.post('/upload', requireAuth, upload.single('document'), async (req, res) 
         .select()
         .from(clientServices)
         .where(and(
-          eq(clientServices.id, parseInt(clientServiceId)),
-          eq(clientServices.clientId, parseInt(clientId))
+          eq(clientServices.id, Number(clientServiceId)),
+          eq(clientServices.clientId, Number(clientId))
         ))
         .limit(1)
 
@@ -162,8 +165,8 @@ router.post('/upload', requireAuth, upload.single('document'), async (req, res) 
         .select()
         .from(documentFolders)
         .where(and(
-          eq(documentFolders.id, parseInt(folderId)),
-          eq(documentFolders.clientServiceId, parseInt(clientServiceId))
+          eq(documentFolders.id, Number(folderId)),
+          eq(documentFolders.clientServiceId, Number(clientServiceId))
         ))
         .limit(1)
 
@@ -183,10 +186,10 @@ router.post('/upload', requireAuth, upload.single('document'), async (req, res) 
         fileSize: req.file.size,
         url: `/uploads/documents/${req.file.filename}`,
         userId: user.id,
-        clientId: parseInt(clientId),
-        clientServiceId: clientServiceId ? parseInt(clientServiceId) : null,
-        folderId: folderId ? parseInt(folderId) : null,
-        visibleToClient: visibleToClient === 'true' || visibleToClient === true,
+        clientId: Number(clientId),
+        clientServiceId: clientServiceId ? Number(clientServiceId) : null,
+        folderId: folderId ? Number(folderId) : null,
+        visibleToClient: user.role === 'client' || visibleToClient === 'true' || visibleToClient === true,
       })
       .returning()
 
@@ -223,21 +226,19 @@ router.get('/preview/:documentId', requireAuth, async (req, res) => {
     const document = await db
       .select()
       .from(documents)
-      .where(eq(documents.id, parseInt(documentId)))
+      .where(eq(documents.id, Number(documentId)))
       .limit(1)
 
     if (document.length === 0) {
       return res.status(404).json({ error: 'Document not found' })
     }
 
-    // Check access: admin can access all, client can only access visible documents
-    if (user.role !== 'admin') {
-      if (!document[0].visibleToClient) {
-        return res.status(403).json({ error: 'Access denied' })
-      }
+    if (!await canReadDocument(user, document[0])) {
+      return res.status(403).json({ error: 'Access denied' })
     }
+    res.setHeader('Cache-Control', 'private, no-store')
 
-    const filePath = path.join(process.cwd(), document[0].url)
+    const filePath = resolveUploadPath(document[0].url)
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found on disk' })
@@ -279,7 +280,7 @@ router.get('/preview/:documentId', requireAuth, async (req, res) => {
     }
 
     res.setHeader('Content-Type', contentType)
-    res.setHeader('Content-Disposition', 'inline; filename="' + document[0].name + '"')
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(document[0].name)}`)
     res.sendFile(path.resolve(filePath))
   } catch (error) {
     console.error('Error previewing document:', error)
@@ -296,21 +297,19 @@ router.get('/download/:documentId', requireAuth, async (req, res) => {
     const document = await db
       .select()
       .from(documents)
-      .where(eq(documents.id, parseInt(documentId)))
+      .where(eq(documents.id, Number(documentId)))
       .limit(1)
 
     if (document.length === 0) {
       return res.status(404).json({ error: 'Document not found' })
     }
 
-    // Check access: admin can access all, client can only access visible documents
-    if (user.role !== 'admin') {
-      if (!document[0].visibleToClient) {
-        return res.status(403).json({ error: 'Access denied' })
-      }
+    if (!await canReadDocument(user, document[0])) {
+      return res.status(403).json({ error: 'Access denied' })
     }
+    res.setHeader('Cache-Control', 'private, no-store')
 
-    const filePath = path.join(process.cwd(), document[0].url)
+    const filePath = resolveUploadPath(document[0].url)
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found on disk' })
@@ -333,26 +332,10 @@ router.delete('/:documentId', requireAuth, async (req, res) => {
 
     const { documentId } = req.params
 
-    const document = await db
-      .select()
-      .from(documents)
-      .where(eq(documents.id, parseInt(documentId)))
-      .limit(1)
-
-    if (document.length === 0) {
-      return res.status(404).json({ error: 'Document not found' })
-    }
-
-    // Delete file from disk
-    const filePath = path.join(process.cwd(), document[0].url)
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
-
-    // Delete from database
-    await db
-      .delete(documents)
-      .where(eq(documents.id, parseInt(documentId)))
+    const deleted = await db.transaction(async tx => tx.delete(documents)
+      .where(eq(documents.id, Number(documentId))).returning({ url: documents.url }))
+    if (!deleted.length) return res.status(404).json({ error: 'Document not found' })
+    await cleanupDeletedDocumentFiles(deleted.map(document => document.url))
 
     res.json({ message: 'Document deleted successfully' })
   } catch (error) {
@@ -375,15 +358,16 @@ router.put('/:documentId', requireAuth, async (req, res) => {
     if (!name && !type) {
       return res.status(400).json({ error: 'Name or type is required' })
     }
+    if ((name !== undefined && (typeof name !== 'string' || !name.trim())) || (type !== undefined && typeof type !== 'string')) return res.status(400).json({ error: 'Valid document name and type are required' })
 
-    const updateData: any = {}
-    if (name) updateData.name = name
-    if (type) updateData.type = type
+    const updateData: any = { lastUpdated: new Date() }
+    if (name) updateData.name = name.trim()
+    if (type !== undefined) updateData.type = type.trim() || null
 
     const [updatedDocument] = await db
       .update(documents)
       .set(updateData)
-      .where(eq(documents.id, parseInt(documentId)))
+      .where(eq(documents.id, Number(documentId)))
       .returning()
 
     if (!updatedDocument) {
@@ -444,7 +428,7 @@ router.get('/service/:clientServiceId', requireAuth, async (req, res) => {
     const service = await db
       .select()
       .from(clientServices)
-      .where(eq(clientServices.id, parseInt(clientServiceId)))
+      .where(eq(clientServices.id, Number(clientServiceId)))
       .limit(1)
 
     if (service.length === 0) {
@@ -462,7 +446,7 @@ router.get('/service/:clientServiceId', requireAuth, async (req, res) => {
       })
       .from(documentFolders)
       .leftJoin(users, eq(documentFolders.createdBy, users.id))
-      .where(eq(documentFolders.clientServiceId, parseInt(clientServiceId)))
+      .where(eq(documentFolders.clientServiceId, Number(clientServiceId)))
       .orderBy(documentFolders.name)
 
     // Get all documents for this service
@@ -477,7 +461,7 @@ router.get('/service/:clientServiceId', requireAuth, async (req, res) => {
       })
       .from(documents)
       .leftJoin(users, eq(documents.userId, users.id))
-      .where(eq(documents.clientServiceId, parseInt(clientServiceId)))
+      .where(eq(documents.clientServiceId, Number(clientServiceId)))
       .orderBy(desc(documents.createdAt))
 
     // Separate documents by folder
@@ -518,6 +502,8 @@ router.get('/service/:clientServiceId/client-visible', requireAuth, async (req, 
   try {
     const { clientServiceId } = req.params
 
+    if (!await canAccessService(req.user, Number(clientServiceId))) return res.status(403).json({ error: 'Access denied' })
+
     // Verify service exists
     const service = await db
       .select({
@@ -526,7 +512,7 @@ router.get('/service/:clientServiceId/client-visible', requireAuth, async (req, 
       })
       .from(clientServices)
       .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-      .where(eq(clientServices.id, parseInt(clientServiceId)))
+      .where(eq(clientServices.id, Number(clientServiceId)))
       .limit(1)
 
     if (service.length === 0) {
@@ -537,7 +523,7 @@ router.get('/service/:clientServiceId/client-visible', requireAuth, async (req, 
     const folders = await db
       .select()
       .from(documentFolders)
-      .where(eq(documentFolders.clientServiceId, parseInt(clientServiceId)))
+      .where(eq(documentFolders.clientServiceId, Number(clientServiceId)))
       .orderBy(documentFolders.name)
 
     // Get only client-visible documents
@@ -553,7 +539,7 @@ router.get('/service/:clientServiceId/client-visible', requireAuth, async (req, 
       .from(documents)
       .leftJoin(users, eq(documents.userId, users.id))
       .where(and(
-        eq(documents.clientServiceId, parseInt(clientServiceId)),
+        eq(documents.clientServiceId, Number(clientServiceId)),
         eq(documents.visibleToClient, true)
       ))
       .orderBy(desc(documents.createdAt))
@@ -579,13 +565,13 @@ router.get('/service/:clientServiceId/client-visible', requireAuth, async (req, 
         ...f,
         documents: documentsInFolders[f.id] || []
       }))
-      .filter(f => f.documents.length > 0)
+
 
     res.json({
       folders: foldersWithDocs,
       rootDocuments,
       service: {
-        ...service[0].service,
+        ...clientServiceDto(service[0].service),
         serviceTypeName: service[0].serviceType?.name,
         serviceCategory: service[0].serviceType?.category
       }
@@ -606,7 +592,7 @@ router.post('/folder', requireAuth, async (req, res) => {
 
     const { clientServiceId, name, parentFolderId } = req.body
 
-    if (!clientServiceId || !name) {
+    if (!isValidId(Number(clientServiceId)) || typeof name !== 'string' || !name.trim() || name.trim().length > 255 || (parentFolderId && !isValidId(Number(parentFolderId)))) {
       return res.status(400).json({ error: 'Service ID and folder name are required' })
     }
 
@@ -614,7 +600,7 @@ router.post('/folder', requireAuth, async (req, res) => {
     const service = await db
       .select()
       .from(clientServices)
-      .where(eq(clientServices.id, parseInt(clientServiceId)))
+      .where(eq(clientServices.id, Number(clientServiceId)))
       .limit(1)
 
     if (service.length === 0) {
@@ -627,8 +613,8 @@ router.post('/folder', requireAuth, async (req, res) => {
         .select()
         .from(documentFolders)
         .where(and(
-          eq(documentFolders.id, parseInt(parentFolderId)),
-          eq(documentFolders.clientServiceId, parseInt(clientServiceId))
+          eq(documentFolders.id, Number(parentFolderId)),
+          eq(documentFolders.clientServiceId, Number(clientServiceId))
         ))
         .limit(1)
 
@@ -640,9 +626,9 @@ router.post('/folder', requireAuth, async (req, res) => {
     const [newFolder] = await db
       .insert(documentFolders)
       .values({
-        clientServiceId: parseInt(clientServiceId),
+        clientServiceId: Number(clientServiceId),
         name: name.trim(),
-        parentFolderId: parentFolderId ? parseInt(parentFolderId) : null,
+        parentFolderId: parentFolderId ? Number(parentFolderId) : null,
         createdBy: user.id,
       })
       .returning()
@@ -671,14 +657,14 @@ router.put('/folder/:folderId', requireAuth, async (req, res) => {
     const { folderId } = req.params
     const { name } = req.body
 
-    if (!name) {
-      return res.status(400).json({ error: 'Folder name is required' })
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 255) {
+      return res.status(400).json({ error: 'Folder name must contain 1–255 characters' })
     }
 
     const [updatedFolder] = await db
       .update(documentFolders)
       .set({ name: name.trim() })
-      .where(eq(documentFolders.id, parseInt(folderId)))
+      .where(eq(documentFolders.id, Number(folderId)))
       .returning()
 
     if (!updatedFolder) {
@@ -702,98 +688,44 @@ router.delete('/folder/:folderId', requireAuth, async (req, res) => {
 
     const { folderId } = req.params
     const { deleteContents } = req.query
+    if (deleteContents !== undefined && !['true', 'false'].includes(String(deleteContents))) return res.status(400).json({ error: 'deleteContents must be true or false' })
 
-    // Get the folder
-    const folder = await db
-      .select()
-      .from(documentFolders)
-      .where(eq(documentFolders.id, parseInt(folderId)))
-      .limit(1)
-
-    if (folder.length === 0) {
-      return res.status(404).json({ error: 'Folder not found' })
-    }
-
-    if (deleteContents === 'true') {
-      // Delete all documents in folder and their files
-      const docsToDelete = await db
-        .select()
-        .from(documents)
-        .where(eq(documents.folderId, parseInt(folderId)))
-
-      for (const doc of docsToDelete) {
-        const filePath = path.join(process.cwd(), doc.url)
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath)
+    const deletedUrls = await db.transaction(async tx => {
+      // Serialize tree changes with all inserts/updates, including uploads. Reads
+      // remain available while the tree and documents move or delete atomically.
+      await tx.execute(sql`LOCK TABLE document_folders, documents IN SHARE ROW EXCLUSIVE MODE`)
+      const [folder] = await tx.select().from(documentFolders).where(eq(documentFolders.id, Number(folderId)))
+      if (!folder) throw Object.assign(new Error('Folder not found'), { status: 404 })
+      const allFolders = await tx.select().from(documentFolders)
+      const descendants = [folder.id], visited = new Set(descendants)
+      for (let index = 0; index < descendants.length; index++) {
+        for (const child of allFolders.filter(item => item.parentFolderId === descendants[index])) {
+          if (visited.has(child.id) || child.clientServiceId !== folder.clientServiceId) throw Object.assign(new Error('Folder hierarchy is inconsistent; repair it before deleting'), { status: 409 })
+          visited.add(child.id); descendants.push(child.id)
         }
       }
-
-      await db
-        .delete(documents)
-        .where(eq(documents.folderId, parseInt(folderId)))
-
-      // Delete child folders recursively
-      await deleteChildFolders(parseInt(folderId))
-    } else {
-      // Move documents to parent folder or root (null)
-      await db
-        .update(documents)
-        .set({ folderId: folder[0].parentFolderId })
-        .where(eq(documents.folderId, parseInt(folderId)))
-
-      // Move child folders to parent
-      await db
-        .update(documentFolders)
-        .set({ parentFolderId: folder[0].parentFolderId })
-        .where(eq(documentFolders.parentFolderId, parseInt(folderId)))
-    }
-
-    // Delete the folder
-    await db
-      .delete(documentFolders)
-      .where(eq(documentFolders.id, parseInt(folderId)))
+      const parent = folder.parentFolderId ? allFolders.find(item => item.id === folder.parentFolderId) : null
+      if (folder.parentFolderId && (!parent || parent.clientServiceId !== folder.clientServiceId || visited.has(parent.id))) throw Object.assign(new Error('Folder parent belongs to an invalid hierarchy'), { status: 409 })
+      const contents = await tx.select().from(documents).where(inArray(documents.folderId, descendants))
+      if (contents.some(document => document.clientServiceId !== folder.clientServiceId)) throw Object.assign(new Error('Folder contains documents from another service'), { status: 409 })
+      if (deleteContents === 'true') {
+        await tx.delete(documents).where(inArray(documents.folderId, descendants))
+        await tx.delete(documentFolders).where(inArray(documentFolders.id, descendants))
+        return contents.map(document => document.url)
+      }
+      await tx.update(documents).set({ folderId: folder.parentFolderId, lastUpdated: new Date() }).where(eq(documents.folderId, folder.id))
+      await tx.update(documentFolders).set({ parentFolderId: folder.parentFolderId }).where(eq(documentFolders.parentFolderId, folder.id))
+      await tx.delete(documentFolders).where(eq(documentFolders.id, folder.id))
+      return []
+    })
+    await cleanupDeletedDocumentFiles(deletedUrls)
 
     res.json({ message: 'Folder deleted successfully' })
   } catch (error) {
     console.error('Error deleting folder:', error)
-    res.status(500).json({ error: 'Failed to delete folder' })
+    res.status((error as any).status || 500).json({ error: (error as any).status ? (error as Error).message : 'Failed to delete folder' })
   }
 })
-
-// Helper function to recursively delete child folders
-async function deleteChildFolders(parentFolderId: number) {
-  const childFolders = await db
-    .select()
-    .from(documentFolders)
-    .where(eq(documentFolders.parentFolderId, parentFolderId))
-
-  for (const child of childFolders) {
-    // Delete documents in child folder
-    const docsToDelete = await db
-      .select()
-      .from(documents)
-      .where(eq(documents.folderId, child.id))
-
-    for (const doc of docsToDelete) {
-      const filePath = path.join(process.cwd(), doc.url)
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-      }
-    }
-
-    await db
-      .delete(documents)
-      .where(eq(documents.folderId, child.id))
-
-    // Recursively delete grandchildren
-    await deleteChildFolders(child.id)
-
-    // Delete child folder
-    await db
-      .delete(documentFolders)
-      .where(eq(documentFolders.id, child.id))
-  }
-}
 
 // Toggle document visibility for client
 router.patch('/:documentId/visibility', requireAuth, async (req, res) => {
@@ -813,7 +745,7 @@ router.patch('/:documentId/visibility', requireAuth, async (req, res) => {
     const [updatedDocument] = await db
       .update(documents)
       .set({ visibleToClient })
-      .where(eq(documents.id, parseInt(documentId)))
+      .where(eq(documents.id, Number(documentId)))
       .returning()
 
     if (!updatedDocument) {

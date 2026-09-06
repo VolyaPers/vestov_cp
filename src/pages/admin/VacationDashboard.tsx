@@ -1,3 +1,4 @@
+import { api } from '@/lib/api'
 import React, { useState, useEffect } from 'react'
 import { useLocation } from 'wouter'
 import {
@@ -152,7 +153,6 @@ export default function VacationDashboard() {
   useEffect(() => {
     fetchUserData()
     fetchLeaveTypes()
-    fetchEmployees()
   }, [])
 
   useEffect(() => {
@@ -163,6 +163,7 @@ export default function VacationDashboard() {
 
   useEffect(() => {
     if (isAdmin && selectedView === 'admin') {
+      fetchEmployees()
       fetchPendingRequests()
     }
   }, [isAdmin, selectedView])
@@ -195,60 +196,13 @@ export default function VacationDashboard() {
 
   const fetchUserData = async () => {
     try {
-      const response = await fetch('/api/user', {
-        credentials: 'include',
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setUser(data)
-        setIsAdmin(data.role === 'admin')
-
-        // For now, use teamMember ID if available, otherwise use user ID
-        // This should be adjusted based on your actual data model
-        if (data.teamMemberId) {
-          setEmployeeId(data.teamMemberId)
-        } else {
-          // Fetch team member by email or create a mapping
-          fetchTeamMemberByEmail(data.email)
-        }
-      } else {
-        setLoading(false)
-        setError('Failed to load user data')
-      }
-    } catch (err) {
-      console.error('Error fetching user data:', err)
-      setLoading(false)
-      setError('Failed to load user data')
-    }
-  }
-
-  const fetchTeamMemberByEmail = async (email: string) => {
-    try {
-      const response = await fetch(`/api/admin/team-members?email=${email}`, {
-        credentials: 'include',
-      })
-      if (response.ok) {
-        const members = await response.json()
-        if (members.length > 0) {
-          setEmployeeId(members[0].id)
-        } else {
-          // No team member found - this might be an admin-only user
-          // For admin users, don't set an error, just proceed without employee data
-          setLoading(false)
-          // If user is admin, they can still use the admin features
-          // Since isAdmin is set before this, we can use it
-          setSelectedView('admin')
-        }
-      } else {
-        console.error('Failed to fetch team member')
-        setLoading(false)
-        setError('Failed to load team member data')
-      }
-    } catch (err) {
-      console.error('Error fetching team member:', err)
-      setLoading(false)
-      setError('Failed to load team member data')
-    }
+      const current = await api.getCurrentUser()
+      if (!current) throw new Error('Sign in to view leave information')
+      setUser(current)
+      setIsAdmin(current.role === 'admin')
+      if (current.role === 'admin') { setSelectedView('admin'); setLoading(false) }
+      else { const profile = await api.request('/vacation/my-profile'); setEmployeeId(profile.id) }
+    } catch (error) { setLoading(false); setError(error instanceof Error ? error.message : 'Failed to load user data') }
   }
 
   const fetchLeaveTypes = async () => {
@@ -288,6 +242,7 @@ export default function VacationDashboard() {
         credentials: 'include',
       })
       
+      if (!balancesResponse.ok) throw new Error((await balancesResponse.json()).error || 'Failed to load balances')
       if (balancesResponse.ok) {
         const data = await balancesResponse.json()
         setEmploymentCycle(data.employmentCycle)
@@ -299,6 +254,7 @@ export default function VacationDashboard() {
         credentials: 'include',
       })
       
+      if (!requestsResponse.ok) throw new Error((await requestsResponse.json()).error || 'Failed to load requests')
       if (requestsResponse.ok) {
         const data = await requestsResponse.json()
         setRequests(data)
@@ -470,7 +426,7 @@ export default function VacationDashboard() {
   }
 
   const handleSaveAllocationSetting = async () => {
-    if (!settingsFormData.leaveTypeId || !settingsFormData.allocatedDays) {
+    if (!settingsFormData.leaveTypeId || settingsFormData.allocatedDays === '') {
       showAlert({ message: 'Please fill in all required fields', type: 'warning' })
       return
     }
@@ -535,7 +491,7 @@ export default function VacationDashboard() {
   const handleSetDefaultCycle = async (cycleNumber: number) => {
     const confirmed = await showConfirm({
       title: 'Set Default Cycle',
-      message: `Set cycle ${cycleNumber} as the default for future cycles?`,
+      message: `Set career year ${cycleNumber} as the default for later uninitialized cycles? Existing individual balances are preserved.`,
       type: 'info',
       confirmText: 'Set Default',
       cancelText: 'Cancel',

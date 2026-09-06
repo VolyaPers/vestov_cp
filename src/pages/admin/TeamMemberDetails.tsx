@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute, Link } from 'wouter'
 import {
   ArrowLeft,
@@ -77,6 +77,7 @@ interface LeaveBalance {
 interface EmploymentCycle {
   id: number
   employeeId: number
+  reconciliationWarning?: string | null
   cycleStart: string
   cycleEnd: string
   isActive: boolean
@@ -100,6 +101,7 @@ interface LeaveRequest {
 }
 
 export function TeamMemberDetails() {
+  const queryClient = useQueryClient()
   const { showAlert, showConfirm } = useCustomAlert()
   const [match, params] = useRoute('/admin/team-detail/:id')
   const [member, setMember] = useState<TeamMember | null>(null)
@@ -113,6 +115,8 @@ export function TeamMemberDetails() {
   const [totalYearsEmployed, setTotalYearsEmployed] = useState(0)
   const [totalCycles, setTotalCycles] = useState(0)
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
+  const [allocationReview, setAllocationReview] = useState<{ id: number; totalDays: string; adjustmentDays: string; reason: string } | null>(null)
+  const [savingAllocation, setSavingAllocation] = useState(false)
   const [vacationLoading, setVacationLoading] = useState(true)
   const [showCycleModal, setShowCycleModal] = useState(false)
   const [isCreatingCycle, setIsCreatingCycle] = useState(false)
@@ -127,10 +131,7 @@ export function TeamMemberDetails() {
 
   // Log for debugging
 
-  if (!hasRouteParam(params, 'id')) {
-    return <div>Member ID not found</div>
-  }
-  const memberId = getRouteParam(params, 'id')
+  const memberId = hasRouteParam(params, 'id') ? getRouteParam(params, 'id') : ''
 
   // Log for debugging
 
@@ -146,7 +147,7 @@ export function TeamMemberDetails() {
       loadTeamMember()
       loadVacationData()
       loadPreferredShifts()
-    }
+    } else setIsLoading(false)
   }, [memberId])
 
   const loadPreferredShifts = async () => {
@@ -175,6 +176,8 @@ export function TeamMemberDetails() {
       setIsEditingShifts(false)
     } catch (error) {
       console.error('Error saving preferred shifts:', error)
+      showAlert({ message: error instanceof Error ? error.message : 'Failed to save schedule', type: 'error' })
+      throw error
     } finally {
       setSavingShifts(false)
     }
@@ -212,7 +215,7 @@ export function TeamMemberDetails() {
       })
       if (cycleResponse.ok) {
         const cycleData = await cycleResponse.json()
-        setEmploymentCycle(cycleData)
+        setEmploymentCycle(cycleData.id ? cycleData : null)
       } else if (cycleResponse.status === 404) {
         // No active cycle is a valid state, not an error
         setEmploymentCycle(null)
@@ -266,55 +269,17 @@ export function TeamMemberDetails() {
     try {
       setIsCreatingCycle(true)
 
-      // Use provided start date or intelligently set next cycle start date
-      let cycleStart = cycleFormData.cycleStart
-
-      if (!cycleStart) {
-        // If there are existing cycles, set start date to the day after the last cycle ends
-        if (allEmploymentCycles.length > 0) {
-          const lastCycle = allEmploymentCycles.sort((a, b) =>
-            new Date(b.cycleEnd).getTime() - new Date(a.cycleEnd).getTime()
-          )[0]
-
-          const lastCycleEndDate = new Date(lastCycle.cycleEnd)
-          lastCycleEndDate.setDate(lastCycleEndDate.getDate() + 1)
-          cycleStart = lastCycleEndDate.toISOString().split('T')[0]
-        } else {
-          // If no existing cycles, start from today
-          const today = new Date()
-          cycleStart = today.toISOString().split('T')[0]
-        }
-      }
-
-      // Create new employment cycle with leave balance initialization
       await api.request('/vacation/cycles/initialize', {
         method: 'POST',
-        body: JSON.stringify({
-          employeeId: parseInt(memberId!),
-          cycleStart,
-          isActive: true,
-          leaveAllocations: [
-            {
-              leaveTypeId: 1, // Vacation
-              totalDays: 30,
-              adjustmentDays: 0
-            },
-            {
-              leaveTypeId: 2, // Sick Leave
-              totalDays: 10,
-              adjustmentDays: 0
-            }
-          ]
-        }),
+        body: JSON.stringify({ employeeId: Number(memberId), ...(cycleFormData.cycleStart ? { cycleStart: cycleFormData.cycleStart } : {}) }),
       })
-
       // Refresh the vacation data
       await loadVacationData()
       setShowCycleModal(false)
       setCycleFormData({ cycleStart: '', isActive: true })
     } catch (error) {
       console.error('Error creating employment cycle:', error)
-      showAlert({ message: 'Error creating employment cycle. Please try again.', type: 'error' })
+      showAlert({ message: error instanceof Error ? error.message : 'Failed to initialize cycle', type: 'error' })
     } finally {
       setIsCreatingCycle(false)
     }
@@ -354,8 +319,8 @@ export function TeamMemberDetails() {
         setShowCycleModal(false)
         setCycleFormData({ cycleStart: '', isActive: true })
       } else {
-        console.error('Failed to update employment cycle')
-        showAlert({ message: 'Failed to update employment cycle. Please try again.', type: 'error' })
+        const body = await response.json()
+        showAlert({ message: body.error || 'Failed to update employment cycle', type: 'error' })
       }
     } catch (error) {
       console.error('Error updating employment cycle:', error)
@@ -672,6 +637,15 @@ export function TeamMemberDetails() {
         {member && (
           <VacationBalanceCard
             balance={vacationBalance50}
+            employeeId={Number(memberId)}
+            onReviewAllocation={async () => {
+              try {
+                const cycleId = vacationBalance50?.cycleId || (await api.request('/vacation/cycles/initialize', { method: 'POST', body: JSON.stringify({ employeeId: Number(memberId) }) })).cycle.id
+                const rows = await api.request(`/vacation/admin/balances?employeeId=${memberId}&cycleId=${cycleId}`)
+                const row = rows.find((r: any) => /vacation/i.test(r.leaveType.name))
+                if (row) setAllocationReview({ id: row.balance.id, totalDays: String(row.balance.totalDays), adjustmentDays: String(row.balance.adjustmentDays || 0), reason: '' })
+              } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Failed to load allocation', type: 'error' }) }
+            }}
             isLoading={isLoadingBalance}
             error={balanceError as Error | null}
           />
@@ -723,7 +697,7 @@ export function TeamMemberDetails() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg text-gray-900">Current Employment Cycle</CardTitle>
               <div className="flex gap-2">
-                {allEmploymentCycles.length > 0 ? (
+                {employmentCycle ? (
                   <Button
                     onClick={handleEditCycle}
                     variant="outline"
@@ -761,6 +735,7 @@ export function TeamMemberDetails() {
 
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {currentCycle.reconciliationWarning && <p className="md:col-span-3 text-sm text-amber-700">{currentCycle.reconciliationWarning} Use Edit Cycle to review the stored boundaries.</p>}
                       {/* Current Cycle Start */}
                       <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
                         <div className="flex items-center gap-2 mb-2">
@@ -808,10 +783,10 @@ export function TeamMemberDetails() {
                   <Calendar className="h-8 w-8 text-yellow-600" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Employment Cycle Found</h3>
-                <p className="text-gray-500 mb-6">No active employment cycle found, please contact an admin to set up the employment cycle for this employee.</p>
+                <p className="text-gray-500 mb-6">Balances are calculated from the employment anniversary. Initialize this cycle to save an individual allocation.</p>
                 <div className="space-y-2">
                   <p className="text-sm text-gray-600">📅 Employment cycles define leave allocation periods</p>
-                  <p className="text-sm text-gray-600">💼 Required for leave request processing</p>
+                  <p className="text-sm text-gray-600">💼 Requests initialize the relevant cycle when submitted</p>
                   <p className="text-sm text-gray-600">🔄 Automatically initializes vacation and sick leave balances</p>
                 </div>
               </div>
@@ -827,10 +802,7 @@ export function TeamMemberDetails() {
                 <CardTitle className="text-lg text-gray-900">Leave Requests</CardTitle>
                 <CardDescription>History of leave requests for this employee</CardDescription>
               </div>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Calendar className="h-4 w-4 mr-2" />
-                Request Leave
-              </Button>
+              <Link href="/admin/vacation"><Button className="bg-blue-600 hover:bg-blue-700 text-white"><Calendar className="h-4 w-4 mr-2" />Request Leave</Button></Link>
             </div>
           </CardHeader>
           <CardContent>
@@ -951,6 +923,22 @@ export function TeamMemberDetails() {
           isSubmitting={isSubmitting}
         />
 
+        <Dialog open={!!allocationReview} onOpenChange={open => { if (!open) setAllocationReview(null) }}>
+          <DialogContent><DialogHeader><DialogTitle>Review individual vacation allocation</DialogTitle></DialogHeader>
+            {allocationReview && <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">An explicit correction keeps the previous values in the audit history. Approved leave consumption cannot be removed.</p>
+              <Label>Total allocated days<Input type="number" min="0" step="0.5" value={allocationReview.totalDays} onChange={e => setAllocationReview({ ...allocationReview, totalDays: e.target.value })} /></Label>
+              <Label>Adjustment days<Input type="number" step="0.5" value={allocationReview.adjustmentDays} onChange={e => setAllocationReview({ ...allocationReview, adjustmentDays: e.target.value })} /></Label>
+              <Label>Reason<Input value={allocationReview.reason} onChange={e => setAllocationReview({ ...allocationReview, reason: e.target.value })} /></Label>
+              <Button disabled={savingAllocation || !allocationReview.reason.trim()} onClick={async () => {
+                setSavingAllocation(true)
+                try { await api.request(`/vacation/admin/balances/${allocationReview.id}`, { method: 'PUT', body: JSON.stringify(allocationReview) }); setAllocationReview(null); await loadVacationData(); await queryClient.invalidateQueries({ queryKey: ['employeeVacationBalance', memberId] }) }
+                catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Allocation update failed', type: 'error' }) }
+                finally { setSavingAllocation(false) }
+              }}>{savingAllocation ? 'Saving…' : 'Save reviewed allocation'}</Button>
+            </div>}
+          </DialogContent>
+        </Dialog>
         {/* Employment Cycle Modal */}
         <Dialog open={showCycleModal} onOpenChange={setShowCycleModal}>
           <DialogContent className="max-w-md bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl">
@@ -959,19 +947,7 @@ export function TeamMemberDetails() {
                 {employmentCycle ? 'Edit Employment Cycle' : 'Create New Employment Cycle'}
               </DialogTitle>
               <p className="text-gray-600 mt-2">
-                {employmentCycle
-                  ? 'Update the employment cycle dates and status'
-                  : allEmploymentCycles.length > 0
-                    ? `Create cycle ${allEmploymentCycles.length + 1} starting ${(() => {
-                      const lastCycle = allEmploymentCycles.sort((a, b) =>
-                        new Date(b.cycleEnd).getTime() - new Date(a.cycleEnd).getTime()
-                      )[0]
-                      const nextStartDate = new Date(lastCycle.cycleEnd)
-                      nextStartDate.setDate(nextStartDate.getDate() + 1)
-                      return nextStartDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
-                    })()} with automatic leave allocations`
-                    : 'Create the first employment cycle with default leave allocations'
-                }
+                {employmentCycle ? 'Normalize this saved anniversary cycle.' : 'Leave the start date empty to initialize the current anniversary cycle, or enter an employment anniversary for a future cycle.'}
               </p>
             </DialogHeader>
 
@@ -982,6 +958,7 @@ export function TeamMemberDetails() {
                   <Input
                     id="cycle-start"
                     type="date"
+                    disabled={!!employmentCycle}
                     value={cycleFormData.cycleStart}
                     onChange={(e) => setCycleFormData({ ...cycleFormData, cycleStart: e.target.value })}
                     className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"
@@ -989,32 +966,21 @@ export function TeamMemberDetails() {
                 </div>
                 <div className="space-y-2">
                   <div className="text-sm text-gray-600">
-                    <p>End date will be automatically set to 1 year from start date</p>
+                    <p>Cycle ends the day before the next employment anniversary. Leave balances follow the configured career-year allocation.</p>
                   </div>
                 </div>
-                {employmentCycle && (
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="cycle-active"
-                      checked={cycleFormData.isActive}
-                      onCheckedChange={(checked) => setCycleFormData({ ...cycleFormData, isActive: checked })}
-                    />
-                    <Label htmlFor="cycle-active" className="text-sm font-medium text-gray-700">
-                      Active Cycle
-                    </Label>
-                  </div>
-                )}
+                <p className="text-sm text-gray-600">The current cycle is determined by today’s date. Future cycles remain future until their start date.</p>
               </div>
 
               {!employmentCycle && (
                 <div className="bg-blue-50 rounded-lg p-4 space-y-2">
                   <h4 className="font-medium text-blue-900">Default Leave Allocations:</h4>
                   <div className="text-sm text-blue-800 space-y-1">
-                    <p>• Vacation Days: 30 days</p>
-                    <p>• Sick Leave: 10 days</p>
+                    <p>• Vacation: 16 / 20 / 24 days by career year, unless an allocation setting applies.</p>
+                    <p>• Sick leave: 7 days, unless an allocation setting applies.</p>
                   </div>
                   <p className="text-xs text-blue-700 mt-2">
-                    Leave balances will be automatically created with these defaults
+                    The server applies current settings and preserves existing individual allocations.
                   </p>
                 </div>
               )}

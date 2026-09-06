@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, DollarSign, Calendar, FileText, Calculator, Users, Settings } from 'lucide-react'
+import { Plus, Eye, Edit, Trash2, DollarSign, Calendar, FileText, Calculator, Users, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,7 @@ import { api } from '@/lib/api'
 import { Invoice, CreateInvoiceData as InvoiceCreateInvoiceData, UpdateInvoiceData as InvoiceUpdateInvoiceData } from '@/types/invoice'
 import type { CreateInvoiceData, UpdateInvoiceData } from '@/types/common'
 import { EnhancedInvoiceForm } from './EnhancedInvoiceForm'
+import { InvoiceDetailsDialog } from './InvoiceDetailsDialog'
 
 interface InvoiceListProps {
   clientId: number
@@ -31,6 +32,7 @@ interface InvoiceListProps {
 export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   const { showAlert, showConfirm } = useCustomAlert()
   const queryClient = useQueryClient()
+  const [viewInvoiceId, setViewInvoiceId] = useState<number | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
@@ -39,8 +41,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   const today = new Date().toISOString().split('T')[0]
   const lastMonth = new Date()
   lastMonth.setMonth(lastMonth.getMonth() - 1)
-  const lastMonthStart = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1).toISOString().split('T')[0]
-  const lastMonthEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0).toISOString().split('T')[0]
+  const lastMonthStart = new Date(Date.UTC(lastMonth.getFullYear(), lastMonth.getMonth(), 1)).toISOString().split('T')[0]
+  const lastMonthEnd = new Date(Date.UTC(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0)).toISOString().split('T')[0]
   
   const [newInvoiceData, setNewInvoiceData] = useState<InvoiceCreateInvoiceData>({
     clientId,
@@ -53,6 +55,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   })
   
   const [editInvoiceData, setEditInvoiceData] = useState<InvoiceUpdateInvoiceData>({})
+  const [pricingChanged, setPricingChanged] = useState(false)
+  const [detailLoaded, setDetailLoaded] = useState(false)
 
   // Fetch invoices for this client
   const { data: invoices = [], isLoading, error } = useQuery({
@@ -62,7 +66,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   })
 
   // Fetch detailed invoice data when editing
-  const { data: detailedInvoice } = useQuery({
+  const { data: detailedInvoice, error: detailError, isFetching: detailFetching } = useQuery({
     queryKey: ['invoice', editingInvoice?.id],
     queryFn: () => editingInvoice ? api.getInvoice(editingInvoice.id) : null,
     enabled: !!editingInvoice?.id,
@@ -108,23 +112,26 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   // Update invoice mutation
   const updateInvoiceMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: InvoiceUpdateInvoiceData }) => {
-      // Convert from invoice types to common types
-      const commonData: UpdateInvoiceData = {
-        amount: typeof data.amount === 'number' ? data.amount.toString() : data.amount,
-        invoiceDate: data.invoiceDate,
-        periodStart: data.periodStart,
-        periodEnd: data.periodEnd,
-        description: data.description,
-        dueDate: data.dueDate,
-        notes: data.notes,
-        serviceIds: data.serviceIds,
-        useServicePricing: data.serviceIds !== undefined,
-        servicePrices: data.servicePrices,
+      const payload: any = {
+        invoiceDate: data.invoiceDate, periodStart: data.periodStart, periodEnd: data.periodEnd,
+        description: data.description, dueDate: data.dueDate || null, notes: data.notes,
+        status: data.status, paidAt: data.paidAt || null,
       }
-      return api.updateInvoice(id, commonData)
+      if (pricingChanged) {
+        const selected = new Set(data.serviceIds || [])
+        const allowedAssignments = new Set((serviceOptions?.clientServices || []).filter((service: any) => selected.has(service.id)).flatMap((service: any) => service.developers.map((dev: any) => String(dev.id))))
+        for (const service of detailedInvoice?.services || []) if (selected.has(service.serviceId)) for (const dev of service.developers || []) allowedAssignments.add(String(dev.developerId))
+        payload.useServicePricing = true
+        payload.serviceIds = data.serviceIds
+        payload.servicePrices = data.servicePrices
+        payload.developerRates = Object.fromEntries(Object.entries(data.developerRates || {}).filter(([id]) => allowedAssignments.has(id)))
+      } else if (!detailedInvoice?.serviceIds?.length) payload.amount = data.amount
+      return api.request(`/invoices/${id}`, {method:'PUT',body:JSON.stringify(payload)})
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices', 'client', clientId] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice'] })
+      queryClient.invalidateQueries({ queryKey: ['finances'] })
       setIsEditDialogOpen(false)
       setEditingInvoice(null)
       setEditInvoiceData({})
@@ -138,10 +145,12 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
   const deleteInvoiceMutation = useMutation({
     mutationFn: api.deleteInvoice,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices', 'client', clientId] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice'] })
+      queryClient.invalidateQueries({ queryKey: ['client-invoice-totals'] })
     },
     onError: (error: any) => {
-      showAlert({ message: error.message || 'Failed to delete invoice', type: 'error' })
+      showAlert({ message: error.message || 'Failed to cancel invoice', type: 'error' })
     }
   })
 
@@ -151,6 +160,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
 
   const handleEditInvoice = (invoice: Invoice) => {
     setEditingInvoice(invoice)
+    setPricingChanged(false)
+    setDetailLoaded(false)
     setEditInvoiceData({
       amount: parseFloat(invoice.amount),
       invoiceDate: invoice.invoiceDate,
@@ -158,30 +169,49 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       periodEnd: invoice.periodEnd,
       description: invoice.description || '',
       dueDate: invoice.dueDate || '',
-      notes: invoice.notes || ''
+      notes: invoice.notes || '',
+      status: invoice.status,
+      paidAt: invoice.paidAt?.slice(0,10) || ''
     })
     setIsEditDialogOpen(true)
   }
 
   useEffect(() => {
-    if (!detailedInvoice || !editingInvoice) return
+    if (!detailedInvoice || !editingInvoice || detailedInvoice.id !== editingInvoice.id || detailLoaded) return
+    const developerRates: NonNullable<InvoiceUpdateInvoiceData['developerRates']> = {}
+    const servicePrices: Record<number,number> = {}
+    for (const service of detailedInvoice.services || []) {
+      servicePrices[service.serviceId] = Number(service.calculatedAmount)
+      for (const dev of service.developers || []) developerRates[dev.developerId] = dev.fixedPrice != null
+        ? {fixedPrice: Number(dev.fixedPrice)}
+        : {hourlyRate: Number(dev.hourlyRate || 0), hoursWorked: Number(dev.hoursWorked || 0)}
+    }
+    setEditInvoiceData(prev => ({...prev, serviceIds:detailedInvoice.serviceIds || [], servicePrices, developerRates}))
+    setDetailLoaded(true)
+  }, [detailedInvoice, editingInvoice, detailLoaded])
 
-    setEditInvoiceData(prev => ({
-      ...prev,
-      serviceIds: detailedInvoice.serviceIds || [],
-    }))
-  }, [detailedInvoice, editingInvoice])
-
+  const editServices = [
+    ...(serviceOptions?.clientServices || []),
+    ...(detailedInvoice?.services || []).filter((saved:any) => !(serviceOptions?.clientServices || []).some((current:any) => current.id === saved.serviceId)).map((saved:any) => ({...saved,id:saved.serviceId,developers:(saved.developers || []).map((dev:any)=>({...dev,id:dev.developerId}))})),
+  ]
   const handleEditServiceToggle = (serviceId: number) => {
+    setPricingChanged(true)
     setEditInvoiceData(prev => {
       const serviceIds = prev.serviceIds || []
-      const isSelected = serviceIds.includes(serviceId)
-      return {
-        ...prev,
-        serviceIds: isSelected
-          ? serviceIds.filter(id => id !== serviceId)
-          : [...serviceIds, serviceId],
-      }
+      const nextIds = serviceIds.includes(serviceId) ? serviceIds.filter(id=>id!==serviceId) : [...serviceIds,serviceId]
+      const prices = {...prev.servicePrices}
+      const rates = {...prev.developerRates}
+      const service = editServices.find((entry:any)=>entry.id===serviceId)
+      if (prices[serviceId] === undefined) prices[serviceId] = Number(service?.serviceLevelPrice || 0)
+      for (const dev of service?.developers || []) if (!rates[dev.id]) rates[dev.id] = dev.fixedPrice != null ? {fixedPrice:Number(dev.fixedPrice)} : {hourlyRate:Number(dev.hourlyRate || 0),hoursWorked:0}
+      return {...prev,serviceIds:nextIds,servicePrices:prices,developerRates:rates,amount:nextIds.reduce((sum,id)=>sum+Math.round(Number(prices[id] || 0)*100),0)/100}
+    })
+  }
+  const changeServicePrice = (id:number,value:string) => {
+    setPricingChanged(true)
+    setEditInvoiceData(prev => {
+      const prices = {...prev.servicePrices,[id]:Number(value)}
+      return {...prev,servicePrices:prices,amount:(prev.serviceIds || []).reduce((sum,key)=>sum+Math.round(Number(prices[key] || 0)*100),0)/100}
     })
   }
 
@@ -196,7 +226,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
       if (cleanedData.periodEnd === '') cleanedData.periodEnd = undefined
       if (cleanedData.dueDate === '') cleanedData.dueDate = undefined
       if (cleanedData.paidAt === '') {
-        cleanedData.paidAt = undefined
+        cleanedData.paidAt = ''
       } else if (cleanedData.paidAt) {
         // Convert YYYY-MM-DD to ISO timestamp for backend
         cleanedData.paidAt = `${cleanedData.paidAt}T12:00:00.000Z`
@@ -216,10 +246,10 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
 
   const handleDeleteInvoice = async (id: number) => {
     const confirmed = await showConfirm({
-      title: 'Delete Invoice',
-      message: 'Are you sure you want to delete this invoice?',
+      title: 'Cancel Invoice',
+      message: 'Cancel this invoice? Its number, details, and audit history will be retained.',
       type: 'warning',
-      confirmText: 'Delete',
+      confirmText: 'Cancel invoice',
       cancelText: 'Cancel',
       destructive: true,
     })
@@ -323,6 +353,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                       <Badge className={getStatusColor(invoice.status)}>
                         {invoice.status}
                       </Badge>
+                      <Button variant="outline" size="sm" onClick={()=>setViewInvoiceId(invoice.id)} title="View invoice details"><Eye className="h-3 w-3"/></Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -336,7 +367,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                         size="sm"
                         onClick={() => handleDeleteInvoice(invoice.id)}
                         className="text-red-600 hover:text-red-700"
-                        title="Delete invoice"
+                        title="Cancel invoice"
+                        disabled={invoice.status === 'cancelled' || deleteInvoiceMutation.isPending}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -386,6 +418,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
         </CardContent>
       </Card>
 
+      <InvoiceDetailsDialog invoiceId={viewInvoiceId} onClose={()=>setViewInvoiceId(null)}/>
       {/* Enhanced Invoice Form */}
       <EnhancedInvoiceForm
         clientId={clientId}
@@ -423,6 +456,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                     id="editAmount"
                     type="number"
                     step="0.01"
+                    disabled={Boolean(detailedInvoice?.serviceIds?.length) || pricingChanged || editingInvoice?.status === 'paid'}
                     value={editInvoiceData.amount || 0}
                     onChange={(e) => setEditInvoiceData({ 
                       ...editInvoiceData, 
@@ -449,7 +483,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                     value={editInvoiceData.status || ''}
                     onValueChange={(value) => setEditInvoiceData({ 
                       ...editInvoiceData, 
-                      status: value as any 
+                      status: value as any,
+                      paidAt: value === 'paid' ? editInvoiceData.paidAt : ''
                     })}
                   >
                     <SelectTrigger>
@@ -553,14 +588,14 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
 
             <TabsContent value="services" className="space-y-4 mt-4">
               {/* Service Details and Pricing */}
-              {serviceOptions?.clientServices && serviceOptions.clientServices.length > 0 ? (
+              {editServices.length > 0 ? (
                 <>
                   <div className="text-sm text-gray-600 mb-4">
-                    Services and pricing breakdown for this invoice period
+                    Edit service subtotals for this invoice. Saved developer rates are preserved. Reopen a paid invoice before changing its prices.
                   </div>
                   
                   <div className="space-y-4">
-                    {serviceOptions.clientServices.map((service: any) => {
+                    {editServices.map((service: any) => {
                       const displayServiceName = service.serviceTitle || service.serviceName
                       const isConnected = (editInvoiceData.serviceIds || []).includes(service.id)
 
@@ -570,6 +605,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                           <div className="flex items-center gap-3">
                             <input
                               type="checkbox"
+                              disabled={!detailLoaded || editingInvoice?.status === 'paid'}
                               checked={isConnected}
                               onChange={() => handleEditServiceToggle(service.id)}
                               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -587,9 +623,8 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-lg font-semibold">
-                              ${service.serviceLevelPrice ? service.serviceLevelPrice.toLocaleString() : 'Not set'}
-                            </div>
+                            <Label htmlFor={`invoice-service-price-${service.id}`}>Invoice service subtotal (USD)</Label>
+                            <Input id={`invoice-service-price-${service.id}`} type="number" min="0" step="0.01" disabled={!isConnected || !detailLoaded || editingInvoice?.status === 'paid'} value={editInvoiceData.servicePrices?.[service.id] ?? 0} onChange={event=>changeServicePrice(service.id,event.target.value)} />
                             <Badge variant="secondary" className="text-xs">
                               <Users className="h-3 w-3 mr-1" />
                               {service.developers.length} developers
@@ -599,7 +634,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
                         
                         {service.developers && service.developers.length > 0 && (
                           <div className="bg-gray-50 rounded p-3">
-                            <h5 className="text-sm font-medium mb-2">Assigned Developers:</h5>
+                            <h5 className="text-sm font-medium mb-2">Project assignments (reference):</h5>
                             <div className="space-y-1">
                               {service.developers.map((dev: any, i: number) => (
                                 <div key={i} className="flex justify-between text-sm">
@@ -650,9 +685,10 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
             >
               Cancel
             </Button>
+            {detailError && <p role="alert" className="text-red-600">Unable to load the saved invoice details. Reopen the editor to retry.</p>}
             <Button 
               onClick={handleUpdateInvoice}
-              disabled={updateInvoiceMutation.isPending}
+              disabled={updateInvoiceMutation.isPending || !detailLoaded || detailFetching || Boolean(detailError) || (pricingChanged && !editInvoiceData.serviceIds?.length)}
             >
               {updateInvoiceMutation.isPending ? 'Updating...' : 'Update Invoice'}
             </Button>

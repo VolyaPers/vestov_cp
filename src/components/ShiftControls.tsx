@@ -78,7 +78,7 @@ export function ShiftControls() {
         setIsFullTime(response.services[0].employmentType === 'fulltime')
       } else if (response.services.length > 1) {
         const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-        const today = dayNames[new Date().getDay()]
+        const today = dayNames[(response as any).localDayOfWeek]
 
         // Find all services scheduled for today (not "off")
         const scheduledServices = response.services.filter(s =>
@@ -210,7 +210,7 @@ export function ShiftControls() {
             <span className="font-semibold text-foreground">
               {formatTime(currentShift.startTime)}
             </span>
-            <span className="text-muted-foreground ml-3">Duration: </span>
+            <span className="text-muted-foreground ml-3">Elapsed: </span>
             <span className="font-semibold text-foreground">
               {getDuration(currentShift.startTime)}
             </span>
@@ -282,7 +282,7 @@ export function ShiftControls() {
             value={shiftNote}
             onChange={(e) => setShiftNote(e.target.value)}
             disabled={loading}
-            placeholder="Optional note (e.g. started 40 mins ago)..."
+            placeholder="Optional work note. Start time is recorded when you start the shift."
             rows={2}
             className="w-full resize-none rounded-xl border border-input/80 bg-background/90 p-2.5 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring"
           />

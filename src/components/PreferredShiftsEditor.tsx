@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -12,11 +12,13 @@ const WEEKDAYS = [
   { dayOfWeek: 3, name: 'Wednesday' },
   { dayOfWeek: 4, name: 'Thursday' },
   { dayOfWeek: 5, name: 'Friday' },
+  { dayOfWeek: 6, name: 'Saturday' },
+  { dayOfWeek: 0, name: 'Sunday' },
 ]
 
 interface PreferredShiftsEditorProps {
   schedules: ShiftSchedule[]
-  onSave: (schedules: ShiftSchedule[]) => void
+  onSave: (schedules: ShiftSchedule[]) => void | Promise<void>
   isSaving: boolean
   timezone?: string | null
 }
@@ -26,7 +28,7 @@ function getDefaultSchedules(): ShiftSchedule[] {
     dayOfWeek: day.dayOfWeek,
     startTime: '09:00',
     endTime: '18:00',
-    isActive: true,
+    isActive: day.dayOfWeek >= 1 && day.dayOfWeek <= 5,
   }))
 }
 
@@ -50,7 +52,11 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
     schedules.length > 0 ? mergeSchedules(schedules) : getDefaultSchedules()
   )
 
+  const [dirty, setDirty] = useState(false)
+  useEffect(() => { if (!dirty) setLocalSchedules(schedules.length ? mergeSchedules(schedules) : getDefaultSchedules()) }, [schedules, dirty])
+
   function updateSchedule(dayOfWeek: number, field: keyof ShiftSchedule, value: any) {
+    setDirty(true)
     setLocalSchedules((prev) =>
       prev.map((s) => (s.dayOfWeek === dayOfWeek ? { ...s, [field]: value } : s))
     )
@@ -59,6 +65,7 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
   function copyFirstToAll() {
     const first = localSchedules[0]
     if (!first) return
+    setDirty(true)
     setLocalSchedules((prev) =>
       prev.map((s) => ({
         ...s,
@@ -69,8 +76,8 @@ export function PreferredShiftsEditor({ schedules, onSave, isSaving, timezone }:
     )
   }
 
-  function handleSave() {
-    onSave(localSchedules.filter((s) => s.isActive))
+  async function handleSave() {
+    try { await onSave(localSchedules); setDirty(false) } catch { /* Parent displays the error and keeps this draft. */ }
   }
 
   return (

@@ -13,10 +13,7 @@ export function TeamMemberDetailsSimple() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  if (!hasRouteParam(params, 'id')) {
-    return <div>Member ID not found</div>
-  }
-  const memberId = getRouteParam(params, 'id')
+  const memberId = hasRouteParam(params, 'id') ? getRouteParam(params, 'id') : ''
 
   useEffect(() => {
     const loadMember = async () => {
@@ -30,7 +27,8 @@ export function TeamMemberDetailsSimple() {
       }
     }
 
-    loadMember()
+    if (memberId) loadMember()
+    else { setError('Member ID not found'); setIsLoading(false) }
   }, [memberId])
 
   if (isLoading) {

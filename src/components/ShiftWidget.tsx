@@ -82,14 +82,14 @@ export function ShiftWidget() {
         } else if (response.services.length > 1) {
           // Detect current day and pre-select based on schedule
           const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-          const today = dayNames[new Date().getDay()]
+          const today = dayNames[(response as any).localDayOfWeek]
 
-          const scheduledService = response.services.find(s =>
+          const scheduledServices = response.services.filter(s =>
             s.workSchedule && s.workSchedule[today] && s.workSchedule[today] !== 'off'
           )
 
-          if (scheduledService) {
-            setSelectedServiceId(scheduledService.serviceId)
+          if (scheduledServices.length === 1) {
+            setSelectedServiceId(scheduledServices[0].serviceId)
           }
         }
       } catch (err) {
@@ -484,7 +484,7 @@ export function ShiftWidget() {
             {confirmAction === 'startShift' && (
               <textarea
                 className="mt-3 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                placeholder="Optional note (e.g. started 40 mins ago)..."
+                placeholder="Optional work note. Start time is recorded when you start the shift."
                 value={shiftNote}
                 onChange={(e) => setShiftNote(e.target.value)}
                 rows={2}

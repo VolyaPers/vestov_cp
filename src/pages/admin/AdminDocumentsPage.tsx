@@ -48,7 +48,7 @@ interface Document {
   name: string
   documentTitle: string | null
   type: string | null
-  fileSize: number
+  fileSize: number | null
   url: string
   userId: number
   clientId: number
@@ -415,11 +415,12 @@ export function AdminDocumentsPage() {
     return ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '')
   }
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes: unknown) => {
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return 'Size unavailable'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    const i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 

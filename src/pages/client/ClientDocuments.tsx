@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ClientLoadError, isCurrentAssignment, useClientDocumentPreview } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate, parseLocalDate } from '@/lib/utils'
 import { useCustomAlert } from '@/components/ui/custom-alert'
@@ -32,7 +33,7 @@ interface Document {
   name: string
   documentTitle: string | null
   type: string | null
-  fileSize: number
+  fileSize: number | null
   url: string
   folderId: number | null
   visibleToClient: boolean
@@ -70,6 +71,8 @@ export function ClientDocuments() {
   }
   const clientId = getRouteParam(params, 'clientId')
 
+  const [loadError, setLoadError] = useState('')
+  const [retry, setRetry] = useState(0)
   const [services, setServices] = useState<ClientService[]>([])
   const [serviceDocuments, setServiceDocuments] = useState<Record<number, ServiceDocuments>>({})
   const [isLoading, setIsLoading] = useState(true)
@@ -79,6 +82,8 @@ export function ClientDocuments() {
   const [isFolderViewDialogOpen, setIsFolderViewDialogOpen] = useState(false)
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
   const [previewDocument, setPreviewDocument] = useState<DocumentWithUploader | null>(null)
+
+  const preview = useClientDocumentPreview(previewDocument?.document.id, isPreviewDialogOpen)
 
   // Access level for the current user (read, write, or admin)
   const [accessLevel, setAccessLevel] = useState<string | null>(null)
@@ -100,6 +105,10 @@ export function ClientDocuments() {
       if (!clientId) return
 
       try {
+        setIsLoading(true)
+        setLoadError('')
+        setServiceDocuments({})
+        setAccessLevel(null)
         // Get client data which includes services and access level
         const clientData = await api.getClient(clientId)
 
@@ -109,23 +118,23 @@ export function ClientDocuments() {
         }
 
         if (clientData?.services) {
-          setServices(clientData.services.filter((s: any) => s.isActive))
+          setServices(clientData.services.filter(service => isCurrentAssignment(service)))
           // Auto-expand all services
           setExpandedServices(new Set(clientData.services.map((s: any) => s.id)))
           // Load documents for each service
-          for (const service of clientData.services.filter((s: any) => s.isActive)) {
+          for (const service of clientData.services.filter(service => isCurrentAssignment(service))) {
             loadServiceDocuments(service.id)
           }
         }
       } catch (error) {
-        console.error('Failed to load services:', error)
+        setLoadError('Unable to load project documents. Please retry.')
       } finally {
         setIsLoading(false)
       }
     }
 
     loadServices()
-  }, [clientId])
+  }, [clientId, retry])
 
   const loadServiceDocuments = async (serviceId: number) => {
     if (loadingServices.has(serviceId)) return
@@ -135,7 +144,7 @@ export function ClientDocuments() {
       const data = await api.getServiceDocumentsClientVisible(serviceId)
       setServiceDocuments(prev => ({ ...prev, [serviceId]: data }))
     } catch (error) {
-      console.error('Error loading service documents:', error)
+      setLoadError('Some project documents could not be loaded. Please retry.')
     } finally {
       setLoadingServices(prev => {
         const newSet = new Set(prev)
@@ -225,7 +234,7 @@ export function ClientDocuments() {
   }
 
   const getPreviewUrl = (documentId: number) => {
-    return `/api/documents/preview/${documentId}`
+    return preview.url || 'about:blank'
   }
 
   const canPreview = (filename: string) => {
@@ -233,11 +242,12 @@ export function ClientDocuments() {
     return ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '')
   }
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes: unknown) => {
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return 'Size unavailable'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    const i = Math.max(0, Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k))))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
@@ -257,10 +267,6 @@ export function ClientDocuments() {
   }
 
   const renderDocument = (doc: DocumentWithUploader) => {
-    const uploadedByClient = doc.uploadedBy?.email?.includes('@') &&
-      !doc.uploadedBy?.email?.includes('vestov') &&
-      !doc.uploadedBy?.email?.includes('admin')
-
     return (
       <Card
         key={doc.document.id}
@@ -293,27 +299,7 @@ export function ClientDocuments() {
                     <Calendar className="h-3 w-3" />
                     {formatDate(doc.document.createdAt)}
                   </span>
-                  {doc.uploadedBy && (
-                    <Badge
-                      variant="outline"
-                      className={uploadedByClient
-                        ? 'border-sky-200 bg-sky-50 text-sky-700 text-xs'
-                        : 'border-violet-200 bg-violet-50 text-violet-700 text-xs'
-                      }
-                    >
-                      {uploadedByClient ? (
-                        <>
-                          <UserCircle className="h-3 w-3 mr-1" />
-                          You
-                        </>
-                      ) : (
-                        <>
-                          <Shield className="h-3 w-3 mr-1" />
-                          Vestov Team
-                        </>
-                      )}
-                    </Badge>
-                  )}
+                  {doc.uploadedBy && <Badge variant="outline" className="text-xs">{doc.uploadedBy.fullName || 'Uploader'}</Badge>}
                 </div>
               </div>
             </div>
@@ -322,9 +308,9 @@ export function ClientDocuments() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open(getPreviewUrl(doc.document.id), '_blank')}
+                  onClick={() => { setPreviewDocument(doc); setIsPreviewDialogOpen(true) }}
                   className="text-green-600 hover:text-green-700"
-                  title="Open preview in new tab"
+                  title="Preview document"
                 >
                   <Eye className="h-4 w-4 mr-1" />
                   Preview
@@ -447,6 +433,8 @@ export function ClientDocuments() {
       </div>
     )
   }
+
+  if (loadError) return <ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />
 
   return (
     <div className="space-y-6">
@@ -594,6 +582,8 @@ export function ClientDocuments() {
               </DialogTitle>
             </DialogHeader>
             <div className="w-full h-[70vh] border rounded">
+              {preview.error && <ClientLoadError message={preview.error} onRetry={preview.retry} />}
+              {!preview.url && !preview.error && <p role="status">Loading preview…</p>}
               {previewDocument.document.name.toLowerCase().endsWith('.pdf') ? (
                 <iframe
                   src={getPreviewUrl(previewDocument.document.id)}

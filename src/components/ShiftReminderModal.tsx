@@ -24,28 +24,27 @@ export function ShiftReminderModal() {
   const [starting, setStarting] = useState(false)
   const [myServices, setMyServices] = useState<UserService[]>([])
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null)
+  const [dismissKey, setDismissKey] = useState(SESSION_KEY)
   const [shiftNote, setShiftNote] = useState('')
 
   const dismiss = useCallback(() => {
     setVisible(false)
-    sessionStorage.setItem(SESSION_KEY, 'true')
-  }, [])
+    sessionStorage.setItem(dismissKey, 'true')
+  }, [dismissKey])
 
   useEffect(() => {
-    // If already skipped this session, don't show
-    if (sessionStorage.getItem(SESSION_KEY) === 'true') {
-      setChecking(false)
-      return
-    }
-
     const check = async () => {
       try {
-        const [shiftRes, servicesRes] = await Promise.all([
+        const [shiftRes, servicesRes, calendarRes] = await Promise.all([
           api.getCurrentShift(),
           api.getMyServices(),
+          api.request('/shifts/calendar/me'),
         ])
 
-        if (shiftRes.hasActiveShift) {
+        const today = calendarRes.days?.[0]
+        const key = `${SESSION_KEY}:${calendarRes.employeeId}:${today?.date}`
+        setDismissKey(key)
+        if (sessionStorage.getItem(key) === 'true' || !today || today.workingMinutes <= 0 || shiftRes.hasActiveShift) {
           // Already on shift — nothing to do
           setChecking(false)
           return
@@ -59,12 +58,12 @@ export function ShiftReminderModal() {
           setSelectedServiceId(services[0].serviceId)
         } else if (services.length > 1) {
           const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-          const today = dayNames[new Date().getDay()]
-          const scheduled = services.find(
+          const today = dayNames[(servicesRes as any).localDayOfWeek]
+          const scheduled = services.filter(
             (s) => s.workSchedule && s.workSchedule[today] && s.workSchedule[today] !== 'off'
           )
-          if (scheduled) {
-            setSelectedServiceId(scheduled.serviceId)
+          if (scheduled.length === 1) {
+            setSelectedServiceId(scheduled[0].serviceId)
           }
         }
 
@@ -140,7 +139,7 @@ export function ShiftReminderModal() {
                 ))}
               </select>
               <p className="text-[10px] text-muted-foreground">
-                Optional — notifications go to default channel if not selected
+                Optional — choose the project for this shift
               </p>
             </div>
           )}
@@ -153,7 +152,7 @@ export function ShiftReminderModal() {
               value={shiftNote}
               onChange={(e) => setShiftNote(e.target.value)}
               disabled={starting}
-              placeholder="Optional note (e.g. started 40 mins ago)..."
+              placeholder="Optional work note. Start time is recorded when you press Start Shift."
               rows={2}
               className="min-h-[84px] resize-none"
             />

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { eq, desc, and, sql, gte, lte, asc } from 'drizzle-orm'
+import { eq, desc, and, sql, gte, lte, asc, isNull } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
   financialTransactions,
@@ -11,6 +11,8 @@ import {
   teamMembers,
   users,
   salaryRateHistory,
+  payrollPeriods,
+  reimbursementRequests,
 } from '../db/schema.js'
 import { decrypt } from '../lib/encryption.js'
 import {
@@ -21,6 +23,10 @@ import {
 } from '../lib/financeAudit.js'
 import { buildSalaryPaymentEmail, sendEmail } from '../services/email.js'
 import { requireAuth } from '../middleware/auth.js'
+import { resolveEmployeeId } from '../services/access.js'
+
+import { cents, money, salaryExtras, validDate, validMonth, positiveId, financeError, FinanceValidationError } from '../lib/money.js'
+import { recordPayroll, initializePayrollPeriod, salaryPeriodView, salaryTerms, payrollLock, readPayrollData, summarizePeriod } from '../services/payroll.js'
 
 const router = Router()
 router.use(requireAuth)
@@ -189,7 +195,7 @@ router.get('/overview', async (req, res) => {
     const { startDate, endDate } = req.query as { startDate?: string; endDate?: string }
 
     // Build date conditions for transactions
-    const txConditions: any[] = []
+    const txConditions: any[] = [isNull(financialTransactions.voidedAt)]
     if (startDate) txConditions.push(gte(financialTransactions.transactionDate, startDate))
     if (endDate) txConditions.push(lte(financialTransactions.transactionDate, endDate))
 
@@ -208,8 +214,8 @@ router.get('/overview', async (req, res) => {
       sql`${invoices.status} = 'paid'`,
       sql`${invoices.paidAt} IS NOT NULL`,
     ]
-    if (startDate) invConditions.push(gte(invoices.invoiceDate, startDate))
-    if (endDate) invConditions.push(lte(invoices.invoiceDate, endDate))
+    if (startDate) invConditions.push(sql`${invoices.paidAt} >= ${startDate}::date`)
+    if (endDate) invConditions.push(sql`${invoices.paidAt} < (${endDate}::date + interval '1 day')`)
 
     const [invSum] = await db
       .select({
@@ -241,19 +247,19 @@ router.get('/overview', async (req, res) => {
     // Monthly client payments
     const monthlyInv = await db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${invoices.invoiceDate})::int`,
-        year: sql<number>`EXTRACT(YEAR FROM ${invoices.invoiceDate})::int`,
+        month: sql<number>`EXTRACT(MONTH FROM ${invoices.paidAt})::int`,
+        year: sql<number>`EXTRACT(YEAR FROM ${invoices.paidAt})::int`,
         total: sql<string>`COALESCE(SUM(CAST(${invoices.amount} AS DECIMAL)), 0)`,
       })
       .from(invoices)
       .where(and(...invConditions))
       .groupBy(
-        sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`,
-        sql`EXTRACT(YEAR FROM ${invoices.invoiceDate})`
+        sql`EXTRACT(MONTH FROM ${invoices.paidAt})`,
+        sql`EXTRACT(YEAR FROM ${invoices.paidAt})`
       )
       .orderBy(
-        sql`EXTRACT(YEAR FROM ${invoices.invoiceDate})`,
-        sql`EXTRACT(MONTH FROM ${invoices.invoiceDate})`
+        sql`EXTRACT(YEAR FROM ${invoices.paidAt})`,
+        sql`EXTRACT(MONTH FROM ${invoices.paidAt})`
       )
 
     // Build totals
@@ -319,7 +325,7 @@ router.get('/transactions', async (req, res) => {
       teamMemberId?: string; category?: string;
     }
 
-    const conditions: any[] = []
+    const conditions: any[] = [isNull(financialTransactions.voidedAt)]
     if (type) conditions.push(eq(financialTransactions.type, type))
     if (startDate) conditions.push(gte(financialTransactions.transactionDate, startDate))
     if (endDate) conditions.push(lte(financialTransactions.transactionDate, endDate))
@@ -342,6 +348,8 @@ router.get('/transactions', async (req, res) => {
         isRecurring: financialTransactions.isRecurring,
         createdBy: financialTransactions.createdBy,
         createdAt: financialTransactions.createdAt,
+        payrollData: financialTransactions.payrollData,
+        payrollPeriodId: financialTransactions.payrollPeriodId,
         updatedAt: financialTransactions.updatedAt,
       })
       .from(financialTransactions)
@@ -367,6 +375,10 @@ router.post('/transactions', async (req, res) => {
       return res.status(400).json({ error: 'type, amount, and transactionDate are required' })
     }
 
+    if (!['income', 'expense', 'extra_payment'].includes(type)) throw new FinanceValidationError('Use the salary payment workflow for payroll transactions')
+    cents(amount, 'Amount', false)
+    validDate(transactionDate, 'Transaction date')
+    if (invoiceId) throw new FinanceValidationError('Invoice payments are recorded through the invoice payment workflow')
     const categoryKind = normalizeCategoryKind(type)
     let categoryValue = typeof category === 'string' ? category.trim() : ''
 
@@ -413,7 +425,7 @@ router.post('/transactions', async (req, res) => {
     res.status(201).json(created)
   } catch (error) {
     console.error('Create transaction error:', error)
-    res.status(500).json({ error: 'Failed to create transaction' })
+    financeError(res, error, 'Failed to create transaction')
   }
 })
 
@@ -435,6 +447,13 @@ router.put('/transactions/:id', async (req, res) => {
         return [null]
       }
 
+      if (existing.type === 'salary' || existing.payrollPeriodId) throw new FinanceValidationError('Use the salary payment workflow to edit payroll', 409)
+      if (existing.voidedAt) throw new FinanceValidationError('Voided transactions cannot be edited', 409)
+      const linked = await tx.select({id:reimbursementRequests.id}).from(reimbursementRequests).where(eq(reimbursementRequests.paymentTransactionId,id))
+      if (linked.length) throw new FinanceValidationError('Reimbursement payments require reconciliation and cannot be edited here',409)
+      if (type !== undefined && !['income','expense','extra_payment'].includes(type)) throw new FinanceValidationError('Invalid transaction type')
+      if (amount !== undefined) cents(amount, 'Amount', false)
+      if (transactionDate !== undefined) validDate(transactionDate, 'Transaction date')
       const updateData: any = { updatedAt: new Date() }
       if (type !== undefined) updateData.type = type
       if (amount !== undefined) updateData.amount = amount.toString()
@@ -496,7 +515,7 @@ router.put('/transactions/:id', async (req, res) => {
     res.json(updated)
   } catch (error) {
     console.error('Update transaction error:', error)
-    res.status(500).json({ error: 'Failed to update transaction' })
+    financeError(res, error, 'Failed to update transaction')
   }
 })
 
@@ -504,52 +523,21 @@ router.put('/transactions/:id', async (req, res) => {
 router.delete('/transactions/:id', async (req, res) => {
   if (!isAdmin(req, res)) return
   try {
-    const id = parseInt(req.params.id)
-
-    const deleted = await db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select()
-        .from(financialTransactions)
-        .where(eq(financialTransactions.id, id))
-        .limit(1)
-
-      if (!existing) {
-        return null
-      }
-
-      const [row] = await tx
-        .delete(financialTransactions)
-        .where(eq(financialTransactions.id, id))
-        .returning()
-
-      if (!row) return null
-
-      const snapshot = pickTransactionSnapshot(existing)
-      await logFinanceActivity(tx, {
-        action: 'transaction_deleted',
-        entityType: 'transaction',
-        entityId: existing.id,
-        transactionId: existing.id,
-        teamMemberId: existing.teamMemberId,
-        clientId: existing.clientId,
-        invoiceId: existing.invoiceId,
-        actorId: req.user!.id,
-        summary: `Deleted ${existing.type} transaction #${existing.id}`,
-        beforeData: snapshot,
-      })
-
-      return row
+    const id=positiveId(req.params.id)
+    await db.transaction(async(tx)=>{
+      let [existing]=await tx.select().from(financialTransactions).where(eq(financialTransactions.id,id))
+      if(!existing) throw new FinanceValidationError('Transaction not found',404)
+      if(existing.teamMemberId) await payrollLock(tx,existing.teamMemberId)
+      ;[existing]=await tx.select().from(financialTransactions).where(eq(financialTransactions.id,id)).for('update')
+      if(existing.voidedAt) return
+      const linked=await tx.select({id:reimbursementRequests.id}).from(reimbursementRequests).where(eq(reimbursementRequests.paymentTransactionId,id))
+      if(linked.length) throw new FinanceValidationError('This payment settles a reimbursement. It cannot be voided without reconciling that reimbursement.',409)
+      await tx.update(financialTransactions).set({voidedAt:new Date(),voidReason:'Voided by administrator',updatedAt:new Date()}).where(eq(financialTransactions.id,id))
+      if(existing.payrollPeriodId) await tx.update(payrollPeriods).set({status:'open',updatedAt:new Date()}).where(eq(payrollPeriods.id,existing.payrollPeriodId))
+      await logFinanceActivity(tx,{action:existing.type==='salary'?'salary_payment_deleted':'transaction_deleted',entityType:existing.type==='salary'?'salary_payment':'transaction',entityId:id,transactionId:id,teamMemberId:existing.teamMemberId,actorId:req.user!.id,summary:`Voided ${existing.type} transaction #${id}`,beforeData:{...pickTransactionSnapshot(existing),payrollData:existing.payrollData}})
     })
-
-    if (!deleted) {
-      return res.status(404).json({ error: 'Transaction not found' })
-    }
-
-    res.json({ message: 'Transaction deleted successfully' })
-  } catch (error) {
-    console.error('Delete transaction error:', error)
-    res.status(500).json({ error: 'Failed to delete transaction' })
-  }
+    res.json({message:'Transaction voided; its audit history is preserved'})
+  } catch(error){ financeError(res,error,'Failed to void transaction') }
 })
 
 // GET /client-payments - Auto-pulled paid invoices
@@ -562,8 +550,8 @@ router.get('/client-payments', async (req, res) => {
       sql`${invoices.status} = 'paid'`,
       sql`${invoices.paidAt} IS NOT NULL`,
     ]
-    if (startDate) conditions.push(gte(invoices.invoiceDate, startDate))
-    if (endDate) conditions.push(lte(invoices.invoiceDate, endDate))
+    if (startDate) conditions.push(sql`${invoices.paidAt} >= ${startDate}::date`)
+    if (endDate) conditions.push(sql`${invoices.paidAt} < (${endDate}::date + interval '1 day')`)
 
     const results = await db
       .select({
@@ -624,6 +612,7 @@ router.get('/salaries', async (req, res) => {
       .where(
         and(
           eq(financialTransactions.type, 'salary'),
+          isNull(financialTransactions.voidedAt),
           gte(financialTransactions.transactionDate, `${targetYear}-01-01`),
           lte(financialTransactions.transactionDate, `${targetYear}-12-31`)
         )
@@ -640,12 +629,14 @@ router.get('/salaries', async (req, res) => {
         description: financialTransactions.description,
         transactionDate: financialTransactions.transactionDate,
         createdAt: financialTransactions.createdAt,
+        payrollData: financialTransactions.payrollData,
+        payrollPeriodId: financialTransactions.payrollPeriodId,
       })
       .from(financialTransactions)
       .leftJoin(teamMembers, eq(financialTransactions.teamMemberId, teamMembers.id))
-      .where(eq(financialTransactions.type, 'salary'))
+      .where(and(eq(financialTransactions.type, 'salary'),isNull(financialTransactions.voidedAt)))
       .orderBy(desc(financialTransactions.transactionDate))
-      .limit(50)
+      .limit(1000)
 
     const allPayments = await db
       .select({
@@ -656,10 +647,12 @@ router.get('/salaries', async (req, res) => {
         description: financialTransactions.description,
         transactionDate: financialTransactions.transactionDate,
         createdAt: financialTransactions.createdAt,
+        payrollData: financialTransactions.payrollData,
+        payrollPeriodId: financialTransactions.payrollPeriodId,
       })
       .from(financialTransactions)
       .leftJoin(teamMembers, eq(financialTransactions.teamMemberId, teamMembers.id))
-      .where(eq(financialTransactions.type, 'salary'))
+      .where(and(eq(financialTransactions.type, 'salary'),isNull(financialTransactions.voidedAt)))
       .orderBy(desc(financialTransactions.transactionDate), desc(financialTransactions.id))
 
     // Merge payment summaries into members
@@ -667,16 +660,20 @@ router.get('/salaries', async (req, res) => {
       salaryPayments.map((p) => [p.teamMemberId, p])
     )
 
-    const membersWithPayments = members.map((m) => {
+    const membersWithPayments = await Promise.all(members.map(async (m) => {
       const payments = paymentMap.get(m.id)
+      const [activeTerms]=await db.select().from(salaryRateHistory).where(and(eq(salaryRateHistory.teamMemberId,m.id),lte(salaryRateHistory.effectiveDate,new Date().toISOString().slice(0,10)))).orderBy(desc(salaryRateHistory.effectiveDate),desc(salaryRateHistory.id)).limit(1)
       return {
         ...m,
+        monthlyRate:activeTerms?.monthlyRate ?? m.monthlyRate,
         totalPaidThisYear: payments ? parseFloat(payments.totalPaid) : 0,
         lastPaymentDate: payments?.lastPaymentDate || null,
         paymentCount: payments?.paymentCount || 0,
-        monthlySalaryExtras: normalizeSalaryExtras(m.monthlySalaryExtras),
+        monthlySalaryExtras: normalizeSalaryExtras(activeTerms?.monthlyExtras ?? m.monthlySalaryExtras),
+        currentPeriod: await salaryPeriodView(db,m,new Date().toISOString().slice(0,7)),
+        periods: await Promise.all((await db.select().from(payrollPeriods).where(and(eq(payrollPeriods.teamMemberId,m.id),gte(payrollPeriods.salaryMonth,`${targetYear}-01`),lte(payrollPeriods.salaryMonth,`${targetYear}-12`)))).map(p=>salaryPeriodView(db,m,p.salaryMonth))),
       }
-    })
+    }))
 
     res.json({
       members: membersWithPayments,
@@ -691,109 +688,30 @@ router.get('/salaries', async (req, res) => {
 })
 
 // POST /salaries/record - Record salary payment
-router.post('/salaries/record', async (req, res) => {
-  if (!isAdmin(req, res)) return
+router.get('/salaries/:teamMemberId/period/:month', async(req,res)=>{
+  if(!isAdmin(req,res)) return
+  try { const [member]=await db.select().from(teamMembers).where(eq(teamMembers.id,positiveId(req.params.teamMemberId))); if(!member) throw new FinanceValidationError('Team member not found',404); res.json(await salaryPeriodView(db,member,validMonth(req.params.month))) } catch(error){financeError(res,error,'Failed to load salary period')}
+})
+router.post('/salaries/:teamMemberId/period/:month/initialize',async(req,res)=>{
+  if(!isAdmin(req,res))return
+  try{res.json(await db.transaction(tx=>initializePayrollPeriod(tx,positiveId(req.params.teamMemberId),validMonth(req.params.month),req.user!.id)))}catch(error){financeError(res,error,'Failed to initialize salary period')}
+})
+router.post('/salaries/record', async (req,res)=>{
+  if(!isAdmin(req,res)) return
   try {
-    const { teamMemberId, amount, transactionDate, description } = req.body
-    const salaryMonth = typeof req.body?.salaryMonth === 'string' ? req.body.salaryMonth : ''
-    const baseSalary = Number(req.body?.baseSalary)
-    const salaryPaidNow = Number(req.body?.salaryPaidNow)
-    const remainingSalary = Number(req.body?.remainingSalary)
-    const note = typeof req.body?.note === 'string' ? req.body.note : ''
-    const extras = normalizeSalaryExtras(req.body?.extras)
-
-    if (!teamMemberId || !amount || !transactionDate) {
-      return res.status(400).json({ error: 'teamMemberId, amount, and transactionDate are required' })
-    }
-
-    const [member] = await db
-      .select({
-        id: teamMembers.id,
-        name: teamMembers.name,
-        email: teamMembers.email,
-      })
-      .from(teamMembers)
-      .where(eq(teamMembers.id, teamMemberId))
-      .limit(1)
-
-    if (!member) {
-      return res.status(404).json({ error: 'Team member not found' })
-    }
-
-    const [created] = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(financialTransactions)
-        .values({
-          type: 'salary',
-          category: 'monthly_salary',
-          amount: amount.toString(),
-          description: description || null,
-          transactionDate,
-          teamMemberId,
-          createdBy: req.user!.id,
-        })
-        .returning()
-
-      await logFinanceActivity(tx, {
-        action: 'salary_payment_created',
-        entityType: 'salary_payment',
-        entityId: row.id,
-        transactionId: row.id,
-        teamMemberId: row.teamMemberId,
-        actorId: req.user!.id,
-        summary: `Recorded salary payment #${row.id} for team member ${row.teamMemberId}`,
-        afterData: pickTransactionSnapshot(row),
-        metadata: { description: row.description },
-      })
-
-      return [row]
-    })
-
-    let email: SalaryPaymentEmailStatus = {
-      delivered: false,
-      skipped: true,
-      provider: 'none',
-    }
-
-    const totalAmount = Number(amount)
-    if (member.email && salaryMonth && Number.isFinite(baseSalary) && Number.isFinite(salaryPaidNow) && Number.isFinite(remainingSalary) && Number.isFinite(totalAmount)) {
-      try {
-        const payload = buildSalaryPaymentEmail({
-          to: member.email,
-          employeeName: member.name,
-          salaryMonth,
-          paymentDate: transactionDate,
-          baseSalary,
-          salaryPaidNow,
-          remainingSalary,
-          extras,
-          totalPayout: totalAmount,
-          note,
-        })
-        email = await sendEmail(payload)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        console.error('Salary payment email error:', message)
-        email = {
-          delivered: false,
-          provider: 'sendgrid',
-          error: message,
-        }
-      }
-    } else if (!member.email) {
-      email = {
-        delivered: false,
-        skipped: true,
-        provider: 'none',
-        error: 'Team member has no email address configured.',
-      }
-    }
-
-    res.status(201).json({ ...created, email })
-  } catch (error) {
-    console.error('Record salary error:', error)
-    res.status(500).json({ error: 'Failed to record salary payment' })
-  }
+    const result=await db.transaction(tx=>recordPayroll(tx,req.user!.id,req.body))
+    let email:SalaryPaymentEmailStatus={delivered:false,skipped:true,provider:'none'}
+    if(!result.duplicate){const data=readPayrollData(result.payment.payrollData)!;try {email=await sendEmail(buildSalaryPaymentEmail({to:result.member.email,employeeName:result.member.name,salaryMonth:data.salaryMonth,paymentDate:result.payment.transactionDate,baseSalary:Number(data.baseSalary),salaryPaidNow:Number(data.paidBase),remainingSalary:Number(result.summary.remainingBase),extras:data.extras.map(e=>({label:e.label,amount:Number(e.amount)})),totalPayout:Number(result.payment.amount),note:data.note}))} catch(error){email={delivered:false,error:error instanceof Error?error.message:'Email failed'}}}
+    res.status(result.duplicate?200:201).json({...result.payment,email,duplicate:result.duplicate})
+  } catch(error){ financeError(res,error,'Failed to record salary payment') }
+})
+router.put('/salaries/payments/:id',async(req,res)=>{
+  if(!isAdmin(req,res)) return
+  try { const result=await db.transaction(tx=>recordPayroll(tx,req.user!.id,req.body,positiveId(req.params.id))); res.json(result.payment) }catch(error){financeError(res,error,'Failed to update salary payment')}
+})
+// Employees receive their own payslips only; the linked team member is resolved on the server.
+router.get('/my-salary',async(req,res)=>{
+  try { const employeeId=await resolveEmployeeId(req.user); if(!employeeId) throw new FinanceValidationError('Employee profile required',403); const [member]=await db.select().from(teamMembers).where(eq(teamMembers.id,employeeId)); if(!member) throw new FinanceValidationError('Employee profile not found',404); const payments=await db.select({id:financialTransactions.id,amount:financialTransactions.amount,transactionDate:financialTransactions.transactionDate,payrollData:financialTransactions.payrollData,description:financialTransactions.description}).from(financialTransactions).where(and(eq(financialTransactions.teamMemberId,member.id),eq(financialTransactions.type,'salary'),isNull(financialTransactions.voidedAt))).orderBy(desc(financialTransactions.transactionDate)); const periods=await db.select().from(payrollPeriods).where(eq(payrollPeriods.teamMemberId,member.id)); res.json({currency:'USD',payments,periods:await Promise.all(periods.map(p=>salaryPeriodView(db,member,p.salaryMonth)))}) }catch(error){financeError(res,error,'Failed to load payslips')}
 })
 
 // GET /categories
@@ -1093,144 +1011,34 @@ router.get('/balances', async (req, res) => {
 })
 
 // PUT /salaries/:teamMemberId/rate - Update monthly base salary and log history
-router.put('/salaries/:teamMemberId/rate', async (req, res) => {
-  if (!isAdmin(req, res)) return
+async function updateSalaryTerms(req:any,res:any,extrasOnly=false){
+  if(!isAdmin(req,res)) return
   try {
-    const teamMemberId = parseInt(req.params.teamMemberId)
-    const { monthlyRate, effectiveDate, note } = req.body
-
-    if (!monthlyRate || parseFloat(monthlyRate) < 0) {
-      return res.status(400).json({ error: 'Valid monthlyRate is required' })
-    }
-
-    const rate = String(parseFloat(monthlyRate).toFixed(2))
-    const effDate = effectiveDate || new Date().toISOString().split('T')[0]
-
-    const [existing] = await db
-      .select({
-        id: teamMembers.id,
-        monthlyRate: teamMembers.monthlyRate,
-      })
-      .from(teamMembers)
-      .where(eq(teamMembers.id, teamMemberId))
-      .limit(1)
-
-    if (!existing) {
-      return res.status(404).json({ error: 'Team member not found' })
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(teamMembers)
-        .set({ monthlyRate: rate, updatedAt: new Date() })
-        .where(eq(teamMembers.id, teamMemberId))
-
-      await tx.insert(salaryRateHistory).values({
-        teamMemberId,
-        monthlyRate: rate,
-        effectiveDate: effDate,
-        note: note || null,
-        createdBy: req.user!.id,
-      })
-
-      const beforeData = { monthlyRate: existing.monthlyRate, effectiveDate: effDate, note: null }
-      const afterData = {
-        monthlyRate: rate,
-        effectiveDate: effDate,
-        note: note || null,
-      }
-
-      await logFinanceActivity(tx, {
-        action: 'salary_rate_updated',
-        entityType: 'salary_rate',
-        entityId: teamMemberId,
-        teamMemberId,
-        actorId: req.user!.id,
-        summary: `Updated monthly salary rate for team member #${teamMemberId}`,
-        beforeData,
-        afterData,
-        metadata: { changes: diffRecord(beforeData, afterData) },
-      })
+    const memberId=positiveId(req.params.teamMemberId), effectiveDate=validDate(req.body.effectiveDate || new Date().toISOString().slice(0,10))
+    if(!extrasOnly) cents(req.body.monthlyRate,'Monthly salary')
+    if(extrasOnly || req.body.monthlyExtras!==undefined) salaryExtras(req.body.monthlyExtras)
+    const row=await db.transaction(async(tx)=>{
+      await payrollLock(tx,memberId)
+      const [member]=await tx.select().from(teamMembers).where(eq(teamMembers.id,memberId))
+      if(!member) throw new FinanceValidationError('Team member not found',404)
+      if(effectiveDate<member.startDate) throw new FinanceValidationError('Salary terms cannot predate employment')
+      const history=await tx.select().from(salaryRateHistory).where(eq(salaryRateHistory.teamMemberId,memberId)).orderBy(desc(salaryRateHistory.effectiveDate),desc(salaryRateHistory.id))
+      const baselineDate=member.startDate>`${new Date().toISOString().slice(0,7)}-01`?member.startDate:`${new Date().toISOString().slice(0,7)}-01`
+      if(!history.length&&effectiveDate>=baselineDate) await tx.insert(salaryRateHistory).values({teamMemberId:memberId,monthlyRate:member.monthlyRate || '0',monthlyExtras:salaryExtras(member.monthlySalaryExtras || []),effectiveDate:baselineDate,createdBy:req.user!.id,note:'Current-month profile baseline before terms change; earlier terms remain unverified'})
+      // Find the conditions at the effective date, not a future change.
+      const applicable=history.find(h=>h.effectiveDate<=effectiveDate)
+      const monthlyRate=extrasOnly?(applicable?.monthlyRate || member.monthlyRate || '0'):money(cents(req.body.monthlyRate))
+      const monthlyExtras=(extrasOnly||req.body.monthlyExtras!==undefined)?salaryExtras(req.body.monthlyExtras):salaryExtras(applicable?.monthlyExtras ?? member.monthlySalaryExtras ?? [])
+      const [next]=await tx.insert(salaryRateHistory).values({teamMemberId:memberId,monthlyRate,monthlyExtras,effectiveDate,note:req.body.note || null,createdBy:req.user!.id}).returning()
+      if(effectiveDate<=new Date().toISOString().slice(0,10)) await tx.update(teamMembers).set({monthlyRate,monthlySalaryExtras:monthlyExtras,updatedAt:new Date()}).where(eq(teamMembers.id,memberId))
+      await logFinanceActivity(tx,{action:extrasOnly?'salary_extras_updated':'salary_rate_updated',entityType:extrasOnly?'salary_extras':'salary_rate',entityId:memberId,teamMemberId:memberId,actorId:req.user!.id,summary:`Scheduled salary terms from ${effectiveDate}`,beforeData:{monthlyRate:member.monthlyRate,monthlyExtras:member.monthlySalaryExtras},afterData:{monthlyRate,monthlyExtras,effectiveDate}})
+      return next
     })
-
-    res.json({ success: true, monthlyRate: rate })
-  } catch (error) {
-    console.error('Update salary rate error:', error)
-    res.status(500).json({ error: 'Failed to update salary rate' })
-  }
-})
-
-router.put('/salaries/:teamMemberId/monthly-extras', async (req, res) => {
-  if (!isAdmin(req, res)) return
-  try {
-    const teamMemberId = parseInt(req.params.teamMemberId)
-    const monthlyExtras = normalizeSalaryExtras(req.body?.monthlyExtras)
-
-    const [updated] = await db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({
-          id: teamMembers.id,
-          monthlySalaryExtras: teamMembers.monthlySalaryExtras,
-        })
-        .from(teamMembers)
-        .where(eq(teamMembers.id, teamMemberId))
-        .limit(1)
-
-      if (!existing) {
-        return [null]
-      }
-
-      const [row] = await tx
-        .update(teamMembers)
-        .set({
-          monthlySalaryExtras: monthlyExtras,
-          updatedAt: new Date(),
-        })
-        .where(eq(teamMembers.id, teamMemberId))
-        .returning({
-          id: teamMembers.id,
-          monthlySalaryExtras: teamMembers.monthlySalaryExtras,
-        })
-
-      if (!row) {
-        return [null]
-      }
-
-      const beforeData = {
-        monthlySalaryExtras: normalizeSalaryExtras(existing.monthlySalaryExtras),
-      }
-      const afterData = {
-        monthlySalaryExtras: monthlyExtras,
-      }
-
-      await logFinanceActivity(tx, {
-        action: 'salary_extras_updated',
-        entityType: 'salary_extras',
-        entityId: teamMemberId,
-        teamMemberId,
-        actorId: req.user!.id,
-        summary: `Updated default salary extras for team member #${teamMemberId}`,
-        beforeData,
-        afterData,
-        metadata: { changes: diffRecord(beforeData, afterData) },
-      })
-
-      return [row]
-    })
-
-    if (!updated) {
-      return res.status(404).json({ error: 'Team member not found' })
-    }
-
-    res.json({
-      success: true,
-      monthlyExtras: normalizeSalaryExtras(updated.monthlySalaryExtras),
-    })
-  } catch (error) {
-    console.error('Update monthly salary extras error:', error)
-    res.status(500).json({ error: 'Failed to update monthly salary extras' })
-  }
-})
+    res.json({success:true,monthlyRate:row.monthlyRate,monthlyExtras:row.monthlyExtras,effectiveDate:row.effectiveDate})
+  }catch(error){financeError(res,error,'Failed to update salary terms')}
+}
+router.put('/salaries/:teamMemberId/rate',(req,res)=>updateSalaryTerms(req,res))
+router.put('/salaries/:teamMemberId/monthly-extras',(req,res)=>updateSalaryTerms(req,res,true))
 
 // GET /salaries/:teamMemberId/rate-history - Get salary rate change history
 router.get('/salaries/:teamMemberId/rate-history', async (req, res) => {
@@ -1242,6 +1050,7 @@ router.get('/salaries/:teamMemberId/rate-history', async (req, res) => {
       .select({
         id: salaryRateHistory.id,
         monthlyRate: salaryRateHistory.monthlyRate,
+        monthlyExtras: salaryRateHistory.monthlyExtras,
         effectiveDate: salaryRateHistory.effectiveDate,
         note: salaryRateHistory.note,
         createdBy: users.fullName,
@@ -1304,6 +1113,7 @@ router.get('/salaries/:teamMemberId/history', async (req, res) => {
       .select({
         id: salaryRateHistory.id,
         monthlyRate: salaryRateHistory.monthlyRate,
+        monthlyExtras: salaryRateHistory.monthlyExtras,
         effectiveDate: salaryRateHistory.effectiveDate,
         note: salaryRateHistory.note,
         createdAt: salaryRateHistory.createdAt,

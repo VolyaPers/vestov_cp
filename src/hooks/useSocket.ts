@@ -44,7 +44,8 @@ export interface BreakEventData {
 
 type ShiftEvent = 'shift:started' | 'shift:ended' | 'break:started' | 'break:ended'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001'
+// Same-origin polling also works behind the production /api reverse proxy.
+const SOCKET_URL = window.location.origin
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null)
@@ -53,7 +54,8 @@ export function useSocket() {
   useEffect(() => {
     // Create socket connection
     socketRef.current = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
+      path: '/api/socket.io',
+      transports: ['polling'],
       withCredentials: true,
     })
 
@@ -98,13 +100,12 @@ export function useShiftEvents() {
   useEffect(() => {
     // Create socket connection
     socketRef.current = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
+      path: '/api/socket.io',
+      transports: ['polling'],
       withCredentials: true,
     })
 
-    socketRef.current.on('connect', () => {
-      socketRef.current?.emit('join:admin')
-    })
+    socketRef.current.on('connect', notifyShiftUpdate)
 
     // Listen for shift events and notify listeners to refetch data
     const handleEvent = () => {

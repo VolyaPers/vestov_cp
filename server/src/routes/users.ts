@@ -2,115 +2,32 @@ import { Router } from 'express'
 import { db, pool } from '../db/index.js'
 import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks, clientServiceTeamMembers, invoiceDevelopers, invoices, invoiceServices, reimbursementRequests, documents, documentFolders } from '../db/schema.js'
 import { eq, and, sql, inArray } from 'drizzle-orm'
-import bcrypt from 'bcryptjs'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAuth, requireAdmin } from '../middleware/auth.js'
 import { createUserAccount, deactivateUserAndMemberships } from '../services/userService.js'
+import { revokeUserSockets } from '../socket.js'
+import { createClerkClient } from '@clerk/backend'
+import { generateInvitationLink, type InvitationGateway } from '../services/userInvitation.js'
 import { getSlackAvatarByEmail } from '../utils/slack.js'
 
+export function createUsersRouter(options: { invitations?: InvitationGateway } = {}) {
 const router = Router()
 
-/**
- * Safely executes a delete operation, catching and logging errors for optional tables
- */
-async function safeDelete(tableName: string, operation: () => Promise<any>): Promise<void> {
-  try {
-    await operation()
-    console.log(`[HARD DELETE] Deleted ${tableName}`)
-  } catch (error) {
-    const err = error as Error
-    const isTableMissing = err.message.includes('does not exist') || 
-                           (err.message.includes('relation') && err.message.includes('does not exist'))
-    
-    if (isTableMissing) {
-      console.log(`[HARD DELETE] ${tableName} table does not exist, skipping`)
-    } else {
-      console.error(`[HARD DELETE] Error deleting ${tableName}:`, error)
-    }
+router.use(requireAuth, requireAdmin)
+for (const param of ['id', 'userId', 'clientId']) router.param(param, (_req, res, next, value) => {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0) return res.status(400).json({ error: `Invalid ${param}` })
+  next()
+})
+
+async function guardAdminChange(tx: any, userId: number, actorId: number, deactivating: boolean) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(743991)`)
+  const [user] = await tx.select().from(users).where(eq(users.id, userId)).for('update')
+  if (!user) throw Object.assign(new Error('User not found'), { status: 404 })
+  if (deactivating && actorId === userId) throw Object.assign(new Error('You cannot deactivate, delete or remove your own admin role'), { status: 409 })
+  if (deactivating && user.role === 'admin' && user.isActive) {
+    const active = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, 'admin'), eq(users.isActive, true)))
+    if (active.length < 2) throw Object.assign(new Error('The last active administrator cannot be removed'), { status: 409 })
   }
-}
-
-/**
- * Deletes optional team member related data (outside transaction to avoid aborting it)
- */
-async function deleteOptionalTeamMemberData(teamMemberId: number): Promise<void> {
-  console.log(`[HARD DELETE] Deleting optional team member data for teamMemberId: ${teamMemberId}`)
-
-  const optionalOperations = [
-    { name: 'leave balances', operation: () => db.delete(leaveBalances).where(eq(leaveBalances.employeeId, teamMemberId)) },
-    {
-      name: 'leave request events',
-      operation: async () => {
-        const requestIds = await db
-          .select({ id: leaveRequests.id })
-          .from(leaveRequests)
-          .where(eq(leaveRequests.employeeId, teamMemberId))
-        
-        if (requestIds.length > 0) {
-          const ids = requestIds.map((r) => r.id)
-          await db.delete(leaveRequestEvents).where(inArray(leaveRequestEvents.leaveRequestId, ids))
-        }
-      }
-    },
-    { name: 'leave requests', operation: () => db.delete(leaveRequests).where(eq(leaveRequests.employeeId, teamMemberId)) },
-    { name: 'employment cycles', operation: () => db.delete(employmentCycles).where(eq(employmentCycles.employeeId, teamMemberId)) },
-    { name: 'shift schedules', operation: () => db.delete(shiftSchedules).where(eq(shiftSchedules.employeeId, teamMemberId)) },
-    { name: 'reimbursement requests', operation: () => db.delete(reimbursementRequests).where(eq(reimbursementRequests.employeeId, teamMemberId)) },
-    {
-      name: 'shifts and breaks',
-      operation: async () => {
-        const shiftIds = await db
-          .select({ id: shifts.id })
-          .from(shifts)
-          .where(eq(shifts.employeeId, teamMemberId))
-
-        if (shiftIds.length > 0) {
-          const ids = shiftIds.map((s) => s.id)
-          await db.delete(shiftBreaks).where(inArray(shiftBreaks.shiftId, ids))
-          await db.delete(shifts).where(inArray(shifts.id, ids))
-          console.log(`[HARD DELETE] Deleted ${shiftIds.length} shift(s) and breaks`)
-        } else {
-          await db.delete(shifts).where(eq(shifts.employeeId, teamMemberId))
-          console.log(`[HARD DELETE] Deleted shifts (no breaks found)`)
-        }
-      }
-    },
-    {
-      name: 'client service team members and invoice developers',
-      operation: async () => {
-        // First, get all client_service_team_member IDs for this team member
-        const cstmIds = await db
-          .select({ id: clientServiceTeamMembers.id })
-          .from(clientServiceTeamMembers)
-          .where(eq(clientServiceTeamMembers.teamMemberId, teamMemberId))
-
-        if (cstmIds.length > 0) {
-          const ids = cstmIds.map((c) => c.id)
-          // Delete invoice_developers that reference these client_service_team_members
-          await db.delete(invoiceDevelopers).where(inArray(invoiceDevelopers.clientServiceTeamMemberId, ids))
-          console.log(`[HARD DELETE] Deleted invoice_developers for ${ids.length} client_service_team_member(s)`)
-        }
-
-        // Now delete the client_service_team_members
-        await db.delete(clientServiceTeamMembers).where(eq(clientServiceTeamMembers.teamMemberId, teamMemberId))
-      }
-    }
-  ]
-
-  // Execute all optional operations
-  for (const { name, operation } of optionalOperations) {
-    await safeDelete(name, operation)
-  }
-}
-
-/**
- * Deletes critical team member data within a transaction
- */
-async function deleteCriticalTeamMemberData(tx: any, teamMemberId: number): Promise<void> {
-  console.log(`[HARD DELETE] Deleting critical team member data for teamMemberId: ${teamMemberId}`)
-  
-  // Delete team member record (critical - must succeed)
-  await tx.delete(teamMembers).where(eq(teamMembers.id, teamMemberId))
-  console.log(`[HARD DELETE] Deleted team member ${teamMemberId}`)
+  return user
 }
 
 // Get users that don't have a team member linked yet (team_member or admin roles)
@@ -123,6 +40,9 @@ router.get('/available-team-member-users', async (req, res) => {
         fullName: users.fullName,
         email: users.email,
         role: users.role,
+        clerkUserId: users.clerkUserId,
+        authProvider: users.authProvider,
+        timezone: users.timezone,
         position: users.position,
         avatarUrl: users.avatarUrl,
       })
@@ -146,7 +66,8 @@ router.get('/available-team-member-users', async (req, res) => {
 // Get all users with pagination and filtering
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 10, role, search, clientId } = req.query
+    const { page = 1, limit = 100, role, search, clientId } = req.query
+    if (!Number.isInteger(Number(page)) || Number(page) < 1 || !Number.isInteger(Number(limit)) || Number(limit) < 1 || Number(limit) > 500) return res.status(400).json({ error: 'Invalid pagination' })
     const offset = (Number(page) - 1) * Number(limit)
 
     let whereConditions = []
@@ -168,6 +89,9 @@ router.get('/', async (req, res) => {
         fullName: users.fullName,
         email: users.email,
         role: users.role,
+        clerkUserId: users.clerkUserId,
+        authProvider: users.authProvider,
+        timezone: users.timezone,
         position: users.position,
         avatarUrl: users.avatarUrl,
         isActive: users.isActive,
@@ -231,6 +155,9 @@ router.get('/:id', async (req, res) => {
         fullName: users.fullName,
         email: users.email,
         role: users.role,
+        clerkUserId: users.clerkUserId,
+        authProvider: users.authProvider,
+        timezone: users.timezone,
         position: users.position,
         avatarUrl: users.avatarUrl,
         isActive: users.isActive,
@@ -273,7 +200,7 @@ router.get('/:id', async (req, res) => {
 // Create new user
 router.post('/', async (req, res) => {
   try {
-    const { username, password, fullName, email, role, position, avatarUrl, teamMemberId } = req.body || {}
+    const { username, fullName, email, role, position, avatarUrl, teamMemberId } = req.body || {}
 
     if (!fullName || !email || !role) {
       return res.status(400).json({ error: 'Missing required fields' })
@@ -291,7 +218,6 @@ router.post('/', async (req, res) => {
 
     const { user } = await createUserAccount({
       username,
-      password,
       fullName,
       email,
       role,
@@ -302,28 +228,6 @@ router.post('/', async (req, res) => {
       source: 'admin_create'
     })
 
-    // Auto-sync Slack avatar (async, don't wait for it)
-    if (!avatarUrl) {
-      getSlackAvatarByEmail(email).then(async (slackAvatar) => {
-        if (slackAvatar) {
-          const slackAvatarUrl = slackAvatar.avatar192 || slackAvatar.avatar512 || slackAvatar.avatar72
-          if (slackAvatarUrl) {
-            try {
-              await db.update(users).set({ avatarUrl: slackAvatarUrl }).where(eq(users.id, user.id))
-              if (user.teamMemberId) {
-                await db.update(teamMembers).set({ avatarUrl: slackAvatarUrl }).where(eq(teamMembers.id, user.teamMemberId))
-              }
-              console.log(`[SLACK] Auto-synced avatar for new user: ${email}`)
-            } catch (err) {
-              console.error(`[SLACK] Failed to save avatar for new user: ${email}`, err)
-            }
-          }
-        }
-      }).catch(err => {
-        console.error(`[SLACK] Failed to fetch avatar for new user: ${email}`, err)
-      })
-    }
-
     const { password: _, ...userWithoutPassword } = user
     res.status(201).json({
       user: userWithoutPassword,
@@ -331,115 +235,66 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Error creating user:', error)
     const message = error instanceof Error ? error.message : 'Failed to create user'
-    const status = message.includes('exists') || message.includes('already') ? 409 : 500
+    const status = message.includes('exists') || message.includes('already') ? 409 : 400
     res.status(status).json({ error: message })
   }
 })
 
-// Update user
+// Internal access changes; credentials are managed exclusively by Clerk.
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params
-    const { username, fullName, email, role, position, avatarUrl, timezone, isActive, password } = req.body
-
-    const updateData: {
-      username?: string
-      fullName?: string
-      email?: string
-      role?: string
-      position?: string | null
-      avatarUrl?: string | null
-      timezone?: string | null
-      isActive?: boolean
-      password?: string
-      updatedAt: Date
-    } = { updatedAt: new Date() }
-    if (username !== undefined) updateData.username = username
-    if (fullName !== undefined) updateData.fullName = fullName
-    if (email !== undefined) updateData.email = email
-    if (role !== undefined) updateData.role = role
-    if (position !== undefined) updateData.position = position
-    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl
-    if (timezone !== undefined) updateData.timezone = timezone
-    if (isActive !== undefined) updateData.isActive = isActive
-    if (password !== undefined && password.trim() !== '') {
-      // Hash the password before storing
-      const hashedPassword = await bcrypt.hash(password, 10)
-      updateData.password = hashedPassword
-    }
-
-    const updatedUser = await db
-      .update(users)
-      .set(updateData)
-      .where(eq(users.id, Number(id)))
-      .returning()
-
-    if (updatedUser.length === 0) {
-      return res.status(404).json({ error: 'User not found' })
-    }
-
-    const { password: _, ...userWithoutPassword } = updatedUser[0]
-    res.json(userWithoutPassword)
-  } catch (error) {
-    console.error('Error updating user:', error)
-    res.status(500).json({ error: 'Failed to update user' })
-  }
+    const id = Number(req.params.id)
+    const { username, fullName, email, role, position, avatarUrl, timezone, isActive } = req.body || {}
+    if ('password' in (req.body || {})) return res.status(400).json({ error: 'Passwords are managed by Clerk. Use Forgot password on the sign-in page.' })
+    if (role !== undefined && !['admin', 'team_member', 'client'].includes(role)) return res.status(400).json({ error: 'Invalid role' })
+    if (email !== undefined && (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))) return res.status(400).json({ error: 'Invalid email' })
+    if (fullName !== undefined && (typeof fullName !== 'string' || !fullName.trim())) return res.status(400).json({ error: 'Full name is required' })
+    if (username !== undefined && (typeof username !== 'string' || !username.trim() || username.trim().length > 50)) return res.status(400).json({ error: 'Username must contain 1–50 characters' })
+    if (isActive !== undefined && typeof isActive !== 'boolean') return res.status(400).json({ error: 'Invalid account status' })
+    if (timezone) { try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }) } catch { return res.status(400).json({ error: 'Invalid timezone' }) } }
+    const updated = await db.transaction(async tx => {
+      const user = await guardAdminChange(tx, id, req.user!.id, isActive === false || (role !== undefined && role !== 'admin'))
+      if (user.clerkUserId && email !== undefined && email.trim().toLowerCase() !== user.email.toLowerCase()) throw Object.assign(new Error('Change the verified email in Clerk first; a linked identity cannot be reassigned by editing this field'), { status: 409 })
+      if (user.teamMemberId && role === 'client') throw Object.assign(new Error('This account is linked to an employee profile. Preserve its employee role.'), { status: 409 })
+      const updateData: any = { updatedAt: new Date() }
+      if (username !== undefined) updateData.username = username.trim().toLowerCase()
+      if (fullName !== undefined) updateData.fullName = fullName.trim()
+      if (email !== undefined) updateData.email = email.trim().toLowerCase()
+      if (role !== undefined) updateData.role = role
+      if (position !== undefined) updateData.position = position
+      if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl
+      if (timezone !== undefined) updateData.timezone = timezone
+      if (isActive !== undefined) updateData.isActive = isActive
+      const [result] = await tx.update(users).set(updateData).where(eq(users.id, id)).returning()
+      if (isActive === false || (role && role !== 'client')) await tx.update(clientUsers).set({ isActive: false, updatedAt: new Date() }).where(eq(clientUsers.userId, id))
+      if (user.teamMemberId && (email !== undefined || fullName !== undefined || timezone !== undefined)) await tx.update(teamMembers).set({ ...(email !== undefined ? { email: updateData.email } : {}), ...(fullName !== undefined ? { name: updateData.fullName } : {}), ...(timezone !== undefined ? { timezone } : {}) }).where(eq(teamMembers.id, user.teamMemberId))
+      return result
+    })
+    revokeUserSockets(id)
+    const { password: _, ...safeUser } = updated
+    res.json(safeUser)
+  } catch (error: any) { res.status(error.status || (error.code === '23505' ? 409 : 500)).json({ error: error.code === '23505' ? 'Email or username is already used' : error.message || 'Failed to update user' }) }
 })
+router.put('/:id/password', (_req, res) => res.status(410).json({ error: 'Passwords are managed by Clerk. Use Forgot password on the sign-in page.' }))
 
-// Update user password
-router.put('/:id/password', async (req, res) => {
+router.post('/:id/invitation', async (req, res) => {
   try {
-    const { id } = req.params
-    const { currentPassword, newPassword } = req.body
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Current password and new password are required' })
-    }
-
-    // Get current user
-    const user = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, Number(id)))
-      .limit(1)
-
-    if (user.length === 0) {
-      return res.status(404).json({ error: 'User not found' })
-    }
-
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, user[0].password)
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Current password is incorrect' })
-    }
-
-    // Hash new password
-    const hashedNewPassword = await bcrypt.hash(newPassword, 10)
-
-    await db
-      .update(users)
-      .set({
-        password: hashedNewPassword,
-        updatedAt: new Date()
-      })
-      .where(eq(users.id, Number(id)))
-
-    res.json({ message: 'Password updated successfully' })
-  } catch (error) {
-    console.error('Error updating password:', error)
-    res.status(500).json({ error: 'Failed to update password' })
-  }
+    const [user] = await db.select().from(users).where(eq(users.id, Number(req.params.id)))
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    if (!options.invitations && !process.env.CLERK_SECRET_KEY) return res.status(503).json({ error: 'Clerk is not configured. Configure it before generating invitations.' })
+    const gateway = options.invitations || createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY }).invitations
+    const invitation = await generateInvitationLink(user, gateway)
+    res.json(invitation)
+  } catch (error: any) { res.status(error.status || 502).json({ error: error.errors?.[0]?.longMessage || error.message || 'Unable to generate invitation link' }) }
 })
 
 // Assign user to client
 router.post('/:userId/clients/:clientId', async (req, res) => {
   try {
     const { userId, clientId } = req.params
-    const { accessLevel = 'read', assignedBy } = req.body
-
-    if (!assignedBy) {
-      return res.status(400).json({ error: 'assignedBy is required' })
-    }
+    const { accessLevel = 'read' } = req.body
+    const assignedBy = req.user!.id
+    if (!['read', 'write', 'admin'].includes(accessLevel)) return res.status(400).json({ error: 'Invalid access level' })
 
     // Check if user exists and get their current role
     const user = await db
@@ -494,6 +349,8 @@ router.put('/:userId/clients/:clientId', async (req, res) => {
   try {
     const { userId, clientId } = req.params
     const { accessLevel, isActive } = req.body
+    if (accessLevel !== undefined && !['read', 'write', 'admin'].includes(accessLevel)) return res.status(400).json({ error: 'Invalid access level' })
+    if (isActive !== undefined && typeof isActive !== 'boolean') return res.status(400).json({ error: 'Invalid assignment status' })
 
     const updateData: {
       accessLevel?: 'read' | 'write' | 'admin'
@@ -516,6 +373,7 @@ router.put('/:userId/clients/:clientId', async (req, res) => {
       return res.status(404).json({ error: 'Client assignment not found' })
     }
 
+    revokeUserSockets(Number(userId))
     res.json(updatedAssignment[0])
   } catch (error) {
     console.error('Error updating client assignment:', error)
@@ -540,6 +398,7 @@ router.delete('/:userId/clients/:clientId', async (req, res) => {
       return res.status(404).json({ error: 'Client assignment not found' })
     }
 
+    revokeUserSockets(Number(userId))
     res.json({ message: 'User removed from client successfully' })
   } catch (error) {
     console.error('Error removing user from client:', error)
@@ -559,6 +418,9 @@ router.get('/clients/:clientId/users', async (req, res) => {
         fullName: users.fullName,
         email: users.email,
         role: users.role,
+        clerkUserId: users.clerkUserId,
+        authProvider: users.authProvider,
+        timezone: users.timezone,
         position: users.position,
         avatarUrl: users.avatarUrl,
         isActive: users.isActive,
@@ -581,287 +443,49 @@ router.get('/clients/:clientId/users', async (req, res) => {
   }
 })
 
-// Deactivate user (soft delete)
+// Deactivation preserves all financial, employment and audit history.
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params
-
-    const [user] = await db.select().from(users).where(eq(users.id, Number(id))).limit(1)
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
-    }
-
-    await deactivateUserAndMemberships(Number(id))
-
-    res.json({ message: 'User deactivated and memberships revoked' })
-  } catch (error) {
-    console.error('Error deactivating user:', error)
-    res.status(500).json({ error: 'Failed to deactivate user' })
-  }
-})
-
-// Hard delete user and related records (admin only)
-router.delete('/:id/hard', requireAuth, async (req, res) => {
-  try {
-    console.log('[HARD DELETE] Request received:', {
-      method: req.method,
-      path: req.path,
-      userId: req.params.id,
-      origin: req.headers.origin,
-      user: req.user ? { id: req.user.id, role: req.user.role } : 'no user',
+    const id = Number(req.params.id)
+    await db.transaction(async tx => {
+      await guardAdminChange(tx, id, req.user!.id, true)
+      await tx.update(users).set({ isActive: false, updatedAt: new Date() }).where(eq(users.id, id))
+      await tx.update(clientUsers).set({ isActive: false, updatedAt: new Date() }).where(eq(clientUsers.userId, id))
     })
-    
-    const { id } = req.params
-    const authUser = (req as any).user
-
-    if (!authUser || authUser.role !== 'admin') {
-      console.log('[HARD DELETE] Access denied - not admin')
-      const origin = req.headers.origin
-      if (origin) {
-        res.header('Access-Control-Allow-Origin', origin)
-        res.header('Access-Control-Allow-Credentials', 'true')
-      }
-      return res.status(403).json({ error: 'Admin access required' })
-    }
-
-    const userId = Number(id)
-    console.log(`[HARD DELETE] Looking for user with ID: ${userId}`)
-    
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
-    if (!user) {
-      console.log(`[HARD DELETE] User ${userId} not found`)
-      const origin = req.headers.origin
-      if (origin) {
-        res.header('Access-Control-Allow-Origin', origin)
-        res.header('Access-Control-Allow-Credentials', 'true')
-      }
-      return res.status(404).json({ error: 'User not found' })
-    }
-
-    console.log(`[HARD DELETE] Found user: ${user.email}, teamMemberId: ${user.teamMemberId}`)
-
-    // Helper: Safely delete from optional tables (outside transaction to avoid aborting it)
-    const safeDelete = async (tableName: string, operation: () => Promise<void>): Promise<void> => {
-      try {
-        await operation()
-        console.log(`[HARD DELETE] Deleted ${tableName}`)
-      } catch (error) {
-        const err = error as Error
-        const isTableMissing = err.message.includes('does not exist') || 
-                               (err.message.includes('relation') && err.message.includes('does not exist'))
-        
-        if (isTableMissing) {
-          console.log(`[HARD DELETE] ${tableName} table does not exist, skipping`)
-        } else {
-          console.error(`[HARD DELETE] Error deleting ${tableName}:`, error)
-        }
-        // Don't throw - these are optional operations
-      }
-    }
-
-    // Delete optional tables (outside transaction to prevent transaction abortion)
-    const optionalDeletions = [
-      {
-        name: 'client_users',
-        operation: () => db.delete(clientUsers).where(
-          sql`${clientUsers.userId} = ${userId} OR ${clientUsers.assignedBy} = ${userId}`
-        )
-      },
-      {
-        name: 'messages',
-        operation: () => db.delete(messages).where(
-          sql`${messages.senderId} = ${userId} OR ${messages.receiverId} = ${userId}`
-        )
-      },
-      {
-        name: 'service_requests',
-        operation: () => db.delete(serviceRequests).where(eq(serviceRequests.userId, userId))
-      },
-      {
-        name: 'financial_data',
-        operation: () => db.delete(financialData).where(eq(financialData.userId, userId))
-      },
-      {
-        name: 'feedback',
-        operation: () => db.delete(feedback).where(
-          sql`${feedback.userId} = ${userId} OR ${feedback.teamMemberId} = ${user.teamMemberId ?? -1} OR ${feedback.adminRespondedBy} = ${userId}`
-        )
-      },
-      {
-        name: 'time_entries',
-        operation: () => db.delete(timeEntries).where(
-          sql`${timeEntries.userId} = ${userId} OR ${
-            user.teamMemberId ? sql`${timeEntries.teamMemberId} = ${user.teamMemberId}` : sql`false`
-          }`
-        )
-      },
-      {
-        name: 'invoices, invoice_services, and invoice_developers',
-        operation: async () => {
-          // First get all invoices created by this user
-          const userInvoices = await db
-            .select({ id: invoices.id })
-            .from(invoices)
-            .where(eq(invoices.createdBy, userId))
-
-          if (userInvoices.length > 0) {
-            const invoiceIds = userInvoices.map((inv) => inv.id)
-
-            // Get all invoice_services for these invoices
-            const invoiceServiceIds = await db
-              .select({ id: invoiceServices.id })
-              .from(invoiceServices)
-              .where(inArray(invoiceServices.invoiceId, invoiceIds))
-
-            if (invoiceServiceIds.length > 0) {
-              const serviceIds = invoiceServiceIds.map((s) => s.id)
-              // Delete invoice_developers first (grandchild table)
-              await db.delete(invoiceDevelopers).where(inArray(invoiceDevelopers.invoiceServiceId, serviceIds))
-              console.log(`[HARD DELETE] Deleted invoice_developers for ${serviceIds.length} invoice service(s)`)
-            }
-
-            // Then delete invoice_services (child table)
-            await db.delete(invoiceServices).where(inArray(invoiceServices.invoiceId, invoiceIds))
-            // Finally delete invoices
-            await db.delete(invoices).where(inArray(invoices.id, invoiceIds))
-            console.log(`[HARD DELETE] Deleted ${userInvoices.length} invoice(s) and related services`)
-          }
-        }
-      },
-      {
-        name: 'documents',
-        operation: () => db.delete(documents).where(eq(documents.userId, userId))
-      },
-      {
-        name: 'leave_requests (by requestedBy/decisionBy) and leave_request_events',
-        operation: async () => {
-          // Find leave requests where user is requester or decision maker
-          const userLeaveRequests = await db
-            .select({ id: leaveRequests.id })
-            .from(leaveRequests)
-            .where(
-              sql`${leaveRequests.requestedBy} = ${userId} OR ${leaveRequests.decisionBy} = ${userId}`
-            )
-
-          if (userLeaveRequests.length > 0) {
-            const requestIds = userLeaveRequests.map((r) => r.id)
-            // Delete events first
-            await db.delete(leaveRequestEvents).where(inArray(leaveRequestEvents.leaveRequestId, requestIds))
-            // Then delete requests
-            await db.delete(leaveRequests).where(inArray(leaveRequests.id, requestIds))
-            console.log(`[HARD DELETE] Deleted ${userLeaveRequests.length} leave request(s) where user was requester/decision maker`)
-          }
-
-          // Also delete leave request events where user was the actor (but not already deleted above)
-          await db.delete(leaveRequestEvents).where(eq(leaveRequestEvents.actorId, userId))
-        }
-      },
-      {
-        name: 'reimbursement_requests (by requestedBy/approvedBy)',
-        operation: () => db.delete(reimbursementRequests).where(
-          sql`${reimbursementRequests.requestedBy} = ${userId} OR ${reimbursementRequests.approvedBy} = ${userId}`
-        )
-      },
-      {
-        name: 'document_folders',
-        operation: () => db.delete(documentFolders).where(eq(documentFolders.createdBy, userId))
-      }
-    ]
-
-    await Promise.all(optionalDeletions.map(({ name, operation }) => safeDelete(name, async () => { await operation() })))
-
-    // Delete optional team member data (outside transaction to prevent transaction abortion)
-    if (user.teamMemberId) {
-      await deleteOptionalTeamMemberData(user.teamMemberId)
-    }
-
-    // Now do the critical deletions in a transaction
-    try {
-      await db.transaction(async (tx) => {
-        console.log(`[HARD DELETE] Starting critical deletion of user ${userId} (${user.email})`)
-
-      // Delete critical team member data if user has teamMemberId
-      if (user.teamMemberId) {
-        await deleteCriticalTeamMemberData(tx, user.teamMemberId)
-      }
-
-      try {
-        // Delete user - THIS MUST BE LAST to avoid foreign key issues
-        await tx.delete(users).where(eq(users.id, userId))
-        console.log(`[HARD DELETE] Deleted user ${userId} (${user.email})`)
-      } catch (error) {
-        console.error('[HARD DELETE] Error deleting user:', error)
-        throw error // This is critical, so throw
-      }
-      })
-      console.log(`[HARD DELETE] Transaction completed successfully`)
-    } catch (transactionError) {
-      const txErr = transactionError as Error
-      console.error('========================================')
-      console.error('[HARD DELETE] TRANSACTION ERROR:', txErr.message)
-      console.error('[HARD DELETE] Transaction error stack:', txErr.stack)
-      console.error('========================================')
-      throw transactionError // Re-throw to be caught by outer catch
-    }
-
-    // Verify deletion - check by ID and email/username to be thorough
-    const [verifyById] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
-    const [verifyByEmail] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, user.email))
-      .limit(1)
-    const [verifyByUsername] = await db
-      .select()
-      .from(users)
-      .where(eq(users.username, user.username))
-      .limit(1)
-
-    if (verifyById || verifyByEmail || verifyByUsername) {
-      console.error(`[HARD DELETE] WARNING: User ${userId} (${user.email}) still exists after deletion!`)
-      console.error(`[HARD DELETE] Found by ID: ${!!verifyById}, by email: ${!!verifyByEmail}, by username: ${!!verifyByUsername}`)
-      return res.status(500).json({ error: 'User deletion failed - user still exists in database' })
-    }
-
-    console.log(`[HARD DELETE] Successfully deleted user ${userId} (${user.email}) and all related data`)
-    
-    // Set CORS headers explicitly
-    const origin = req.headers.origin
-    if (origin) {
-      res.header('Access-Control-Allow-Origin', origin)
-      res.header('Access-Control-Allow-Credentials', 'true')
-    }
-    
-    res.json({ message: 'User and related data deleted successfully' })
-  } catch (error) {
-    const err = error as Error
-    console.error('========================================')
-    console.error('[HARD DELETE] ERROR:', err.message)
-    console.error('[HARD DELETE] Stack:', err.stack)
-    console.error('[HARD DELETE] User ID:', req.params.id)
-    console.error('[HARD DELETE] Auth User:', req.user ? { id: req.user.id, role: req.user.role } : 'no user')
-    console.error('========================================')
-    
-    // Set CORS headers on error too
-    const origin = req.headers.origin
-    if (origin) {
-      res.header('Access-Control-Allow-Origin', origin)
-      res.header('Access-Control-Allow-Credentials', 'true')
-    }
-    
-    // Provide more specific error message if possible
-    let errorMessage = 'Failed to delete user'
-    if (err.message.includes('foreign key') || err.message.includes('constraint')) {
-      errorMessage = 'Cannot delete user: user has related records that must be deleted first'
-    } else if (err.message) {
-      errorMessage = `Failed to delete user: ${err.message}`
-    }
-    
-    res.status(500).json({ error: errorMessage })
-  }
+    revokeUserSockets(id)
+    res.json({ message: 'User deactivated; history retained' })
+  } catch (error: any) { res.status(error.status || 500).json({ error: error.message || 'Unable to deactivate user' }) }
 })
 
-// Get Slack avatar for a user by email
+// Only an unused, unlinked account without references may be permanently removed.
+router.delete('/:id/hard', async (req, res) => {
+  try {
+    const id = Number(req.params.id)
+    await db.transaction(async tx => {
+      const user = await guardAdminChange(tx, id, req.user!.id, true)
+      if (user.teamMemberId || user.clerkUserId || user.googleId || user.lastLoginAt) throw Object.assign(new Error('This user has an identity or employee history. Deactivate the account instead.'), { status: 409 })
+      const references = await tx.execute(sql`
+        SELECT ns.nspname AS schema_name, rel.relname AS table_name, col.attname AS column_name
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+        JOIN pg_attribute col ON col.attrelid = con.conrelid AND col.attnum = ANY(con.conkey)
+        WHERE con.contype = 'f' AND con.confrelid = 'users'::regclass
+      `)
+      for (const row of references.rows as { schema_name: string; table_name: string; column_name: string }[]) {
+        const quote = (value: string) => '"' + value.replace(/"/g, '""') + '"'
+        const reference = sql.raw(`${quote(row.schema_name)}.${quote(row.table_name)}`)
+        const column = sql.raw(quote(row.column_name))
+        const related = await tx.execute(sql`SELECT 1 FROM ${reference} WHERE ${column} = ${id} LIMIT 1`)
+        if (related.rows.length) throw Object.assign(new Error('This user has related records or audit history. Deactivate the account instead.'), { status: 409 })
+      }
+      await tx.delete(users).where(eq(users.id, id))
+    })
+    revokeUserSockets(id)
+    res.json({ message: 'Unused account removed; no related records were deleted' })
+  } catch (error: any) { res.status(error.status || (error.code === '23503' ? 409 : 500)).json({ error: error.code === '23503' ? 'This user has related records. Deactivate the account instead.' : error.message || 'Unable to remove user' }) }
+})
+
 router.get('/:id/slack-avatar', async (req, res) => {
   try {
     const { id } = req.params
@@ -1011,4 +635,7 @@ router.post('/sync-all-slack-avatars', async (req, res) => {
   }
 })
 
-export default router
+return router
+}
+
+export default createUsersRouter()

@@ -1,10 +1,11 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import * as schema from './schema.js'
+import { applicationPoolConfig } from './connection.js'
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
-})
+const pool = new Pool(applicationPoolConfig(
+  process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
+))
 
 export const db = drizzle(pool, { schema })
 export { pool }

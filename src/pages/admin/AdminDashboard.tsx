@@ -33,6 +33,8 @@ import { useCustomAlert } from '@/components/ui/custom-alert'
 import { EmptyState, MetricTile, SectionHeading } from '@/components/page-primitives'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { invoiceDaysOverdue } from '@/lib/invoiceDates'
+import { dashboardSourceState, dashboardCashPosition } from '@/lib/dashboardAvailability'
 
 interface DashboardStatsResponse {
   stats?: {
@@ -100,6 +102,7 @@ interface FinanceBalances {
   stripe: { available: number; pending: number; currency: string } | null
   payoneer: { available: number; currency: string } | null
   fetchedAt: string
+  errors?: string[]
 }
 
 interface AdminDashboardSummaryResponse extends DashboardStatsResponse {
@@ -236,11 +239,13 @@ export function AdminDashboard() {
   const { showAlert, showConfirm } = useCustomAlert()
   const [isSyncingAvatars, setIsSyncingAvatars] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState('')
 
   useShiftEvents()
 
   const {
     data: activeShiftsData,
+    error: activeShiftsError,
     refetch: refetchActiveShifts,
     isFetching: isFetchingActiveShifts,
   } = useQuery({
@@ -251,6 +256,7 @@ export function AdminDashboard() {
 
   const {
     data: lateShiftData,
+    error: lateShiftsError,
     refetch: refetchLateShifts,
   } = useQuery<AdminLateShifts>({
     queryKey: ['adminLateShifts'],
@@ -260,6 +266,7 @@ export function AdminDashboard() {
 
   const {
     data: dashboardSummary,
+    error: dashboardError,
     refetch: refetchDashboardSummary,
     isLoading: isLoadingDashboardSummary,
   } = useQuery<AdminDashboardSummaryResponse>({
@@ -269,13 +276,13 @@ export function AdminDashboard() {
 
   const {
     data: balances,
+    error: balancesError,
     refetch: refetchBalances,
   } = useQuery<FinanceBalances>({
     queryKey: ['financesBalancesDashboard'],
     queryFn: () => api.getFinancesBalances(),
     retry: 1,
     staleTime: 5 * 60 * 1000,
-    enabled: Boolean(dashboardSummary),
   })
 
   const dashboardData = dashboardSummary
@@ -333,17 +340,60 @@ export function AdminDashboard() {
 
   const handleRefreshAll = async () => {
     setIsRefreshing(true)
+    setRefreshError('')
     try {
-      await Promise.allSettled([
-        refetchActiveShifts(),
-        refetchLateShifts(),
-        refetchDashboardSummary(),
-        refetchBalances(),
+      const names = ['Live shifts', 'Shift exceptions', 'Executive metrics', 'Bank balances']
+      const results = await Promise.allSettled([
+        refetchActiveShifts(), refetchLateShifts(), refetchDashboardSummary(), refetchBalances(),
       ])
+      const failed = results.flatMap((result, index) => (
+        result.status === 'rejected' || result.value.isError ? [names[index]] : []
+      ))
+      if (failed.length) {
+        setRefreshError(`Refresh incomplete: ${failed.join(', ')}. Last successful data, where available, is retained below.`)
+      }
     } finally {
       setIsRefreshing(false)
     }
   }
+
+  const summaryState = dashboardSourceState(dashboardSummary, dashboardError)
+  const shiftsState = dashboardSourceState(activeShiftsData, activeShiftsError)
+  const lateState = dashboardSourceState(lateShiftData, lateShiftsError)
+  const cashPosition = dashboardCashPosition(balances, balancesError)
+  const riskCoverageComplete = summaryState.fresh && lateState.fresh
+  const shiftCountText = shiftsState.usable ? String(activeShifts.length) : 'Unavailable'
+  const sourceErrors = [
+    { name: 'Executive metrics', error: dashboardError, data: dashboardSummary, retry: refetchDashboardSummary },
+    { name: 'Live shifts', error: activeShiftsError, data: activeShiftsData, retry: refetchActiveShifts },
+    { name: 'Shift exceptions', error: lateShiftsError, data: lateShiftData, retry: refetchLateShifts },
+    { name: 'Bank balances', error: balancesError, data: balances, retry: refetchBalances },
+  ].filter(source => source.error)
+  const sourceNotices = (
+    <div className="space-y-2">
+      {refreshError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{refreshError}</p>}
+      {sourceErrors.map(source => (
+        <div key={source.name} role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <strong>{source.name} unavailable.</strong>{' '}
+          {source.error instanceof Error ? source.error.message : 'The data source could not be loaded.'}{' '}
+          {source.name === 'Bank balances'
+            ? 'Cash and runway require a successful refresh.'
+            : source.data
+              ? 'Displayed values for this source are from its last successful refresh.'
+              : 'No current values are shown for this source.'}
+          <Button size="sm" variant="outline" className="ml-3" onClick={() => { setRefreshError(''); void source.retry() }}>
+            Retry {source.name.toLowerCase()}
+          </Button>
+        </div>
+      ))}
+      {balances && !balancesError && cashPosition.reason && (
+        <div role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          {cashPosition.reason}. Cash and runway are unavailable.
+          <Button size="sm" variant="outline" className="ml-3" onClick={() => { void refetchBalances() }}>Refresh balances</Button>
+        </div>
+      )}
+    </div>
+  )
 
   const now = new Date()
   const monthStart = startOfMonth(now)
@@ -377,7 +427,7 @@ export function AdminDashboard() {
       const year = d.getFullYear()
       const entry = monthlyBreakdown.find((row) => row.month === month && row.year === year)
       const revenue = entry ? toNumber(entry.client_payments) + toNumber(entry.income) : 0
-      const burn = entry ? toNumber(entry.salary) + toNumber(entry.expense) : 0
+      const burn = entry ? toNumber(entry.salary) + toNumber(entry.expense) + toNumber(entry.extra_payment) : 0
 
       rows.push({
         label: d.toLocaleDateString('en-US', { month: 'short' }),
@@ -408,7 +458,7 @@ export function AdminDashboard() {
   ))
 
   const invoicedThisMonth = normalizedInvoices.filter((invoice) => (
-    invoice.invoiceDate &&
+    invoice.status !== 'cancelled' && invoice.invoiceDate &&
     invoice.invoiceDate >= monthStart &&
     invoice.invoiceDate <= monthEnd
   ))
@@ -428,9 +478,8 @@ export function AdminDashboard() {
 
   const overdueInvoices = normalizedInvoices.filter((invoice) => {
     if (invoice.status === 'paid' || invoice.status === 'cancelled' || invoice.status === 'draft') return false
-    if (invoice.status === 'overdue') return true
-    if (!invoice.dueDate) return false
-    return invoice.dueDate < now
+    if (!invoice.dueDate) return invoice.status === 'overdue'
+    return invoiceDaysOverdue(invoice.dueDate, now) > 0
   })
   const overdueTotal = overdueInvoices.reduce((sum, invoice) => sum + invoice.amount, 0)
 
@@ -472,12 +521,12 @@ export function AdminDashboard() {
   const lateToday = lateShiftData?.lateShifts?.length ?? 0
   const missedToday = lateShiftData?.missedShifts?.length ?? 0
 
-  const cashAvailable = (balances?.stripe?.available || 0) + (balances?.payoneer?.available || 0)
+  const cashAvailable = cashPosition.amount
   const recentBurns = financeSeries.map((row) => row.burn).filter((burn) => burn > 0).slice(-3)
   const avgMonthlyBurn = recentBurns.length > 0
     ? recentBurns.reduce((sum, value) => sum + value, 0) / recentBurns.length
     : 0
-  const runwayMonths = avgMonthlyBurn > 0 ? cashAvailable / avgMonthlyBurn : null
+  const runwayMonths = summaryState.fresh && cashAvailable !== null && avgMonthlyBurn > 0 ? cashAvailable / avgMonthlyBurn : null
 
   const topClients = useMemo<TopClientRow[]>(() => {
     const last90Days = new Date(now)
@@ -514,7 +563,7 @@ export function AdminDashboard() {
     overdueInvoices
       .map((invoice) => ({
         ...invoice,
-        overdueDays: invoice.dueDate ? daysDiff(invoice.dueDate, now) : 0,
+        overdueDays: invoiceDaysOverdue(invoice.dueDate, now),
       }))
       .sort((a, b) => b.overdueDays - a.overdueDays)
       .slice(0, 5)
@@ -603,8 +652,47 @@ export function AdminDashboard() {
 
   const isLoadingCore = isLoadingDashboardSummary
 
+  if (!summaryState.usable) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-semibold">Today</h1>
+          <Button variant="outline" onClick={handleRefreshAll} disabled={isRefreshing}>
+            {isRefreshing ? 'Refreshing…' : 'Refresh all'}
+          </Button>
+        </div>
+        {sourceNotices}
+        <Card>
+          <CardContent className="py-6">
+            <h2 className="font-semibold">{isLoadingCore ? 'Loading executive metrics…' : 'Executive metrics unavailable'}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Revenue, staffing, collections and risk totals will appear when their source loads successfully.</p>
+          </CardContent>
+        </Card>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card>
+            <CardContent className="py-6">
+              <h2 className="font-semibold">Live shifts</h2>
+              <p className="mt-2 text-2xl">{shiftCountText}</p>
+              {shiftsState.usable && !shiftsState.fresh && <p className="text-sm text-amber-700">Last successful snapshot</p>}
+              <Link href="/admin/shifts" className="text-sm underline">Open shifts</Link>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-6">
+              <h2 className="font-semibold">Shift exceptions</h2>
+              <p className="mt-2">{lateState.usable ? `${lateToday} late starts · ${missedToday} missed shifts` : 'Unavailable'}</p>
+              {lateState.usable && !lateState.fresh && <p className="text-sm text-amber-700">Last successful snapshot</p>}
+              <p className="mt-3 text-sm">Connected USD cash: {cashAvailable === null ? 'Unavailable' : formatCurrency(cashAvailable)}</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
+      {sourceNotices}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
         <div className="space-y-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -616,7 +704,7 @@ export function AdminDashboard() {
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
                 <span className="h-1 w-1 rounded-full bg-slate-300" />
-                <span>{activeShifts.length} live shifts</span>
+                <span>{shiftsState.usable?`${shiftCountText} live shifts`:'Live shifts unavailable'}</span>
                 <span className="h-1 w-1 rounded-full bg-slate-300" />
                 <span>{overdueInvoices.length} overdue invoices</span>
               </div>
@@ -661,7 +749,7 @@ export function AdminDashboard() {
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Executive note</p>
-            <p className="mt-1.5 text-sm leading-6 text-foreground">{executiveSummary}</p>
+            <p className="mt-1.5 text-sm leading-6 text-foreground">{summaryState.fresh?executiveSummary:`Last successful snapshot: ${executiveSummary}`}</p>
           </div>
         </div>
 
@@ -682,8 +770,8 @@ export function AdminDashboard() {
               <QueueLink
                 href="/admin/shifts"
                 title="Shift exceptions"
-                detail={`${lateToday} late starts and ${missedToday} missed shifts today.`}
-                value={`${lateToday + missedToday}`}
+                detail={lateState.usable?`${lateToday} late starts and ${missedToday} missed shifts.${lateState.fresh?'':' Last successful snapshot.'}`:'Shift exceptions are unavailable; no total is inferred.'}
+                value={lateState.usable?`${lateToday + missedToday}`:'Unavailable'}
               />
               <QueueLink
                 href="/admin/vacation"
@@ -827,7 +915,7 @@ export function AdminDashboard() {
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Cash available</p>
-                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{formatCurrency(cashAvailable)}</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{cashAvailable === null ? 'Unavailable' : formatCurrency(cashAvailable)}</p>
               </div>
             </div>
           </CardContent>
@@ -841,10 +929,11 @@ export function AdminDashboard() {
                 description="Signals that need attention before they affect revenue or delivery."
               />
 
+              {!riskCoverageComplete&&<p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Risk coverage is incomplete. Some sources are unavailable or show their last successful snapshot.</p>}
               {alerts.length === 0 ? (
                 <EmptyState
-                  title="No critical alerts"
-                  description="The current snapshot does not show any escalations. Keep an eye on refreshes and live exceptions."
+                  title={riskCoverageComplete?'No critical alerts':'Current risk status unavailable'}
+                  description={riskCoverageComplete?'The current snapshot does not show any escalations. Keep an eye on refreshes and live exceptions.':'Available sources contain no recorded alerts; this is not a complete current assessment.'}
                 />
               ) : (
                 <div className="space-y-3">
@@ -900,8 +989,8 @@ export function AdminDashboard() {
 
             {overdueWatchlist.length === 0 ? (
               <EmptyState
-                title="Collections look healthy"
-                description="There are no overdue invoices in the current watchlist."
+                title={summaryState.fresh?'Collections look healthy':'Collections refresh unavailable'}
+                description={summaryState.fresh?'There are no overdue invoices in the current watchlist.':'The last successful snapshot had no overdue invoices. Refresh executive metrics to check current collections.'}
               />
             ) : (
               <div className="space-y-3">
@@ -989,9 +1078,9 @@ export function AdminDashboard() {
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Live operations</p>
-                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{activeShifts.length}</p>
+                <p className="mt-2 font-display text-2xl font-semibold text-foreground">{shiftCountText}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  On shift now{isFetchingActiveShifts ? ' • updating…' : ''}
+                  {shiftsState.fresh?'On shift now':shiftsState.usable?'Last successful snapshot':'Current shift data unavailable'}{isFetchingActiveShifts ? ' • updating…' : ''}
                 </p>
               </div>
             </div>
@@ -1021,7 +1110,7 @@ export function AdminDashboard() {
                     <Briefcase className="h-4 w-4 text-emerald-600" />
                     <span className="text-sm font-semibold text-foreground">Late starts</span>
                   </div>
-                  <span className="text-sm font-semibold text-foreground">{lateToday}</span>
+                  <span className="text-sm font-semibold text-foreground">{lateState.usable?lateToday:'Unavailable'}</span>
                 </div>
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">
@@ -1030,7 +1119,7 @@ export function AdminDashboard() {
                     <CalendarClock className="h-4 w-4 text-amber-600" />
                     <span className="text-sm font-semibold text-foreground">Missed shifts</span>
                   </div>
-                  <span className="text-sm font-semibold text-foreground">{missedToday}</span>
+                  <span className="text-sm font-semibold text-foreground">{lateState.usable?missedToday:'Unavailable'}</span>
                 </div>
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-white/72 p-4">

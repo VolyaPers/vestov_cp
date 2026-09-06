@@ -2,9 +2,15 @@ import { Router } from 'express'
 import { db } from '../db/index.js'
 import { feedback, clients, users, clientServices, serviceTypes, teamMembers, clientServiceTeamMembers, clientUsers } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray } from 'drizzle-orm'
+import { canAccessClient, canAccessService } from '../services/access.js'
+import { resolveClientScope, coversDate, dateKey } from '../services/clientWorkspace.js'
 
 const router = Router()
+router.use(requireAuth, (req, res, next) => {
+  if (!req.user || !['admin', 'client'].includes(req.user.role)) return res.status(403).json({ error: 'Access denied' })
+  next()
+})
 
 // Get all feedbacks for admin (with client/service/developer info)
 router.get('/admin', requireAuth, async (req, res) => {
@@ -81,7 +87,9 @@ router.get('/client', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user
 
-    // Get feedbacks submitted by this user
+    const clientId = await resolveClientScope(req, res)
+    if (!clientId) return
+    // Preserve author privacy within the selected client workspace
     const feedbacks = await db
       .select({
         feedback: feedback,
@@ -101,7 +109,7 @@ router.get('/client', requireAuth, async (req, res) => {
       .leftJoin(clientServices, eq(feedback.clientServiceId, clientServices.id))
       .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
       .leftJoin(teamMembers, eq(feedback.teamMemberId, teamMembers.id))
-      .where(eq(feedback.userId, user.id))
+      .where(and(eq(feedback.userId, user.id), eq(feedback.clientId, clientId)))
       .orderBy(desc(feedback.createdAt))
 
     const formattedFeedbacks = feedbacks.map(f => ({
@@ -132,38 +140,13 @@ router.get('/client-services', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user
 
-    // Get clients the user has access to
-    const userClients = await db
-      .select({
-        clientId: clientUsers.clientId,
-        clientName: clients.name,
-      })
-      .from(clientUsers)
-      .innerJoin(clients, eq(clientUsers.clientId, clients.id))
-      .where(and(
-        eq(clientUsers.userId, user.id),
-        eq(clientUsers.isActive, true)
-      ))
-
-    if (userClients.length === 0) {
-      return res.json({ services: [] })
-    }
-
-    const clientIds = userClients.map(c => c.clientId)
-
-    // Get all active services for these clients
-    const services = await db
-      .select({
-        service: clientServices,
-        serviceType: serviceTypes,
-        client: clients,
-      })
-      .from(clientServices)
-      .innerJoin(clients, eq(clientServices.clientId, clients.id))
+    const clientId = await resolveClientScope(req, res)
+    if (!clientId) return
+    const services = await db.select({ service: clientServices, serviceType: serviceTypes, client: clients })
+      .from(clientServices).innerJoin(clients, eq(clientServices.clientId, clients.id))
       .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id))
-      .where(eq(clientServices.isActive, true))
-
-    const filteredServices = services.filter(s => clientIds.includes(s.service.clientId))
+      .where(eq(clientServices.clientId, clientId))
+    const filteredServices = services.filter(s => coversDate(s.service, dateKey()))
 
     const formattedServices = filteredServices.map(s => ({
       id: s.service.id,
@@ -184,6 +167,9 @@ router.get('/client-services', requireAuth, async (req, res) => {
 router.get('/service/:clientServiceId/developers', requireAuth, async (req, res) => {
   try {
     const { clientServiceId } = req.params
+    if (!await canAccessService(req.user!, Number(clientServiceId))) return res.status(403).json({ error: 'Access denied' })
+    const [service] = await db.select().from(clientServices).where(eq(clientServices.id, Number(clientServiceId)))
+    if (!service || !coversDate(service, dateKey())) return res.status(400).json({ error: 'Select an active project' })
 
     // Get all team members for this service
     const developers = await db
@@ -194,11 +180,11 @@ router.get('/service/:clientServiceId/developers', requireAuth, async (req, res)
       .from(clientServiceTeamMembers)
       .innerJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
       .where(and(
-        eq(clientServiceTeamMembers.clientServiceId, parseInt(clientServiceId)),
+        eq(clientServiceTeamMembers.clientServiceId, Number(clientServiceId)),
         eq(clientServiceTeamMembers.isActive, true)
       ))
 
-    const formattedDevelopers = developers.map(d => ({
+    const formattedDevelopers = developers.filter(d => coversDate(d.cstm, dateKey()) && d.teamMember.status === 'active').map(d => ({
       id: d.teamMember.id,
       fullName: d.teamMember.name,
       role: d.teamMember.position,
@@ -218,61 +204,31 @@ router.post('/', requireAuth, async (req, res) => {
     const user = (req as any).user
     const { clientServiceId, teamMemberId, rating, comments, feedbackType } = req.body
 
-    if (!rating || !comments) {
-      return res.status(400).json({ error: 'Rating and comments are required' })
+    if (!Number.isInteger(rating) || typeof comments !== 'string' || !comments.trim() || comments.trim().length > 10000) {
+      return res.status(400).json({ error: 'An integer rating and feedback text (1–10000 characters) are required' })
     }
 
     if (rating < 1 || rating > 5) {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' })
     }
 
-    // Determine clientId from service or from user's client association
-    let clientId: number | null = null
-
+    let selectedClientId = req.body.clientId
+    let selectedService: typeof clientServices.$inferSelect | undefined
     if (clientServiceId) {
-      // Get client from service
-      const service = await db
-        .select()
-        .from(clientServices)
-        .where(eq(clientServices.id, parseInt(clientServiceId)))
-        .limit(1)
-
-      if (service.length === 0) {
-        return res.status(404).json({ error: 'Service not found' })
-      }
-
-      clientId = service[0].clientId
-    } else {
-      // Get client from user's association
-      const userClient = await db
-        .select()
-        .from(clientUsers)
-        .where(and(
-          eq(clientUsers.userId, user.id),
-          eq(clientUsers.isActive, true)
-        ))
-        .limit(1)
-
-      if (userClient.length > 0) {
-        clientId = userClient[0].clientId
-      }
+      if (!Number.isSafeInteger(Number(clientServiceId)) || !await canAccessService(user, Number(clientServiceId))) return res.status(403).json({ error: 'Access denied to this project' })
+      ;[selectedService] = await db.select().from(clientServices).where(eq(clientServices.id, Number(clientServiceId)))
+      if (!selectedService || !coversDate(selectedService, dateKey())) return res.status(400).json({ error: 'Select an active project' })
+      if (selectedClientId !== undefined && Number(selectedClientId) !== selectedService.clientId) return res.status(400).json({ error: 'Project does not belong to the selected client' })
+      selectedClientId = selectedService.clientId
     }
-
-    // If teamMemberId provided, verify they're part of the service
-    if (teamMemberId && clientServiceId) {
-      const memberInService = await db
-        .select()
-        .from(clientServiceTeamMembers)
-        .where(and(
-          eq(clientServiceTeamMembers.clientServiceId, parseInt(clientServiceId)),
-          eq(clientServiceTeamMembers.teamMemberId, parseInt(teamMemberId)),
-          eq(clientServiceTeamMembers.isActive, true)
-        ))
-        .limit(1)
-
-      if (memberInService.length === 0) {
-        return res.status(400).json({ error: 'Team member not found in this service' })
-      }
+    const clientId = await resolveClientScope(req, res, selectedClientId)
+    if (!clientId) return
+    if (teamMemberId) {
+      if (!selectedService || !Number.isSafeInteger(Number(teamMemberId))) return res.status(400).json({ error: 'Select a project for employee feedback' })
+      const members = await db.select({ assignment: clientServiceTeamMembers, member: teamMembers }).from(clientServiceTeamMembers)
+        .innerJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
+        .where(and(eq(clientServiceTeamMembers.clientServiceId, selectedService.id), eq(clientServiceTeamMembers.teamMemberId, Number(teamMemberId))))
+      if (!members.some(row => coversDate(row.assignment, dateKey()) && row.member.status === 'active')) return res.status(400).json({ error: 'Team member not found in this active project' })
     }
 
     const [newFeedback] = await db
@@ -280,11 +236,11 @@ router.post('/', requireAuth, async (req, res) => {
       .values({
         userId: user.id,
         clientId: clientId,
-        clientServiceId: clientServiceId ? parseInt(clientServiceId) : null,
-        teamMemberId: teamMemberId ? parseInt(teamMemberId) : null,
-        rating: parseInt(rating),
+        clientServiceId: clientServiceId ? Number(clientServiceId) : null,
+        teamMemberId: teamMemberId ? Number(teamMemberId) : null,
+        rating,
         comments: comments.trim(),
-        feedbackType: feedbackType || (teamMemberId ? 'team_member' : 'general'),
+        feedbackType: teamMemberId ? 'team_member' : clientServiceId ? 'team' : 'general',
         status: 'pending',
       })
       .returning()

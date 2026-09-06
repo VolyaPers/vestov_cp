@@ -35,6 +35,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -475,82 +476,11 @@ function parseMonthLabel(monthLabel: string): string | null {
   return `${match[2]}-${String(monthIndex + 1).padStart(2, '0')}`
 }
 
-function parseSalaryPaymentDescription(
-  description: string | null,
-  amount: number | string,
-  transactionDate: string
-): ParsedSalaryPayment {
-  const text = description?.trim() || ''
-  const dashIndex = text.indexOf('—')
-  const monthLabel = dashIndex >= 0 ? text.slice(0, dashIndex).trim() : ''
-  const salaryMonth = parseMonthLabel(monthLabel) || toInputMonth(transactionDate)
-  const details = dashIndex >= 0 ? text.slice(dashIndex + 1).trim() : text
-  const parts = details ? details.split(/\s*\+\s*/) : []
-
-  let plannedBase = 0
-  let paidBase: number | null = null
-  let remainingBase: number | null = null
-  let note = ''
-  const extras: SalaryExtra[] = []
-
-  for (const part of parts) {
-    if (part.startsWith('Note:')) {
-      note = part.slice(5).trim()
-      continue
-    }
-
-    const paymentMatch = part.match(/^(Advance|Salary Payment):\s*\$?([\d.]+)\s+of\s+\$?([\d.]+)$/)
-    if (paymentMatch) {
-      paidBase = parseMoney(paymentMatch[2])
-      plannedBase = parseMoney(paymentMatch[3])
-      continue
-    }
-
-    const baseMatch = part.match(/^Base Salary:\s*\$?([\d.]+)$/)
-    if (baseMatch) {
-      plannedBase = parseMoney(baseMatch[1])
-      continue
-    }
-
-    const remainingMatch = part.match(/^Remaining Salary:\s*\$?([\d.]+)$/)
-    if (remainingMatch) {
-      remainingBase = parseMoney(remainingMatch[1])
-      continue
-    }
-
-    const extraMatch = part.match(/^(.+?):\s*\$?([\d.]+)$/)
-    if (extraMatch) {
-      extras.push({ label: extraMatch[1].trim(), amount: extraMatch[2] })
-    }
-  }
-
-  const extrasTotal = extras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
-  const paymentAmount = parseMoney(amount)
-
-  if (paidBase === null) {
-    paidBase = Math.max(paymentAmount - extrasTotal, 0)
-  }
-
-  if (plannedBase <= 0 && remainingBase !== null) {
-    plannedBase = paidBase + remainingBase
-  }
-
-  if (plannedBase <= 0) {
-    plannedBase = paidBase
-  }
-
-  if (remainingBase === null) {
-    remainingBase = Math.max(plannedBase - paidBase, 0)
-  }
-
-  return {
-    salaryMonth,
-    plannedBase,
-    paidBase,
-    remainingBase,
-    extras,
-    note,
-  }
+function parseSalaryPayment(payment: SalaryPayment): ParsedSalaryPayment {
+  const data = payment.payrollData
+  if (data?.version === 1) return { salaryMonth: data.salaryMonth, plannedBase: parseMoney(data.baseSalary), paidBase: parseMoney(data.paidBase), remainingBase: 0, extras: normalizeSalaryExtras(data.extras), note: data.note || '' }
+  // Unstructured historical records are never parsed from descriptions. Editing explicitly reconciles them.
+  return { salaryMonth: toInputMonth(payment.transactionDate), plannedBase: parseMoney(payment.amount), paidBase: parseMoney(payment.amount), remainingBase: 0, extras: [], note: '' }
 }
 
 interface OverviewData {
@@ -606,6 +536,8 @@ interface SalaryMember {
   position: string | null
   startDate: string
   monthlyRate: number
+  currentPeriod?: SalaryPeriod
+  periods?: SalaryPeriod[]
   monthlySalaryExtras?: SalaryExtra[]
   hourlyRate: number | null
   isBillable: boolean
@@ -625,7 +557,10 @@ interface RateHistoryEntry {
   createdAt: string
 }
 
+interface SalaryPeriod { salaryMonth: string; baseSalary: string; defaultExtras: SalaryExtra[]; remainingBase: string; paidBase: string; remainingExtras: SalaryExtra[]; remainingTotal: string; status: string; id?: number; legacyPaymentIds: number[]; requiresTermsReview?:boolean; termsEvidence?:{rateSource:string;extrasSource:string}; calculationNote?: string }
 interface SalaryPayment {
+  payrollData?: { version: number; salaryMonth: string; baseSalary: string; paidBase: string; extras: SalaryExtra[]; note: string } | null
+  payrollPeriodId?: number | null
   id: number
   teamMemberId: number
   teamMemberName: string
@@ -673,6 +608,7 @@ type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories' | 
 const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'categories', 'logs']
 
 export function FinancesPage() {
+  const [loadErrors,setLoadErrors]=useState<Record<string,string|undefined>>({})
   const currentYear = new Date().getFullYear()
   const [location, setLocation] = useLocation()
 
@@ -758,6 +694,9 @@ export function FinancesPage() {
     note: '',
   })
   const [salarySaving, setSalarySaving] = useState(false)
+  const [salaryReviewConfirmed,setSalaryReviewConfirmed]=useState(false)
+  const [salaryPeriodInfo, setSalaryPeriodInfo] = useState<SalaryPeriod | null>(null)
+  const [salaryRequestKey, setSalaryRequestKey] = useState('')
 
   // Rate editing state
   const [showRateModal, setShowRateModal] = useState(false)
@@ -952,13 +891,14 @@ export function FinancesPage() {
   const loadOverview = async () => {
     try {
       setOverviewLoading(true)
+      setLoadErrors(previous=>({...previous,overview:undefined}))
       const data = await api.getFinancesOverview({
         startDate: dateRange.start,
         endDate: dateRange.end,
       })
       setOverviewData(data)
     } catch (error) {
-      console.error('Failed to load finances overview:', error)
+      setLoadErrors(previous=>({...previous,overview:error instanceof Error?error.message:'Financial data could not be loaded'}))
     } finally {
       setOverviewLoading(false)
     }
@@ -967,6 +907,7 @@ export function FinancesPage() {
   const loadComparison = async () => {
     try {
       setComparisonLoading(true)
+      setLoadErrors(previous=>({...previous,comparison:undefined}))
       const compRange = getComparisonRange(dateRange.start, dateRange.end)
       const data = await api.getFinancesOverview({
         startDate: compRange.start,
@@ -974,7 +915,7 @@ export function FinancesPage() {
       })
       setComparisonData(data)
     } catch (error) {
-      console.error('Failed to load comparison data:', error)
+      setLoadErrors(previous=>({...previous,comparison:error instanceof Error?error.message:'Financial data could not be loaded'}))
     } finally {
       setComparisonLoading(false)
     }
@@ -1007,6 +948,7 @@ export function FinancesPage() {
   const loadTransactions = async () => {
     try {
       setTxLoading(true)
+      setLoadErrors(previous=>({...previous,transactions:undefined}))
       const params: Record<string, any> = {}
       if (txTypeFilter !== 'all') params.type = txTypeFilter
       if (txStartDate) params.startDate = txStartDate
@@ -1020,10 +962,12 @@ export function FinancesPage() {
             : undefined
         ),
       ])
+      if(txResult.status==='rejected')throw txResult.reason
+      if(cpResult.status==='rejected')throw cpResult.reason
       setTransactions(txResult.status === 'fulfilled' ? txResult.value : [])
       setClientPayments(cpResult.status === 'fulfilled' ? cpResult.value : [])
     } catch (error) {
-      console.error('Failed to load transactions:', error)
+      setLoadErrors(previous=>({...previous,transactions:error instanceof Error?error.message:'Financial data could not be loaded'}))
     } finally {
       setTxLoading(false)
     }
@@ -1035,7 +979,7 @@ export function FinancesPage() {
       const data = await api.getFinancesSalaries(salariesYear)
       setSalariesData(data)
     } catch (error) {
-      console.error('Failed to load salaries:', error)
+      window.alert(error instanceof Error ? error.message : 'Salary data is unavailable')
     } finally {
       setSalariesLoading(false)
     }
@@ -1306,13 +1250,13 @@ export function FinancesPage() {
     const payments = salariesData?.allPayments ?? salariesData?.recentPayments ?? []
     return payments.map((payment) => ({
       payment,
-      parsed: parseSalaryPaymentDescription(payment.description, payment.amount, payment.transactionDate),
+      parsed: parseSalaryPayment(payment),
     }))
   }, [salariesData])
 
   const getSalaryMonthContext = (teamMemberId: number, salaryMonth: string, excludePaymentId?: number) => {
     const matchingPayments = parsedSalaryPayments.filter(({ payment, parsed }) => {
-      if (payment.teamMemberId !== teamMemberId) return false
+      if (payment.payrollData?.version!==1 || payment.teamMemberId !== teamMemberId) return false
       if (parsed.salaryMonth !== salaryMonth) return false
       if (excludePaymentId && payment.id === excludePaymentId) return false
       return true
@@ -1341,116 +1285,46 @@ export function FinancesPage() {
     return getSalaryMonthContext(selectedMember.id, salaryForm.salaryMonth, editingSalaryPayment?.id)
   }, [selectedMember, salaryForm.salaryMonth, editingSalaryPayment?.id, parsedSalaryPayments])
 
-  const remainingSalaryByMember = useMemo(() => {
-    if (!salariesData?.members?.length) return new Map<number, { total: number; byMonth: Array<{ month: string; amount: number }> }>()
-
-    if (salariesYear > currentYear) {
-      return new Map(
-        salariesData.members.map((member) => [member.id, { total: 0, byMonth: [] as Array<{ month: string; amount: number }> }])
-      )
-    }
-
-    const rangeEndMonth = salariesYear === currentYear ? toInputMonth() : `${salariesYear}-12`
-    const paymentsByMemberAndMonth = new Map<number, Map<string, Array<{ parsed: ParsedSalaryPayment }>>>()
-
-    for (const entry of parsedSalaryPayments) {
-      const memberMap = paymentsByMemberAndMonth.get(entry.payment.teamMemberId) ?? new Map<string, Array<{ parsed: ParsedSalaryPayment }>>()
-      const monthEntries = memberMap.get(entry.parsed.salaryMonth) ?? []
-      monthEntries.push({ parsed: entry.parsed })
-      memberMap.set(entry.parsed.salaryMonth, monthEntries)
-      paymentsByMemberAndMonth.set(entry.payment.teamMemberId, memberMap)
-    }
-
-    return new Map(
-      salariesData.members.map((member) => {
-        const memberStartMonth = toInputMonth(member.startDate)
-        const rangeStartMonth = memberStartMonth > `${salariesYear}-01`
-          ? memberStartMonth
-          : `${salariesYear}-01`
-        const months = getMonthRange(rangeStartMonth, rangeEndMonth)
-        const defaultExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
-        const byMonth: Array<{ month: string; amount: number }> = []
-
-        const remainingTotal = months.reduce((sum, month) => {
-          const monthPayments = paymentsByMemberAndMonth.get(member.id)?.get(month) ?? []
-          const plannedBase = monthPayments.find((entry) => entry.parsed.plannedBase > 0)?.parsed.plannedBase
-            ?? parseMoney(member.monthlyRate)
-          const paidBase = monthPayments.reduce((monthSum, entry) => monthSum + entry.parsed.paidBase, 0)
-          const remainingBase = Math.max(plannedBase - paidBase, 0)
-          const remainingExtras = getRemainingDefaultExtras(defaultExtras, monthPayments)
-            .reduce((extrasSum, extra) => extrasSum + parseMoney(extra.amount), 0)
-          const remainingTotalForMonth = remainingBase + remainingExtras
-
-          if (remainingTotalForMonth > 0) {
-            byMonth.push({ month, amount: remainingTotalForMonth })
-          }
-
-          return sum + remainingTotalForMonth
-        }, 0)
-
-        return [member.id, { total: remainingTotal, byMonth }]
-      })
-    )
-  }, [currentYear, parsedSalaryPayments, salariesData, salariesYear])
+  const remainingSalaryByMember = useMemo(() => new Map((salariesData?.members || []).map(member => {
+    const periods = member.periods || []
+    const byMonth = periods.filter(p => parseMoney(p.remainingTotal) > 0).map(p => ({month:p.salaryMonth, amount:parseMoney(p.remainingTotal)}))
+    return [member.id, {total:byMonth.reduce((sum,p)=>sum+p.amount,0),byMonth}]
+  })), [salariesData])
 
   const plannedSalaryAmount = parseMoney(salaryForm.baseSalary)
   const salaryPaymentAmount = parseMoney(salaryForm.paymentAmount)
   const extrasTotal = salaryForm.extras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
-  const salaryTotal = salaryPaymentAmount + extrasTotal
+  const salaryTotal = Math.round((salaryPaymentAmount + extrasTotal) * 100) / 100
   const maxSalaryPayment = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase, 0)
   const remainingSalary = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase - salaryPaymentAmount, 0)
   const salaryOverpayment = Math.max(salaryPaymentAmount - maxSalaryPayment, 0)
   const salaryBaseTooLow = plannedSalaryAmount < salaryMonthContext.alreadyPaidBase
-  const salaryCanSave = salaryTotal > 0 && !salaryBaseTooLow && salaryOverpayment <= 0
+  const salaryNeedsReview=Boolean(salaryPeriodInfo?.requiresTermsReview || (editingSalaryPayment&&editingSalaryPayment.payrollData?.version!==1))
+  const salaryCanSave = (!salaryNeedsReview||(salaryReviewConfirmed&&Boolean(salaryForm.note.trim()))) && salaryTotal > 0 && salaryPaymentAmount >= 0 && plannedSalaryAmount >= 0 && salaryForm.extras.every(e => e.label.trim() && parseMoney(e.amount) > 0) && !salaryBaseTooLow && salaryOverpayment <= 0 && (!salaryPeriodInfo?.legacyPaymentIds?.length || !!editingSalaryPayment)
   const salaryIsAdvance = remainingSalary > 0
 
   // Salary payment
-  const openRecordSalary = (member: SalaryMember) => {
-    const salaryMonth = toInputMonth()
-    const monthContext = getSalaryMonthContext(member.id, salaryMonth)
-    const defaultBase = monthContext.existingBase || parseMoney(member.monthlyRate)
-    const defaultPayment = Math.max(defaultBase - monthContext.alreadyPaidBase, 0)
-    const defaultExtras = getRemainingDefaultExtras(
-      normalizeSalaryExtras(member.monthlySalaryExtras),
-      monthContext.matchingPayments
-    )
-
-    setEditingSalaryPayment(null)
-    setSelectedMember(member)
-    setSalaryForm({
-      salaryMonth,
-      baseSalary: formatMoneyInput(defaultBase),
-      paymentAmount: formatMoneyInput(defaultPayment),
-      extras: cloneSalaryExtras(defaultExtras),
-      transactionDate: toInputDate(),
-      note: '',
-    })
-    setShowSalaryModal(true)
+  const openRecordSalary = async (member: SalaryMember) => {
+    try {
+      const salaryMonth=toInputMonth()
+      const period:SalaryPeriod=await api.request(`/finances/salaries/${member.id}/period/${salaryMonth}`)
+      setSalaryPeriodInfo(period)
+      setSalaryReviewConfirmed(false)
+      setSalaryRequestKey(crypto.randomUUID())
+      setEditingSalaryPayment(null)
+      setSelectedMember(member)
+      setSalaryForm({salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:cloneSalaryExtras(normalizeSalaryExtras(period.remainingExtras)),transactionDate:toInputDate(),note:''})
+      setShowSalaryModal(true)
+    }catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period')}
   }
-
-  const handleSalaryMonthChange = (salaryMonth: string) => {
-    setSalaryForm((prev) => {
-      if (!selectedMember) {
-        return { ...prev, salaryMonth }
-      }
-
-      const monthContext = getSalaryMonthContext(selectedMember.id, salaryMonth, editingSalaryPayment?.id)
-      const defaultBase = monthContext.existingBase || parseMoney(selectedMember.monthlyRate)
-      const defaultExtras = getRemainingDefaultExtras(
-        normalizeSalaryExtras(selectedMember.monthlySalaryExtras),
-        monthContext.matchingPayments
-      )
-
-      return {
-        ...prev,
-        salaryMonth,
-        baseSalary: formatMoneyInput(defaultBase),
-        paymentAmount: editingSalaryPayment
-          ? prev.paymentAmount
-          : formatMoneyInput(Math.max(defaultBase - monthContext.alreadyPaidBase, 0)),
-        extras: editingSalaryPayment ? prev.extras : cloneSalaryExtras(defaultExtras),
-      }
-    })
+  const handleSalaryMonthChange = async (salaryMonth:string) => {
+    if(!selectedMember) return
+    try{
+      const period:SalaryPeriod=await api.request(`/finances/salaries/${selectedMember.id}/period/${salaryMonth}`)
+      setSalaryPeriodInfo(period)
+      setSalaryReviewConfirmed(false)
+      setSalaryForm(prev=>({...prev,salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:editingSalaryPayment?prev.paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:editingSalaryPayment?prev.extras:cloneSalaryExtras(normalizeSalaryExtras(period.remainingExtras))}))
+    }catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period')}
   }
 
   const addSalaryExtra = () => {
@@ -1479,46 +1353,12 @@ export function FinancesPage() {
     if (!selectedMember || !salaryCanSave) return
     try {
       setSalarySaving(true)
-      const monthLabel = formatMonthLabel(salaryForm.salaryMonth)
-      const paymentLabel = salaryIsAdvance ? 'Advance' : 'Salary Payment'
-      const parts: string[] = [
-        `${paymentLabel}: $${salaryPaymentAmount.toFixed(2)} of $${plannedSalaryAmount.toFixed(2)}`,
-        `Remaining Salary: $${remainingSalary.toFixed(2)}`,
-      ]
-
-      for (const extra of salaryForm.extras) {
-        if (extra.label && extra.amount) {
-          parts.push(`${extra.label}: $${parseMoney(extra.amount).toFixed(2)}`)
-        }
-      }
-
-      if (salaryForm.note) parts.push(`Note: ${salaryForm.note}`)
-      const description = `${monthLabel} — ${parts.join(' + ')}`
-
-      if (editingSalaryPayment) {
-        await api.updateFinancialTransaction(editingSalaryPayment.id, {
-          amount: salaryTotal,
-          transactionDate: salaryForm.transactionDate,
-          description,
-        })
+      const payload = {teamMemberId:selectedMember.id,amount:salaryTotal,transactionDate:salaryForm.transactionDate,salaryMonth:salaryForm.salaryMonth,baseSalary:plannedSalaryAmount,salaryPaidNow:salaryPaymentAmount,extras:salaryForm.extras,note:salaryForm.note,historicalTermsConfirmed:salaryReviewConfirmed,idempotencyKey:salaryRequestKey}
+      if(editingSalaryPayment) {
+        await api.request(`/finances/salaries/payments/${editingSalaryPayment.id}`,{method:'PUT',body:JSON.stringify(payload)})
       } else {
-        const response = await api.recordSalaryPayment({
-          teamMemberId: selectedMember.id,
-          amount: salaryTotal,
-          transactionDate: salaryForm.transactionDate,
-          description,
-          salaryMonth: salaryForm.salaryMonth,
-          baseSalary: plannedSalaryAmount,
-          salaryPaidNow: salaryPaymentAmount,
-          remainingSalary,
-          extras: salaryForm.extras,
-          note: salaryForm.note,
-        })
-
-        if (response.email && !response.email.delivered) {
-          const reason = response.email.error ? ` ${response.email.error}` : ''
-          window.alert(`Salary was recorded, but the email was not sent.${reason}`)
-        }
+        const response=await api.recordSalaryPayment(payload)
+        if(response.email && !response.email.delivered && !response.email.skipped) window.alert(`Salary recorded. Email delivery failed: ${response.email.error || 'Please check email settings.'}`)
       }
       setShowSalaryModal(false)
       setSelectedMember(null)
@@ -1526,20 +1366,22 @@ export function FinancesPage() {
       await loadSalaries()
       loadOverview()
     } catch (error) {
-      console.error('Failed to record salary payment:', error)
+      window.alert(error instanceof Error ? error.message : 'Failed to record salary payment')
     } finally {
       setSalarySaving(false)
     }
   }
 
-  // Edit salary payment — parse description back into form fields
-  const openEditSalaryPayment = (payment: SalaryPayment) => {
+  // Edit structured components, or explicitly reconcile an unstructured historical payment.
+  const openEditSalaryPayment = async (payment: SalaryPayment) => {
     const member = salariesData?.members.find((m) => m.id === payment.teamMemberId)
     if (!member) return
 
-    const parsed = parseSalaryPaymentDescription(payment.description, payment.amount, payment.transactionDate)
+    const parsed = parseSalaryPayment(payment)
+    let period:SalaryPeriod
+    try { period=await api.request(`/finances/salaries/${member.id}/period/${parsed.salaryMonth}`);setSalaryPeriodInfo(period);setSalaryReviewConfirmed(false) } catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period');return}
     const monthContext = getSalaryMonthContext(member.id, parsed.salaryMonth, payment.id)
-    const baseSalary = parsed.plannedBase || monthContext.existingBase || parseMoney(member.monthlyRate)
+    const baseSalary = period.id || payment.payrollData?.version!==1 ? parseMoney(period.baseSalary) : parsed.plannedBase || monthContext.existingBase || parseMoney(period.baseSalary)
 
     setEditingSalaryPayment(payment)
     setSelectedMember(member)
@@ -1556,13 +1398,13 @@ export function FinancesPage() {
 
   // Delete salary payment
   const handleDeleteSalaryPayment = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this salary payment?')) return
+    if (!confirm('Void this recorded payment? The original record and audit history will be preserved.')) return
     try {
       await api.deleteFinancialTransaction(id)
       await loadSalaries()
       loadOverview()
     } catch (error) {
-      console.error('Failed to delete salary payment:', error)
+      window.alert(error instanceof Error ? error.message : 'Failed to void salary payment')
     }
   }
 
@@ -1632,24 +1474,12 @@ export function FinancesPage() {
     try {
       setRateSaving(true)
       const normalizedRate = parseMoney(rateForm.monthlyRate)
-      const rateChanged = Math.abs(normalizedRate - parseMoney(rateMember.monthlyRate)) > 0.0001
-
-      if (rateChanged) {
-        await api.updateSalaryRate(rateMember.id, {
-          monthlyRate: normalizedRate,
-          effectiveDate: rateForm.effectiveDate,
-          note: rateForm.note || undefined,
-        })
-      }
-
-      await api.updateSalaryMonthlyExtras(rateMember.id, {
-        monthlyExtras: rateForm.monthlyExtras,
-      })
+      await api.request(`/finances/salaries/${rateMember.id}/rate`, {method:'PUT',body:JSON.stringify({monthlyRate:normalizedRate,effectiveDate:rateForm.effectiveDate,note:rateForm.note || undefined,monthlyExtras:rateForm.monthlyExtras})})
       setShowRateModal(false)
       setRateMember(null)
       await loadSalaries()
     } catch (error) {
-      console.error('Failed to update salary rate:', error)
+      window.alert(error instanceof Error?error.message:'Failed to update salary terms')
     } finally {
       setRateSaving(false)
     }
@@ -1685,14 +1515,14 @@ export function FinancesPage() {
       const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
       const income = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
       const salaries = entry ? parseFloat(String(entry.salary || 0)) : 0
-      const otherExpenses = entry ? parseFloat(String(entry.expense || 0)) : 0
+      const otherExpenses = entry ? (parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0))) : 0
       return { name: rangeMonths.length > 12 ? `${name} ${year}` : name, Income: income, Salaries: salaries, 'Other Expenses': otherExpenses }
     })
   }, [overviewData, rangeMonths])
 
   // Comparison computed values
   const compTotalIncome = comparisonData ? (comparisonData.clientPayments || 0) + (comparisonData.manualIncome || 0) : 0
-  const compTotalExpenses = comparisonData ? (comparisonData.manualExpenses || 0) + (comparisonData.totalSalaries || 0) : 0
+  const compTotalExpenses = comparisonData ? comparisonData.totalExpenses : 0
   const compNetPL = comparisonData?.netProfitLoss || 0
   const comparisonRange = useMemo(() => getComparisonRange(dateRange.start, dateRange.end), [dateRange.start, dateRange.end])
 
@@ -1704,7 +1534,7 @@ export function FinancesPage() {
 
   // Computed overview values
   const totalIncome = (overviewData?.clientPayments || 0) + (overviewData?.manualIncome || 0)
-  const totalExpenses = (overviewData?.manualExpenses || 0) + (overviewData?.totalSalaries || 0)
+  const totalExpenses = (overviewData?.totalExpenses || 0)
   const netPL = overviewData?.netProfitLoss || 0
   const profitMargin = totalIncome > 0 ? (netPL / totalIncome) * 100 : 0
   const salaryToRevenue = totalIncome > 0 ? ((overviewData?.totalSalaries || 0) / totalIncome) * 100 : 0
@@ -1715,7 +1545,7 @@ export function FinancesPage() {
     return rangeMonths.map(({ month, year, name }) => {
       const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
       const monthIncome = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
-      const monthExpense = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) : 0
+      const monthExpense = entry ? (parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0))) + parseFloat(String(entry.salary || 0)) : 0
       cumulative += monthIncome - monthExpense
       return { name: rangeMonths.length > 12 ? `${name} ${year}` : name, cumulative, income: monthIncome, expense: monthExpense }
     })
@@ -1726,7 +1556,7 @@ export function FinancesPage() {
     return rangeMonths.map(({ month, year, name }) => {
       const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
       const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
-      const exp = entry ? parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.salary || 0)) : 0
+      const exp = entry ? (parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0))) + parseFloat(String(entry.salary || 0)) : 0
       return { name, month, year, net: inc - exp, income: inc, expense: exp }
     }).filter(m => m.income > 0 || m.expense > 0)
   }, [overviewData, rangeMonths])
@@ -1747,6 +1577,7 @@ export function FinancesPage() {
 
   return (
     <div className="space-y-6">
+      {Object.values(loadErrors).some(Boolean)&&<div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">Some financial data is unavailable: {Object.values(loadErrors).filter(Boolean).join('; ')} <Button variant="outline" onClick={()=>{loadOverview();loadComparison();loadTransactions()}}>Retry</Button></div>}
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -2264,7 +2095,7 @@ export function FinancesPage() {
                         const entry = overviewData?.monthlyBreakdown?.find((m) => m.month === month && m.year === year)
                         const inc = entry ? parseFloat(String(entry.client_payments || 0)) + parseFloat(String(entry.income || 0)) : 0
                         const sal = entry ? parseFloat(String(entry.salary || 0)) : 0
-                        const other = entry ? parseFloat(String(entry.expense || 0)) : 0
+                        const other = entry ? (parseFloat(String(entry.expense || 0)) + parseFloat(String(entry.extra_payment || 0))) : 0
                         const net = inc - sal - other
                         const isEmpty = inc === 0 && sal === 0 && other === 0
                         const isCurrent = month - 1 === currentMonth && year === currentMonthYear
@@ -2636,7 +2467,7 @@ export function FinancesPage() {
                           <summary className="list-none cursor-pointer px-3 py-2">
                             <div className="flex items-center justify-between gap-3 text-sm">
                               <div className="flex items-center gap-2 min-w-0">
-                                <span className="stripe-text-secondary">Remaining to Pay</span>
+                                <span className="stripe-text-secondary">Recorded periods outstanding</span>
                                 <span className="text-xs stripe-text-muted whitespace-nowrap">
                                   {remainingBalance.byMonth.length} month{remainingBalance.byMonth.length === 1 ? '' : 's'}
                                 </span>
@@ -2661,10 +2492,12 @@ export function FinancesPage() {
                                 </div>
                               ))
                             ) : (
-                              <p className="pt-2 text-xs stripe-text-muted">No outstanding salary balance.</p>
+                              <p className="pt-2 text-xs stripe-text-muted">No unpaid balance in recorded salary periods.</p>
                             )}
                           </div>
                         </details>
+                        <p className="text-xs text-amber-700">Earlier months without a recorded salary period have not been reconciled. This balance does not assert that historical salary is fully paid.</p>
+                        {!member.currentPeriod?.id && <div className="rounded border p-3 text-sm"><p>Current month accrual has not been opened.</p><Button size="sm" variant="outline" className="mt-2" disabled={!!member.currentPeriod?.legacyPaymentIds?.length} onClick={async()=>{try{await api.request(`/finances/salaries/${member.id}/period/${new Date().toISOString().slice(0,7)}/initialize`,{method:'POST',body:'{}'});await loadSalaries()}catch(error){window.alert(error instanceof Error?error.message:'Unable to open salary period')}}}>Open current month accrual</Button></div>}
                         <div className="flex justify-between text-sm">
                           <span className="stripe-text-secondary">Paid This Year</span>
                           <span className="font-medium stripe-text-primary">
@@ -2729,7 +2562,7 @@ export function FinancesPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y stripe-border">
-                        {salariesData!.recentPayments.map((payment) => (
+                        {(salariesData!.allPayments || salariesData!.recentPayments).filter(p => toInputMonth(p.transactionDate).startsWith(String(salariesYear))).map((payment) => (
                           <tr key={payment.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-4 text-sm stripe-text-primary whitespace-nowrap">
                               {formatDate(payment.transactionDate)}
@@ -2738,7 +2571,7 @@ export function FinancesPage() {
                               {payment.teamMemberName}
                             </td>
                             <td className="px-6 py-4 text-sm stripe-text-secondary">
-                              {payment.description || '-'}
+                              {payment.description || '-'}{!payment.payrollData && <span className="ml-2 text-amber-700">Review required</span>}
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-blue-600 text-right whitespace-nowrap">
                               {formatCurrency(payment.amount)}
@@ -3262,7 +3095,7 @@ export function FinancesPage() {
                   htmlFor="txRecurring"
                   className="text-sm font-medium stripe-text-primary cursor-pointer"
                 >
-                  This is a recurring transaction
+                  Label as a recurring expense (manual entry each period)
                 </label>
               </div>
 
@@ -3317,9 +3150,12 @@ export function FinancesPage() {
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 />
                 <p className="text-xs stripe-text-muted mt-1.5">
-                  Defaults to the current month. Use this when paying salary for a previous or future month.
+                  Salary terms apply to periods beginning on or after their effective date, and are saved when the accrual is opened or the first payment is recorded. Attendance does not automatically change the fixed monthly amount.
+                  {salaryPeriodInfo?.legacyPaymentIds?.length ? <span className="block text-amber-700">Historical payments require review: {salaryPeriodInfo.legacyPaymentIds.join(', ')}. Open each payment in History and reconcile its month and components.</span> : null}
                 </p>
               </div>
+
+              {salaryNeedsReview&&<div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p>Historical terms need review. The suggested base may come from the current profile; unknown past monthly extras are not added automatically. Verify the salary month and every component against payroll records.</p>{editingSalaryPayment?.payrollData?.version!==1&&editingSalaryPayment?.description&&<p className="mt-2 whitespace-pre-wrap text-xs">Original description (reference only): {editingSalaryPayment.description}</p>}<label className="mt-3 flex gap-2 items-start"><input type="checkbox" checked={salaryReviewConfirmed} onChange={event=>setSalaryReviewConfirmed(event.target.checked)}/><span>I confirmed the month, base salary and extras. My reconciliation reason is entered in Note.</span></label></div>}
 
               {/* Planned Salary */}
               <div>
@@ -3332,6 +3168,7 @@ export function FinancesPage() {
                     type="number"
                     min="0"
                     step="0.01"
+                    disabled={!!salaryPeriodInfo?.id}
                     value={salaryForm.baseSalary}
                     onChange={(e) => setSalaryForm({ ...salaryForm, baseSalary: e.target.value })}
                     placeholder="0.00"
@@ -3339,7 +3176,7 @@ export function FinancesPage() {
                   />
                 </div>
                 <p className="text-xs stripe-text-muted mt-1.5">
-                  Total salary due for {formatMonthLabel(salaryForm.salaryMonth)} before any partial payouts.
+                  Fixed monthly USD salary. An adjustment requires a reason in the note; saved periods retain their base salary.
                 </p>
               </div>
 
@@ -3362,7 +3199,7 @@ export function FinancesPage() {
                   />
                 </div>
                 <p className="text-xs stripe-text-muted mt-1.5">
-                  Enter a partial payout to record an advance. Leave extras below for bonuses or reimbursements.
+                  Enter a partial payout to record an advance. Use extras for bonuses. Record workspace reimbursements from the Reimbursements page to keep their payment references linked.
                 </p>
               </div>
 
@@ -3619,7 +3456,7 @@ export function FinancesPage() {
                   <div>
                     <label className="block text-sm font-medium stripe-text-secondary">Default Monthly Extras</label>
                     <p className="text-xs stripe-text-muted mt-1">
-                      These extras will auto-fill in future salary payments and can still be changed during payout.
+                      Rates and defaults apply to monthly periods beginning on or after this date. Saved salary periods retain their original terms.
                     </p>
                   </div>
                   <button
@@ -3634,7 +3471,7 @@ export function FinancesPage() {
 
                 {rateForm.monthlyExtras.length === 0 && (
                   <p className="text-xs stripe-text-muted italic py-2">
-                    No default monthly extras. Add bonuses, subscriptions, or fixed reimbursements here.
+                    No default monthly extras. Add regular bonuses or subscriptions here. Workspace reimbursements are paid from the Reimbursements page.
                   </p>
                 )}
 

@@ -28,6 +28,7 @@ interface VacationBalance {
 
   // Financial
   cashableAtYearEnd: number
+  allocationWarning?: string | null
   willExpire: number
 
   // Metadata
@@ -55,13 +56,15 @@ interface VacationBalanceCardProps {
   balance: VacationBalance | null
   isLoading?: boolean
   error?: Error | null
+  employeeId?: number
+  onReviewAllocation?: () => void
 }
 
-export function VacationBalanceCard({ balance, isLoading, error }: VacationBalanceCardProps) {
+export function VacationBalanceCard({ balance, isLoading, error, employeeId, onReviewAllocation }: VacationBalanceCardProps) {
   // Fetch sick leave balance
   const { data: sickLeaveBalance, isLoading: sickLeaveLoading } = useQuery<SickLeaveBalance>({
-    queryKey: ['sickLeaveBalance'],
-    queryFn: () => api.getMySickLeaveBalance(),
+    queryKey: ['sickLeaveBalance', employeeId ?? 'me'],
+    queryFn: () => employeeId ? api.request(`/vacation/sick-leave-balance/${employeeId}`) : api.getMySickLeaveBalance(),
     enabled: !isLoading && !error && !!balance,
   })
 
@@ -111,7 +114,7 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
   }
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(`${dateStr}T12:00:00`).toLocaleDateString('en-US', {
       month: 'long',
       day: 'numeric',
       year: 'numeric'
@@ -317,6 +320,8 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
             </div>
           ) : null}
 
+          {balance.allocationWarning && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p>{balance.allocationWarning}</p></div>}
+          {onReviewAllocation && <button type="button" className="text-sm font-semibold underline" onClick={onReviewAllocation}>Review individual allocation</button>}
           {/* Financial Summary */}
           <div className="p-4 bg-gray-50 rounded-lg space-y-3">
             <div className="flex items-center gap-2 mb-2">
@@ -329,9 +334,9 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="flex items-center gap-1 text-green-600">
-                  Cashable (up to 5):
+                  Eligible for review (up to 5):
                   <Tooltip
-                    content="At cycle end, receive payment for up to 5 unused vacation days instead of losing them."
+                    content="At cycle end, up to 5 unused days are eligible for compensation review. Payment requires an administrator to approve and record a salary adjustment; this display does not create a payment."
                     side="top"
                   >
                     <Info className="h-3.5 w-3.5 text-green-500 cursor-help" />
@@ -344,7 +349,7 @@ export function VacationBalanceCard({ balance, isLoading, error }: VacationBalan
                   <span className="flex items-center gap-1 text-red-600">
                     Will Expire:
                     <Tooltip
-                      content="Days beyond the 5 cashable will be lost if not used. Take them for your health and wellbeing!"
+                      content="Unused days beyond the compensation eligibility limit expire at cycle end. Eligibility alone is not a recorded payment."
                       side="top"
                     >
                       <Info className="h-3.5 w-3.5 text-red-500 cursor-help" />

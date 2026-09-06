@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { api } from '@/lib/api'
 
 interface RoadmapData {
+  milestones: Array<{ year: number; vacationDays: number; reimbursementLimit: number }>
   currentYear: number
   startDate: string
   yearsAtCompany: number
@@ -45,24 +46,18 @@ export function EmployeeRoadmap() {
   const getMilestones = (): Milestone[] => {
     if (!data) return []
 
-    const milestones = [
-      { year: 1, vacationDays: 16, reimbursementLimit: 300 },
-      { year: 2, vacationDays: 20, reimbursementLimit: 400 },
-      { year: 3, vacationDays: 24, reimbursementLimit: 500 },
-      { year: 4, vacationDays: 24, reimbursementLimit: 600 },
-      { year: 5, vacationDays: 24, reimbursementLimit: 700 },
-    ]
+    const milestones = data.milestones || []
 
     return milestones.map(m => ({
       ...m,
       isUnlocked: data.yearsAtCompany >= m.year,
-      isCurrent: data.yearsAtCompany === m.year,
+      isCurrent: Math.min(data.yearsAtCompany, 5) === m.year,
       isNext: data.yearsAtCompany + 1 === m.year
     }))
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString.length === 10 ? `${dateString}T12:00:00` : dateString).toLocaleDateString('en-US', {
       month: 'long',
       day: 'numeric',
       year: 'numeric'
@@ -109,6 +104,7 @@ export function EmployeeRoadmap() {
         </div>
       </div>
 
+      {data.currentVacationDays !== milestones.find(m => m.year === Math.min(data.yearsAtCompany, 5))?.vacationDays && <p className="text-sm text-amber-700">Your current cycle has an individual allocation of {data.currentVacationDays} vacation days. The roadmap below shows career-year settings for new cycles.</p>}
       {/* Current Status Card */}
       <Card className="glass-tint-blue">
         <CardHeader>

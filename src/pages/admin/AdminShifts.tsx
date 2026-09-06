@@ -1,3 +1,4 @@
+import { ShiftHistory } from '@/components/ShiftHistory'
 import { useCallback, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Clock, Coffee, AlertTriangle, Calendar, Users, TrendingUp } from 'lucide-react'
@@ -17,6 +18,8 @@ interface Shift {
   status: 'active' | 'on_break' | 'completed'
   isLate: boolean
   lateMinutes: number
+  workingMinutes?: number
+  breakMinutes?: number
   employee: {
     id: number
     name: string
@@ -36,13 +39,13 @@ export function AdminShifts() {
   const { data: activeShiftsData, isLoading: isLoadingActive, refetch: refetchActive } = useQuery({
     queryKey: ['adminActiveShifts'],
     queryFn: () => api.getAdminActiveShifts(),
-    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+    refetchInterval: 60000, // Fallback: refresh every 5 minutes
   })
 
   const { data: lateShiftsData, isLoading: isLoadingLate, refetch: refetchLate } = useQuery({
     queryKey: ['adminLateShifts'],
     queryFn: () => api.getAdminLateShifts(),
-    refetchInterval: 5 * 60 * 1000, // Fallback: refresh every 5 minutes
+    refetchInterval: 60000, // Fallback: refresh every 5 minutes
   })
 
   // Store refetch functions in refs to avoid stale closures
@@ -65,7 +68,7 @@ export function AdminShifts() {
   const { data: preferredShiftsData, isLoading: isLoadingPreferred } = useQuery({
     queryKey: ['allPreferredShifts'],
     queryFn: () => api.getAllPreferredShifts(),
-    refetchInterval: 5 * 60 * 1000,
+    refetchInterval: 60000,
   })
 
   const activeShifts: Shift[] = activeShiftsData?.shifts ?? []
@@ -229,7 +232,7 @@ export function AdminShifts() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Duration</span>
-                      <span className="font-semibold text-foreground">{getDuration(shift.startTime)}</span>
+                      <span className="font-semibold text-foreground">{Math.floor((shift.workingMinutes || 0) / 60)}h {Math.floor((shift.workingMinutes || 0) % 60)}m work · {Math.floor(shift.breakMinutes || 0)}m breaks</span>
                     </div>
                   </div>
 
@@ -402,6 +405,7 @@ export function AdminShifts() {
           )}
         </div>
       )}
+      <ShiftHistory administration />
     </div>
   )
 }

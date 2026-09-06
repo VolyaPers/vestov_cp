@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Building, Calendar, Mail, Shield, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { ClientLoadError } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
@@ -33,6 +34,8 @@ const clientStatusTone = {
 } as const
 
 export function ClientProfile() {
+  const [loadError, setLoadError] = useState('')
+  const [retry, setRetry] = useState(0)
   const [user, setUser] = useState<UserProfile | null>(null)
   const [assignedClients, setAssignedClients] = useState<ClientInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -40,20 +43,22 @@ export function ClientProfile() {
   useEffect(() => {
     const loadProfileData = async () => {
       try {
+        setIsLoading(true)
+        setLoadError('')
         const currentUser = await api.getCurrentUser()
         setUser(currentUser)
 
         const clients = await api.getClients()
         setAssignedClients(clients)
       } catch (error) {
-        console.error('Failed to load profile data:', error)
+        setLoadError('Unable to load your profile and client access.')
       } finally {
         setIsLoading(false)
       }
     }
 
     loadProfileData()
-  }, [])
+  }, [retry])
 
   if (isLoading) {
     return (
@@ -62,6 +67,8 @@ export function ClientProfile() {
       </div>
     )
   }
+
+  if (loadError) return <ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />
 
   if (!user) {
     return (

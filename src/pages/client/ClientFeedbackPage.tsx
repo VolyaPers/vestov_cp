@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   Briefcase,
   Calendar,
@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { useClientWorkspace, ClientLoadError } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
@@ -48,6 +49,10 @@ interface Feedback {
 
 export function ClientFeedbackPage() {
   const { showAlert } = useCustomAlert()
+  const { clientId } = useClientWorkspace()
+  const [loadError, setLoadError] = useState('')
+  const [developerError, setDeveloperError] = useState('')
+  const developerRequest = useRef(0)
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [developers, setDevelopers] = useState<Developer[]>([])
@@ -61,9 +66,14 @@ export function ClientFeedbackPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [clientId])
 
   useEffect(() => {
+    developerRequest.current += 1
+    setLoadingDevelopers(false)
+    setSelectedDeveloperId('')
+    setDevelopers([])
+    setDeveloperError('')
     if (selectedServiceId && selectedServiceId !== 'none') {
       loadDevelopers(parseInt(selectedServiceId, 10))
     } else {
@@ -75,29 +85,30 @@ export function ClientFeedbackPage() {
   const loadData = async () => {
     try {
       setIsLoading(true)
+      setLoadError('')
       const [feedbacksData, servicesData] = await Promise.all([
-        api.getClientFeedbacks(),
-        api.getFeedbackClientServices(),
+        api.getClientFeedbacks(clientId),
+        api.getFeedbackClientServices(clientId),
       ])
       setFeedbacks(feedbacksData.feedbacks)
       setServices(servicesData.services)
     } catch (error) {
-      console.error('Error loading data:', error)
+      setLoadError('Unable to load your feedback and projects. Please try again.')
     } finally {
       setIsLoading(false)
     }
   }
 
   const loadDevelopers = async (serviceId: number) => {
+    const requestId = ++developerRequest.current
     try {
       setLoadingDevelopers(true)
       const data = await api.getFeedbackServiceDevelopers(serviceId)
-      setDevelopers(data.developers)
+      if (requestId === developerRequest.current) setDevelopers(data.developers)
     } catch (error) {
-      console.error('Error loading developers:', error)
-      setDevelopers([])
+      if (requestId === developerRequest.current) { setDevelopers([]); setDeveloperError('Unable to load this project’s team. Retry before submitting.') }
     } finally {
-      setLoadingDevelopers(false)
+      if (requestId === developerRequest.current) setLoadingDevelopers(false)
     }
   }
 
@@ -117,6 +128,7 @@ export function ClientFeedbackPage() {
     try {
       setIsSubmitting(true)
       await api.submitFeedback({
+        clientId,
         clientServiceId: selectedServiceId && selectedServiceId !== 'none' ? parseInt(selectedServiceId, 10) : undefined,
         teamMemberId: selectedDeveloperId && selectedDeveloperId !== 'none' ? parseInt(selectedDeveloperId, 10) : undefined,
         rating,
@@ -148,6 +160,8 @@ export function ClientFeedbackPage() {
           <button
             key={star}
             type="button"
+            aria-label={`Rate ${star} out of 5`}
+            aria-pressed={star === currentRating}
             onClick={interactive ? () => setRating(star) : undefined}
             disabled={!interactive}
             className={interactive ? 'cursor-pointer transition-transform hover:scale-110' : 'cursor-default'}
@@ -178,6 +192,8 @@ export function ClientFeedbackPage() {
       </div>
     )
   }
+
+  if (loadError) return <ClientLoadError message={loadError} onRetry={loadData} />
 
   const respondedCount = feedbacks.filter((feedback) => feedback.status === 'reviewed').length
   const averageRating = feedbacks.length
@@ -259,6 +275,7 @@ export function ClientFeedbackPage() {
 
                 <div>
                   <Label htmlFor="developer">Team Member</Label>
+                  {developerError && <ClientLoadError message={developerError} onRetry={() => loadDevelopers(Number(selectedServiceId))} />}
                   {!selectedServiceId || selectedServiceId === 'none' || loadingDevelopers ? (
                     <div className="mt-2 flex h-11 w-full items-center justify-between rounded-xl border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
                       {loadingDevelopers ? 'Loading team members...' : 'Select a service first'}
@@ -301,6 +318,7 @@ export function ClientFeedbackPage() {
                   onChange={(event) => setComments(event.target.value)}
                   placeholder="What is working well, where are you seeing friction, and what should improve?"
                   rows={6}
+                  maxLength={10000}
                   className="mt-2"
                 />
               </div>
@@ -309,7 +327,7 @@ export function ClientFeedbackPage() {
                 <p className="text-sm text-muted-foreground">
                   Feedback can be general, service-specific, or attached to a teammate.
                 </p>
-                <Button type="submit" disabled={isSubmitting || rating === 0 || !comments.trim()}>
+                <Button type="submit" disabled={isSubmitting || loadingDevelopers || !!developerError || rating === 0 || !comments.trim()}>
                   {isSubmitting ? 'Submitting...' : 'Submit feedback'}
                 </Button>
               </div>

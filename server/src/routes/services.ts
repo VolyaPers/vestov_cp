@@ -1,18 +1,39 @@
 import { Router } from 'express'
-import { Pool } from 'pg'
 import { eq, desc, and, sql, inArray } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/node-postgres'
 import { serviceTypes, clientServices, clients, teamMembers, users, clientServiceTeamMembers, clientUsers } from '../db/schema.js'
-import * as schema from '../db/schema.js'
 import { requireAdmin, requireAuth } from '../middleware/auth.js'
 
-const router = Router()
+import { db } from '../db/index.js'
+import { canAccessClient, canAccessService } from '../services/access.js'
+import { clientServiceDto, clientAssignmentDto, coversDate, dateKey } from '../services/clientWorkspace.js'
 
-// Initialize database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/vestov_portal',
+const router = Router()
+router.use(requireAuth)
+router.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' })
+  if (!['POST', 'PUT', 'PATCH'].includes(req.method)) return next()
+  for (const key of ['rate', 'hourlyRate', 'fixedPrice', 'serviceLevelPrice']) {
+    const value = req.body?.[key]
+    if (value !== undefined && value !== null && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0)) return res.status(400).json({ error: `${key} must be a non-negative number` })
+  }
+  for (const key of ['startDate', 'endDate', 'contractStart', 'contractEnd']) {
+    const value = req.body?.[key]
+    if (value && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value)) return res.status(400).json({ error: `Invalid ${key}` })
+  }
+  if (req.body?.startDate && req.body?.endDate && req.body.startDate > req.body.endDate) return res.status(400).json({ error: 'End date cannot precede start date' })
+  if (req.body?.workSchedule !== undefined) {
+    const schedule = req.body.workSchedule
+    const days = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
+    if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule) || Object.entries(schedule).some(([day, value]) => !days.has(day) || !['full', 'half', 'off'].includes(String(value)))) return res.status(400).json({ error: 'Invalid project work schedule' })
+  }
+  next()
 })
-const db = drizzle(pool, { schema })
+for (const parameter of ['id', 'clientId', 'serviceId', 'assignmentId']) {
+  router.param(parameter, (_req, res, next, value) => {
+    if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0) return res.status(400).json({ error: `Invalid ${parameter}` })
+    next()
+  })
+}
 
 // Get all service types
 router.get('/service-types', requireAuth, async (req, res) => {
@@ -32,7 +53,7 @@ router.get('/service-types', requireAuth, async (req, res) => {
 })
 
 // Create new service type
-router.post('/service-types', requireAuth, async (req, res) => {
+router.post('/service-types', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, description, category, billingModel } = req.body
 
@@ -58,7 +79,7 @@ router.post('/service-types', requireAuth, async (req, res) => {
 })
 
 // Update service type
-router.put('/service-types/:id', requireAuth, async (req, res) => {
+router.put('/service-types/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params
     const { name, description, category, billingModel } = req.body
@@ -87,7 +108,7 @@ router.put('/service-types/:id', requireAuth, async (req, res) => {
 })
 
 // Delete service type
-router.delete('/service-types/:id', requireAuth, async (req, res) => {
+router.delete('/service-types/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params
     console.log('Attempting to delete service type:', id)
@@ -127,7 +148,7 @@ router.delete('/service-types/:id', requireAuth, async (req, res) => {
 })
 
 // Get client services with details
-router.get('/client-services', requireAuth, async (req, res) => {
+router.get('/client-services', requireAuth, requireAdmin, async (req, res) => {
   try {
     const services = await db
       .select({
@@ -165,7 +186,7 @@ router.get('/client-services', requireAuth, async (req, res) => {
 })
 
 // Create new client service assignment
-router.post('/client-services', requireAuth, async (req, res) => {
+router.post('/client-services', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { clientId, serviceTypeId, rate, startDate, endDate } = req.body
 
@@ -193,7 +214,7 @@ router.post('/client-services', requireAuth, async (req, res) => {
 })
 
 // Update client service
-router.put('/client-services/:id', requireAuth, async (req, res) => {
+router.put('/client-services/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params
     const { rate, endDate, isActive } = req.body
@@ -221,7 +242,7 @@ router.put('/client-services/:id', requireAuth, async (req, res) => {
 })
 
 // Get service analytics
-router.get('/analytics', requireAuth, async (req, res) => {
+router.get('/analytics', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Service type distribution
     const serviceDistribution = await db
@@ -274,7 +295,7 @@ router.get('/analytics', requireAuth, async (req, res) => {
 // Client Management Routes
 
 // Client analytics (must come before /clients/:id route)
-router.get('/clients/analytics', requireAuth, async (req, res) => {
+router.get('/clients/analytics', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Total clients count
     const totalClients = await db
@@ -333,7 +354,7 @@ router.get('/clients', requireAuth, async (req, res) => {
 
     let clientsWithServices;
 
-    if (req.user?.role === 'admin' || req.user?.role === 'team_member') {
+    if (req.user?.role === 'admin') {
       // Admin and team members can see all clients
       clientsWithServices = await db
         .select({
@@ -430,15 +451,7 @@ router.get('/clients', requireAuth, async (req, res) => {
     const clientsWithServiceData = clientsWithServices.map((client) => {
       const services = servicesByClient.get(client.id) ?? []
 
-      const hasActiveService = services.some((service) => {
-        if (!service.endDate) {
-          return true
-        }
-
-        const endDate = new Date(service.endDate)
-        endDate.setHours(0, 0, 0, 0)
-        return endDate >= today
-      })
+      const hasActiveService = services.some((service) => coversDate(service, dateKey()))
 
       const calculatedStatus = services.length === 0
         ? 'inactive'
@@ -449,11 +462,11 @@ router.get('/clients', requireAuth, async (req, res) => {
       return {
         ...client,
         status: calculatedStatus,
-        services,
-        activeServicesCount: services.filter((service) => service.isActive).length,
-        totalMonthlyRevenue: services
+        services: req.user?.role === 'admin' ? services : services.map(clientServiceDto),
+        activeServicesCount: services.filter((service) => coversDate(service, dateKey())).length,
+        totalMonthlyRevenue: req.user?.role === 'admin' ? services
           .filter((service) => service.isActive)
-          .reduce((sum, service) => sum + (parseFloat(service.rate?.toString() || '0') || 0), 0),
+          .reduce((sum, service) => sum + (parseFloat(service.rate?.toString() || '0') || 0), 0) : undefined,
       }
     })
 
@@ -467,6 +480,7 @@ router.get('/clients', requireAuth, async (req, res) => {
 
 router.get('/service-developer-assignments', requireAuth, async (req, res) => {
   try {
+    if (!req.user || !['admin', 'client'].includes(req.user.role)) return res.status(403).json({ error: 'Access denied' })
     const rawClientId = typeof req.query.clientId === 'string' ? Number.parseInt(req.query.clientId, 10) : NaN
     const rawClientIds = typeof req.query.clientIds === 'string'
       ? req.query.clientIds
@@ -542,7 +556,7 @@ router.get('/service-developer-assignments', requireAuth, async (req, res) => {
       assignmentsByService[row.serviceId].push(row)
     }
 
-    res.json(assignmentsByService)
+    res.json(req.user?.role === 'admin' ? assignmentsByService : Object.fromEntries(Object.entries(assignmentsByService).map(([id, rows]) => [id, rows.map(clientAssignmentDto)])))
   } catch (error) {
     console.error('Error fetching batched service developers:', error)
     res.status(500).json({ error: 'Failed to fetch batched service developers' })
@@ -552,6 +566,7 @@ router.get('/service-developer-assignments', requireAuth, async (req, res) => {
 // Get specific client with detailed service assignments
 router.get('/clients/:id', requireAuth, async (req, res) => {
   try {
+    if (!req.user || !['admin', 'client'].includes(req.user.role)) return res.status(403).json({ error: 'Access denied' })
     const { id } = req.params
     console.log('Fetching client details for ID:', id)
 
@@ -624,14 +639,7 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const hasActiveService = services.some(service => {
-      if (!service.endDate) {
-        return true // Ongoing service
-      }
-      const endDate = new Date(service.endDate)
-      endDate.setHours(0, 0, 0, 0)
-      return endDate >= today // Active if end date is today or later
-    })
+    const hasActiveService = services.some(service => coversDate(service, dateKey()))
 
     const calculatedStatus = services.length === 0
       ? 'inactive'
@@ -641,7 +649,7 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
 
     const visibleServices = req.user?.role === 'admin'
       ? services
-      : services.map(({ projectBotAuthorizedSlackUserIds: _authorizedIds, ...service }) => service)
+      : services.map(clientServiceDto)
 
     res.json({
       ...client,
@@ -657,7 +665,7 @@ router.get('/clients/:id', requireAuth, async (req, res) => {
 })
 
 // Remove/deactivate client service assignment
-router.delete('/clients/:clientId/services/:serviceId', requireAuth, async (req, res) => {
+router.delete('/clients/:clientId/services/:serviceId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { clientId, serviceId } = req.params
     const { permanent } = req.query
@@ -739,7 +747,7 @@ router.post('/clients/:clientId/services', requireAuth, requireAdmin, async (req
 })
 
 // Create new client
-router.post('/clients', requireAuth, async (req, res) => {
+router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
   try {
     const {
       name,
@@ -791,7 +799,7 @@ router.post('/clients', requireAuth, async (req, res) => {
 })
 
 // Update client
-router.put('/clients/:id', requireAuth, async (req, res) => {
+router.put('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params
     const {
@@ -843,7 +851,7 @@ router.put('/clients/:id', requireAuth, async (req, res) => {
 })
 
 // Get all developers
-router.get('/developers', requireAuth, async (req, res) => {
+router.get('/developers', requireAuth, requireAdmin, async (req, res) => {
   try {
     console.log('Fetching developers for user:', req.user?.username)
     const devs = await db
@@ -863,6 +871,8 @@ router.get('/developers', requireAuth, async (req, res) => {
 // Get developers assigned to a specific client service
 router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, async (req, res) => {
   try {
+    if (!req.user || !['admin', 'client'].includes(req.user.role)) return res.status(403).json({ error: 'Access denied' })
+    if (!await canAccessClient(req.user, Number(req.params.clientId)) || !await canAccessService(req.user, Number(req.params.serviceId))) return res.status(403).json({ error: 'Access denied' })
     const { clientId, serviceId } = req.params
     console.log(`Fetching developers for client ${clientId}, service ${serviceId}`)
 
@@ -890,7 +900,7 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
         eq(clientServices.id, parseInt(serviceId))
       ))
 
-    res.json(assignedDevelopers)
+    res.json(req.user?.role === 'admin' ? assignedDevelopers : assignedDevelopers.map(clientAssignmentDto))
   } catch (error) {
     console.error('Error fetching service developers:', error)
     res.status(500).json({ error: 'Failed to fetch service developers' })
@@ -898,7 +908,7 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
 })
 
 // Add developer to client service
-router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, async (req, res) => {
+router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { clientId, serviceId } = req.params
     const { teamMemberId, employmentType, hourlyRate, fixedPrice, startDate } = req.body
@@ -948,8 +958,10 @@ router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, as
 })
 
 // Remove developer from client service
-router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId', requireAuth, async (req, res) => {
+router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const [parentService] = await db.select({ id: clientServices.id }).from(clientServices).where(and(eq(clientServices.id, Number(req.params.serviceId)), eq(clientServices.clientId, Number(req.params.clientId))))
+    if (!parentService) return res.status(404).json({ error: 'Service not found for this client' })
     const { clientId, serviceId, assignmentId } = req.params
     const { permanent } = req.query
     console.log(`${permanent ? 'Permanently removing' : 'Deactivating'} developer assignment ${assignmentId}`)
@@ -957,7 +969,7 @@ router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId',
     if (permanent === 'true') {
       const [deletedAssignment] = await db
         .delete(clientServiceTeamMembers)
-        .where(eq(clientServiceTeamMembers.id, parseInt(assignmentId)))
+        .where(and(eq(clientServiceTeamMembers.id, parseInt(assignmentId)), eq(clientServiceTeamMembers.clientServiceId, parseInt(serviceId))))
         .returning()
 
       if (!deletedAssignment) {
@@ -973,7 +985,7 @@ router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId',
           isActive: false,
           endDate: new Date().toISOString().split('T')[0],
         })
-        .where(eq(clientServiceTeamMembers.id, parseInt(assignmentId)))
+        .where(and(eq(clientServiceTeamMembers.id, parseInt(assignmentId)), eq(clientServiceTeamMembers.clientServiceId, parseInt(serviceId))))
         .returning()
 
       if (!updatedAssignment) {
@@ -990,8 +1002,10 @@ router.delete('/clients/:clientId/services/:serviceId/developers/:assignmentId',
 })
 
 // Update developer pricing and schedule for a service assignment
-router.patch('/clients/:clientId/services/:serviceId/developers/:assignmentId', requireAuth, async (req, res) => {
+router.patch('/clients/:clientId/services/:serviceId/developers/:assignmentId', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const [parentService] = await db.select({ id: clientServices.id }).from(clientServices).where(and(eq(clientServices.id, Number(req.params.serviceId)), eq(clientServices.clientId, Number(req.params.clientId))))
+    if (!parentService) return res.status(404).json({ error: 'Service not found for this client' })
     const { clientId, serviceId, assignmentId } = req.params
     const { hourlyRate, fixedPrice, workSchedule } = req.body
     console.log(`Updating developer assignment ${assignmentId}`)
@@ -1004,7 +1018,7 @@ router.patch('/clients/:clientId/services/:serviceId/developers/:assignmentId', 
     const [updatedAssignment] = await db
       .update(clientServiceTeamMembers)
       .set(updateData)
-      .where(eq(clientServiceTeamMembers.id, parseInt(assignmentId)))
+      .where(and(eq(clientServiceTeamMembers.id, parseInt(assignmentId)), eq(clientServiceTeamMembers.clientServiceId, parseInt(serviceId))))
       .returning()
 
     if (!updatedAssignment) {
@@ -1057,7 +1071,7 @@ router.put('/clients/:clientId/services/:serviceId', requireAuth, requireAdmin, 
 })
 
 // Update service-level pricing (legacy endpoint)
-router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async (req, res) => {
+router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { clientId, serviceId } = req.params
     const { serviceLevelPrice } = req.body
@@ -1088,7 +1102,7 @@ router.put('/clients/:clientId/services/:serviceId/pricing', requireAuth, async 
 
 // Developer CRUD operations
 // Update developer
-router.put('/developers/:id', requireAuth, async (req, res) => {
+router.put('/developers/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params
     const { name, email, skills, hourlyRate, experienceLevel, status, bio, location } = req.body
@@ -1123,7 +1137,7 @@ router.put('/developers/:id', requireAuth, async (req, res) => {
 })
 
 // Delete developer
-router.delete('/developers/:id', requireAuth, async (req, res) => {
+router.delete('/developers/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params
     console.log('Deleting developer:', id)

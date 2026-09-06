@@ -39,6 +39,9 @@ const EmployeeReimbursements = lazy(async () => {
   return { default: module.EmployeeReimbursements }
 })
 
+const EmployeeSalary = lazy(async () => ({ default: (await import('@/pages/employee/EmployeeSalary')).EmployeeSalary }))
+const EmployeeSalaryRoute = createLazyRoute(EmployeeSalary)
+
 const EmployeeRoadmap = lazy(async () => {
   const module = await import('@/pages/employee/EmployeeRoadmap')
   return { default: module.EmployeeRoadmap }
@@ -147,6 +150,7 @@ export function TeamMemberLayout({ user }: TeamMemberLayoutProps = {}) {
           <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
             <div className="mx-auto max-w-[1500px]">
               <Switch>
+                <Route path="/employee/salary" component={EmployeeSalaryRoute} />
                 <Route path="/employee/dashboard" component={EmployeeDashboardRoute} />
                 <Route path="/employee/profile" component={EmployeeProfileRoute} />
                 <Route path="/employee/roadmap" component={EmployeeRoadmapRoute} />

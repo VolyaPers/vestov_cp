@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { useAppSignOut } from '@/hooks/useAppSignOut'
 import { api } from '@/lib/api'
 import { getActiveNavigationLabel } from '@/lib/navigation'
+import { ClientWorkspaceContext, ClientLoadError } from '@/lib/clientWorkspace'
 import type { User, Client } from '@/types/common'
 
 interface ClientLayoutProps {
@@ -78,6 +79,8 @@ export function ClientLayout({ user }: ClientLayoutProps) {
   const [assignedClients, setAssignedClients] = useState<Client[]>([])
   const [currentClient, setCurrentClient] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [retry, setRetry] = useState(0)
   const todayLabel = new Date().toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'long',
@@ -90,6 +93,8 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
     const loadAssignedClients = async () => {
       try {
+        setIsLoading(true)
+        setLoadError('')
         const clients = await api.getClients()
         if (!isMounted) return
 
@@ -97,16 +102,20 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
         // If user has assigned clients, set the first one as current
         if (clients && clients.length > 0) {
-          setCurrentClient(clients[0])
+          const routeId = Number(window.location.pathname.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
+          let savedId = 0
+          try { savedId = Number(localStorage.getItem(`client-workspace:${user.id}`)) } catch {}
+          const selected = clients.find(client => client.id === routeId) || clients.find(client => client.id === savedId) || clients[0]
+          setCurrentClient(selected)
 
           // Redirect to the client portal if on generic paths
           const currentPath = window.location.pathname
           if (currentPath === '/client' || currentPath === '/client/' || currentPath === '/client/portal') {
-            setLocation(`/client/portal/${clients[0].id}`)
+            setLocation(`/client/portal/${selected.id}`)
           }
         }
       } catch (error) {
-        console.error('[ClientLayout] Failed to load assigned clients:', error)
+        setLoadError('Unable to load your client workspaces. Please try again.')
         // Even if there's an error, stop loading to show the error state
       } finally {
         if (isMounted) {
@@ -121,13 +130,28 @@ export function ClientLayout({ user }: ClientLayoutProps) {
       isMounted = false
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [user.id, retry])
+
+  useEffect(() => {
+    const id = Number(location.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
+    const selected = assignedClients.find(client => client.id === id)
+    if (selected) setCurrentClient(selected)
+  }, [location, assignedClients])
+
+  const selectClient = (id: number) => {
+    const selected = assignedClients.find(client => client.id === id)
+    if (!selected) return
+    setCurrentClient(selected)
+    try { localStorage.setItem(`client-workspace:${user.id}`, String(id)) } catch {}
+    if (/^\/client\/(?:portal|documents|invoices)\//.test(location)) setLocation(location.replace(/\d+$/, String(id)))
+  }
 
   const handleLogout = async () => {
     await signOut()
   }
 
   return (
+    <ClientWorkspaceContext.Provider value={{ client: currentClient }}>
     <div className="app-shell min-h-screen">
       <MobileSidebarSheet
         open={isMobileMenuOpen}
@@ -200,7 +224,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
               <div className="flex items-center gap-2">
                 <GlobalSearchLauncher className="w-full max-w-[280px]" />
-                <Button variant="outline" size="icon" onClick={handleLogout} className="shrink-0">
+                <Button variant="outline" size="icon" onClick={handleLogout} className="shrink-0" aria-label="Sign out" title="Sign out">
                   <LogOut className="h-4 w-4" />
                 </Button>
               </div>
@@ -211,9 +235,17 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
         <main className="flex-1">
           <div className="mobile-page-pad mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+            {!isLoading && !loadError && assignedClients.length > 1 && (
+              <label className="mb-5 flex flex-wrap items-center gap-3 text-sm font-medium">
+                Client workspace
+                <select aria-label="Client workspace" value={currentClient?.id || ''} onChange={event => selectClient(Number(event.target.value))} className="max-w-full rounded-xl border bg-white px-3 py-2">
+                  {assignedClients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
+                </select>
+              </label>
+            )}
             {isLoading ? (
               <WorkspaceShellSkeleton roleLabel="Client Workspace" title="Loading client workspace" />
-            ) : assignedClients.length === 0 ? (
+            ) : loadError ? (<ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />) : assignedClients.length === 0 ? (
               <div className="flex min-h-[60vh] items-center justify-center">
                 <Card className="max-w-lg text-center">
                   <CardContent className="p-10 sm:p-12">
@@ -225,7 +257,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
                 </Card>
               </div>
             ) : (
-              <Switch>
+              <Switch key={currentClient?.id}>
                 <Route path="/client/dashboard" component={ClientDashboardRoute} />
                 <Route path="/client/team-status" component={ClientTeamStatusRoute} />
                 <Route path="/client/documents/:id" component={ClientDocumentsRoute} />
@@ -254,5 +286,6 @@ export function ClientLayout({ user }: ClientLayoutProps) {
         onOpenMenu={() => setIsMobileMenuOpen(true)}
       />
     </div>
+    </ClientWorkspaceContext.Provider>
   )
 }

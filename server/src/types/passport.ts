@@ -15,6 +15,7 @@ export interface UserWithPassword {
 export interface UserWithoutPassword extends Omit<UserWithPassword, 'password'> { }
 
 export interface SessionData {
+  version?: number
   id: number
   originalUserId?: number
   originalUsername?: string

@@ -1,13 +1,22 @@
 services:
   - type: web
     name: vestov-api
-    env: node
-    plan: free
+    runtime: node
+    # Reviewed deployment configuration only. Applying it provisions paid compute
+    # and a persistent disk; see docs/deployment/render-storage.md before syncing.
+    plan: 0.5c-512mb
+    numInstances: 1
+    disk:
+      name: vestov-uploads
+      mountPath: /var/data
+      sizeGB: 5
     buildCommand: cd server && npm install && npm run build
     startCommand: cd server && npm run migrate && npm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
       - key: DATABASE_URL
         sync: false
       - key: SESSION_SECRET

@@ -43,7 +43,7 @@ interface ClientServiceOption {
   isActive: boolean
   developers: Array<{
     id: number
-    developerId: number
+    teamMemberId: number
     developerName: string
     developerAvatarUrl?: string
     hourlyRate?: string
@@ -60,21 +60,21 @@ interface AvailableService {
   billingModel: string
 }
 
-export function EnhancedInvoiceForm({ 
-  clientId, 
-  clientName, 
-  isOpen, 
-  onClose, 
+export function EnhancedInvoiceForm({
+  clientId,
+  clientName,
+  isOpen,
+  onClose,
   onSuccess,
   initialServiceId = null
 }: EnhancedInvoiceFormProps) {
   const { showAlert } = useCustomAlert()
   const queryClient = useQueryClient()
-  
+
   // Get default dates
   const today = new Date().toISOString().split('T')[0]
-  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  const lastOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
+  const firstOfMonth = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), 1)).toISOString().split('T')[0]
+  const lastOfMonth = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth() + 1, 0)).toISOString().split('T')[0]
 
   // Form state
   const [activeTab, setActiveTab] = useState<'manual' | 'service-based'>('service-based')
@@ -91,7 +91,7 @@ export function EnhancedInvoiceForm({
     useServicePricing: true,
     developerRates: {}
   })
-  
+
   const [selectedServices, setSelectedServices] = useState<number[]>([])
   const [pricingCalculation, setPricingCalculation] = useState<ServicePricingCalculation[] | null>(null)
   const [calculatedTotal, setCalculatedTotal] = useState<number>(0)
@@ -104,6 +104,10 @@ export function EnhancedInvoiceForm({
   const [selectedServiceForDeveloper, setSelectedServiceForDeveloper] = useState<number | null>(null)
   const [selectedDeveloperToAdd, setSelectedDeveloperToAdd] = useState<number | null>(null)
   const [developerRates, setDeveloperRates] = useState({ hourlyRate: 0, fixedPrice: 0, hoursWorked: 0 })
+  const [developerPricingMode,setDeveloperPricingMode]=useState<'hourly'|'fixed'>('hourly')
+  const [addingDeveloper,setAddingDeveloper]=useState(false)
+  const [excludedDeveloperIds,setExcludedDeveloperIds]=useState<number[]>([])
+  const [lastPricedRequest,setLastPricedRequest]=useState('')
 
   // Fetch client service options
   const { data: serviceOptions, isLoading: isLoadingServices } = useQuery({
@@ -122,30 +126,29 @@ export function EnhancedInvoiceForm({
   // Initialize local client services when data is loaded
   useEffect(() => {
     if (serviceOptions?.clientServices) {
-      setLocalClientServices(serviceOptions.clientServices)
+      setLocalClientServices(serviceOptions.clientServices.map(service=>({...service,developers:service.developers.filter(dev=>!excludedDeveloperIds.includes(dev.id))})))
       if (initialServiceId && serviceOptions.clientServices.some(service => service.id === initialServiceId)) {
-        setSelectedServices([initialServiceId])
+        setSelectedServices(previous=>previous.length?previous:[initialServiceId])
       }
-      
+
       // Initialize developer rates for all existing developers
       const initialRates: any = {}
       serviceOptions.clientServices.forEach(service => {
         service.developers.forEach(dev => {
           if (!initialRates[dev.id]) {
             // Initialize with default values (this ensures all developers are in the rates object)
-            initialRates[dev.id] = {
-              hourlyRate: parseFloat(dev.hourlyRate || '50'),
-              fixedPrice: parseFloat(dev.fixedPrice || '5000'),
-              hoursWorked: 0
-            }
+            initialRates[dev.id] = dev.fixedPrice !== null && dev.fixedPrice !== undefined
+              ? { fixedPrice: Number(dev.fixedPrice) }
+              : { hourlyRate: Number(dev.hourlyRate || 0), hoursWorked: 0 }
+
           }
         })
       })
-      
-      
+
+
       setInvoiceData(prev => ({
         ...prev,
-        developerRates: { ...prev.developerRates, ...initialRates }
+        developerRates: { ...initialRates, ...prev.developerRates }
       }))
     }
   }, [serviceOptions?.clientServices, initialServiceId])
@@ -162,8 +165,8 @@ export function EnhancedInvoiceForm({
     onSuccess: (data) => {
       setPricingCalculation(data.services)
       setCalculatedTotal(data.totalAmount)
-      setInvoiceData(prev => ({ 
-        ...prev, 
+      setInvoiceData(prev => ({
+        ...prev,
         amount: data.totalAmount,
         serviceIds: selectedServices
       }))
@@ -188,7 +191,7 @@ export function EnhancedInvoiceForm({
 
   // Add service to client mutation
   const addServiceToClientMutation = useMutation({
-    mutationFn: (data: { serviceTypeId: number; rate?: number; startDate: string }) => 
+    mutationFn: (data: { serviceTypeId: number; rate?: number; startDate: string }) =>
       api.addServiceToClient(clientId, data),
     onSuccess: () => {
       // Refresh service options to show the newly added service
@@ -203,112 +206,56 @@ export function EnhancedInvoiceForm({
     }
   })
 
-  // Calculate pricing when services or period changes
-  useEffect(() => {
-    // Trigger calculation whenever services are selected in service-based mode and we have period dates
-    if (activeTab === 'service-based' && selectedServices.length > 0 && invoiceData.periodStart && invoiceData.periodEnd) {
-      // Build developerRates object that includes all developers from selected services
-      const activeDeveloperRates: any = {}
-      
-      // Include rates for all developers that are assigned to selected services
-      localClientServices.forEach(service => {
-        if (selectedServices.includes(service.id)) {
-          service.developers?.forEach(dev => {
-            // Always include developers from selected services in the calculation
-            // Use existing rates if available, otherwise create default rates with proper fixed price
-            if (invoiceData.developerRates[dev.id]) {
-              activeDeveloperRates[dev.id] = invoiceData.developerRates[dev.id]
-            } else {
-              // Create default rates that will result in proper pricing
-              // For fixed-price services/developers, include the fixed price so server calculates correctly
-              const defaultRates: any = {
-                hourlyRate: dev.hourlyRate || 50,
-                hoursWorked: 0
-              }
-              
-              // Always include fixed price if the developer or service has one
-              if (dev.fixedPrice || service.billingModel === 'fixed') {
-                defaultRates.fixedPrice = dev.fixedPrice || 4000 // Use developer's fixed price or reasonable default
-              }
-              
-              activeDeveloperRates[dev.id] = defaultRates
-            }
-          })
-        }
-      })
-
-      // CRITICAL FIX: If activeDeveloperRates is empty, create default rates for all developers
-      // from selected services to ensure the server returns a non-zero total
-      if (Object.keys(activeDeveloperRates).length === 0) {
-        selectedServices.forEach(serviceId => {
-          const service = localClientServices.find(s => s.id === serviceId)
-          if (service) {
-            service.developers?.forEach(dev => {
-              activeDeveloperRates[dev.id] = {
-                hourlyRate: 50,
-                fixedPrice: dev.fixedPrice || 4000, // Use developer's fixed price or default
-                hoursWorked: 0
-              }
-            })
-          }
-        })
-      }
-      
-      
-      calculatePricingMutation.mutate({
-        serviceIds: selectedServices,
-        periodStart: invoiceData.periodStart,
-        periodEnd: invoiceData.periodEnd,
-        developerRates: activeDeveloperRates,
-        servicePrices: customServicePrices
-      })
-    }
-  }, [selectedServices, invoiceData.periodStart, invoiceData.periodEnd, invoiceData.developerRates, localClientServices, activeTab])
+  const selectedRates = () => Object.fromEntries(localClientServices.filter(service=>selectedServices.includes(service.id)).flatMap(service=>service.developers.map(dev=>[dev.id,invoiceData.developerRates[dev.id] || (dev.fixedPrice != null ? {fixedPrice:Number(dev.fixedPrice)} : {hourlyRate:Number(dev.hourlyRate || 0),hoursWorked:0})])))
+  const pricingRequest=JSON.stringify({serviceIds:selectedServices,periodStart:invoiceData.periodStart,periodEnd:invoiceData.periodEnd,developerRates:selectedRates(),servicePrices:customServicePrices})
+  const [pricingError,setPricingError]=useState('')
+  const [pricingLoading,setPricingLoading]=useState(false)
+  useEffect(()=>{
+    let active=true
+    if(activeTab!=='service-based'||!selectedServices.length||!invoiceData.periodStart||!invoiceData.periodEnd){setPricingCalculation(null);setCalculatedTotal(0);return}
+    setPricingLoading(true);setPricingError('')
+    const timer=setTimeout(()=>{
+      api.calculateServicePricing(clientId,{serviceIds:selectedServices,periodStart:invoiceData.periodStart,periodEnd:invoiceData.periodEnd,developerRates:selectedRates(),servicePrices:customServicePrices}).then(data=>{if(active){setPricingCalculation(data.services);setCalculatedTotal(data.totalAmount);setLastPricedRequest(pricingRequest)}}).catch(error=>{if(active){setPricingError(error instanceof Error?error.message:'Pricing is unavailable');setPricingCalculation(null);setCalculatedTotal(0)}}).finally(()=>{if(active)setPricingLoading(false)})
+    },150)
+    return()=>{active=false;clearTimeout(timer)}
+  },[selectedServices,invoiceData.periodStart,invoiceData.periodEnd,invoiceData.developerRates,localClientServices,activeTab,customServicePrices])
 
   const handleServiceToggle = (serviceId: number) => {
     setSelectedServices(prev => {
       const isCurrentlySelected = prev.includes(serviceId)
-      
+
       if (isCurrentlySelected) {
         // Removing service - remove it from selected list
         return prev.filter(id => id !== serviceId)
       } else {
         // Adding service - add it to selected list and create default rates
         const newSelectedServices = [...prev, serviceId]
-        
+
         // CRITICAL FIX: When selecting a service, immediately create default rates for its developers
         // This ensures the server calculation returns a meaningful total instead of $0
         const service = localClientServices.find(s => s.id === serviceId)
         if (service && service.developers) {
-          
+
           // Update developer rates to include defaults for this service's developers
           setInvoiceData(prevInvoice => {
             const updatedDeveloperRates = { ...prevInvoice.developerRates }
-            
+
             service.developers.forEach(dev => {
               if (!updatedDeveloperRates[dev.id]) {
                 // Create default rates based on developer data
-                const defaultRates: { hourlyRate?: number; fixedPrice?: number; hoursWorked?: number } = {
-                  hourlyRate: typeof dev.hourlyRate === 'number' ? dev.hourlyRate : (typeof dev.hourlyRate === 'string' ? parseFloat(dev.hourlyRate) : 50),
-                  hoursWorked: 0
-                }
-                
-                // Include fixed price if available
-                if (dev.fixedPrice) {
-                  defaultRates.fixedPrice = typeof dev.fixedPrice === 'number' ? dev.fixedPrice : (typeof dev.fixedPrice === 'string' ? parseFloat(dev.fixedPrice) : undefined)
-                }
-                
+                const defaultRates = dev.fixedPrice != null ? {fixedPrice:Number(dev.fixedPrice)} : {hourlyRate:Number(dev.hourlyRate || 0),hoursWorked:0}
+
                 updatedDeveloperRates[dev.id] = defaultRates
               }
             })
-            
+
             return {
               ...prevInvoice,
               developerRates: updatedDeveloperRates
             }
           })
         }
-        
+
         return newSelectedServices
       }
     })
@@ -316,18 +263,18 @@ export function EnhancedInvoiceForm({
 
   const handleDeveloperRateChange = (developerId: number, field: 'hourlyRate' | 'fixedPrice' | 'hoursWorked', value: string) => {
     const numValue = value === '' ? undefined : (parseFloat(value) || 0)
-    
-    
+
+
     setInvoiceData(prev => {
       const currentRates = prev.developerRates?.[developerId] || {}
       const updatedRates = { ...currentRates }
-      
+
       if (numValue === undefined) {
         delete updatedRates[field]
       } else {
         updatedRates[field] = numValue
       }
-      
+
       return {
         ...prev,
         developerRates: {
@@ -339,7 +286,8 @@ export function EnhancedInvoiceForm({
   }
 
   const handleRemoveDeveloper = (serviceId: number, developerId: number) => {
-    
+
+    setExcludedDeveloperIds(previous=>[...previous,developerId])
     // Update local client services to remove the developer from UI
     setLocalClientServices(prevServices => {
       return prevServices.map(service => {
@@ -352,23 +300,23 @@ export function EnhancedInvoiceForm({
         return service
       })
     })
-    
+
     // Remove developer rates from invoiceData and trigger server recalculation
     setInvoiceData(prev => {
       const updatedDeveloperRates = { ...prev.developerRates }
       delete updatedDeveloperRates[developerId]
-      
-      
+
+
       return {
         ...prev,
         developerRates: updatedDeveloperRates
       }
     })
-    
+
     // The useEffect will automatically trigger a server recalculation
     // since developerRates changed, which will update the totals correctly
   }
-  
+
 
   const handleOpenAddServiceDialog = (service: AvailableService) => {
     setSelectedServiceToAdd(service)
@@ -379,67 +327,34 @@ export function EnhancedInvoiceForm({
   const handleOpenAddDeveloperDialog = (serviceId: number) => {
     setSelectedServiceForDeveloper(serviceId)
     setSelectedDeveloperToAdd(null)
+    setDeveloperPricingMode('hourly')
     setDeveloperRates({ hourlyRate: 0, fixedPrice: 0, hoursWorked: 0 })
     setIsAddDeveloperDialogOpen(true)
   }
 
   const handleAddDeveloperSubmit = () => {
     if (!selectedDeveloperToAdd) return
-    handleAddDeveloper(selectedDeveloperToAdd, developerRates)
+    handleAddDeveloper(selectedDeveloperToAdd, developerPricingMode==='fixed'?{fixedPrice:developerRates.fixedPrice}:{hourlyRate:developerRates.hourlyRate,hoursWorked:developerRates.hoursWorked})
   }
 
-  const handleAddDeveloper = (developerId: number, rates: { hourlyRate?: number, fixedPrice?: number, hoursWorked?: number }) => {
-    if (!selectedServiceForDeveloper || !allDevelopers) return
-    
-    const developer = allDevelopers.find((dev: any) => dev.id === developerId)
-    if (!developer) return
-
-
-    // Add developer to local client services (UI)
-    setLocalClientServices(prevServices => {
-      const updated = prevServices.map(service => {
-        if (service.id === selectedServiceForDeveloper) {
-          const newDeveloper = {
-            id: developer.id,
-            developerId: developer.id,
-            developerName: developer.name,
-            hourlyRate: rates.hourlyRate?.toString() || developer.hourlyRate?.toString() || '0',
-            fixedPrice: rates.fixedPrice?.toString() || '0',
-            hoursWorked: rates.hoursWorked || 0,
-            employmentType: 'fulltime' as const,
-            isActive: true
-          }
-          return {
-            ...service,
-            developers: [...service.developers, newDeveloper]
-          }
-        }
-        return service
-      })
-      return updated
-    })
-
-    // Add developer rates to invoiceData - this will trigger server recalculation
-    setInvoiceData(prev => ({
-      ...prev,
-      developerRates: {
-        ...prev.developerRates,
-        [developerId]: {
-          hourlyRate: rates.hourlyRate,
-          fixedPrice: rates.fixedPrice,
-          hoursWorked: rates.hoursWorked
-        }
-      }
-    }))
-    
-    // Close dialog
-    setIsAddDeveloperDialogOpen(false)
-    setSelectedServiceForDeveloper(null)
+  const handleAddDeveloper = async (developerId:number,rates:{hourlyRate?:number,fixedPrice?:number,hoursWorked?:number}) => {
+    if(!selectedServiceForDeveloper||addingDeveloper)return
+    setAddingDeveloper(true)
+    try{
+      await api.request(`/services/clients/${clientId}/services/${selectedServiceForDeveloper}/developers`,{method:'POST',body:JSON.stringify({teamMemberId:developerId,employmentType:'fulltime',hourlyRate:rates.fixedPrice!==undefined?null:rates.hourlyRate,fixedPrice:rates.fixedPrice ?? null,startDate:invoiceData.periodStart})})
+      const fresh=await api.getClientServiceOptions(clientId)
+      const assignment=fresh.clientServices.find(service=>service.id===selectedServiceForDeveloper)?.developers.find(dev=>dev.teamMemberId===developerId)
+      if(!assignment)throw new Error('The project assignment could not be loaded. Refresh the project and retry.')
+      setLocalClientServices(prev=>prev.map(service=>service.id===selectedServiceForDeveloper?{...service,developers:[...service.developers.filter(dev=>dev.id!==assignment.id),assignment]}:service))
+      setInvoiceData(prev=>({...prev,developerRates:{...prev.developerRates,[assignment.id]:rates.fixedPrice!==undefined?{fixedPrice:rates.fixedPrice}:{hourlyRate:rates.hourlyRate || 0,hoursWorked:rates.hoursWorked || 0}}}))
+      setExcludedDeveloperIds(previous=>previous.filter(id=>id!==assignment.id))
+      setIsAddDeveloperDialogOpen(false);setSelectedServiceForDeveloper(null)
+    }catch(error){showAlert({message:error instanceof Error?error.message:'Could not add project member',type:'error'})}finally{setAddingDeveloper(false)}
   }
 
   const handleAddServiceWithRate = () => {
     if (!selectedServiceToAdd) return
-    
+
     addServiceToClientMutation.mutate({
       serviceTypeId: selectedServiceToAdd.id,
       rate: serviceRate > 0 ? serviceRate : undefined,
@@ -452,76 +367,19 @@ export function EnhancedInvoiceForm({
       ...prev,
       [serviceId]: price
     }))
-    
-    // Recalculate total with custom prices
-    if (pricingCalculation) {
-      const newTotal = pricingCalculation.reduce((total, calc) => {
-        const customPrice = serviceId === calc.serviceId ? price : customServicePrices[calc.serviceId]
-        return total + (customPrice !== undefined ? customPrice : calc.finalAmount)
-      }, 0)
-      setCalculatedTotal(newTotal)
-    }
+
+    setPricingLoading(true)
   }
 
-  const getFinalTotal = () => {
-    if (activeTab === 'service-based' && pricingCalculation && selectedServices.length > 0) {
-      return pricingCalculation.reduce((total, calc) => {
-        const customPrice = customServicePrices[calc.serviceId]
-        return total + (customPrice !== undefined ? customPrice : calc.finalAmount)
-      }, 0)
-    }
-
-    // First try to use the server-calculated total
-    if (calculatedTotal > 0) {
-      return calculatedTotal
-    }
-    
-    // If server total is 0 or unavailable, calculate locally using the same logic as pricing breakdown
-    if (activeTab === 'service-based' && selectedServices.length > 0) {
-      let total = 0
-      
-      selectedServices.forEach(serviceId => {
-        const service = localClientServices.find(s => s.id === serviceId)
-        if (service && service.developers) {
-          service.developers.forEach(dev => {
-            const devRates = invoiceData.developerRates?.[dev.id] || {}
-            const hourlyRate = devRates.hourlyRate || parseFloat(dev.hourlyRate || '0')
-            const hoursWorked = devRates.hoursWorked || 0
-            const fixedPrice = devRates.fixedPrice || parseFloat(dev.fixedPrice || '0')
-            
-            // Use EXACT same logic as pricing breakdown to determine mode
-            const hasFixedPrice = devRates.fixedPrice !== undefined && devRates.fixedPrice !== null && devRates.fixedPrice > 0
-            const hasHourlyRate = devRates.hourlyRate !== undefined && devRates.hourlyRate !== null && devRates.hourlyRate > 0
-            const hasHoursWorked = devRates.hoursWorked !== undefined && devRates.hoursWorked !== null && devRates.hoursWorked > 0
-            
-            let isFixed = false
-            if (hasFixedPrice) {
-              isFixed = true
-            } else if (hasHourlyRate || hasHoursWorked) {
-              isFixed = false
-            } else {
-              // No user input yet, check defaults
-              isFixed = parseFloat(dev.fixedPrice || '0') > 0
-            }
-            
-            const developerTotal = isFixed ? fixedPrice : (hourlyRate * hoursWorked)
-            total += developerTotal
-          })
-        }
-      })
-      
-      return total
-    }
-    
-    // Default to server calculated total (including 0)
-    return calculatedTotal
-  }
+  const getFinalTotal = () => calculatedTotal
 
   const handleCreateInvoice = () => {
+    if(activeTab==='service-based' && (pricingLoading || pricingError || !pricingCalculation || lastPricedRequest!==pricingRequest)){showAlert({message:pricingError || 'Wait for the invoice preview to finish',type:'warning'});return}
     const finalData: CreateInvoiceData = {
       ...invoiceData,
       serviceIds: activeTab === 'service-based' ? selectedServices : undefined,
       useServicePricing: activeTab === 'service-based',
+      developerRates: activeTab === 'service-based' ? selectedRates() : undefined,
       servicePrices: activeTab === 'service-based' ? customServicePrices : undefined,
       amount: activeTab === 'manual' ? invoiceData.amount : getFinalTotal()
     }
@@ -537,6 +395,8 @@ export function EnhancedInvoiceForm({
     setCalculatedTotal(0)
     setCustomServicePrices({})
     setLocalClientServices([])
+    setExcludedDeveloperIds([])
+    setLastPricedRequest('')
     setInvoiceData({
       clientId,
       amount: 0,
@@ -612,7 +472,7 @@ export function EnhancedInvoiceForm({
             {/* Service Selection */}
             <div className="space-y-4">
               <Label className="text-base font-medium">Select Services to Invoice</Label>
-              
+
               {isLoadingServices ? (
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
@@ -653,7 +513,7 @@ export function EnhancedInvoiceForm({
                             </Badge>
                           </div>
                         </CardHeader>
-                        
+
                         {selectedServices.includes(service.id) && service.developers.length > 0 && (
                           <CardContent className="pt-0">
                             <div className="space-y-2">
@@ -661,12 +521,12 @@ export function EnhancedInvoiceForm({
                               {service.developers.map((developer) => {
                                 const devId = developer.id
                                 const devRates = invoiceData.developerRates?.[devId] || {}
-                                
+
                                 // Determine if we're in fixed mode based on what fields have values
-                                const hasFixedPrice = devRates.fixedPrice !== undefined && devRates.fixedPrice !== null && devRates.fixedPrice > 0
-                                const hasHourlyRate = devRates.hourlyRate !== undefined && devRates.hourlyRate !== null && devRates.hourlyRate > 0
-                                const hasHoursWorked = devRates.hoursWorked !== undefined && devRates.hoursWorked !== null && devRates.hoursWorked > 0
-                                
+                                const hasFixedPrice = devRates.fixedPrice !== undefined && devRates.fixedPrice !== null
+                                const hasHourlyRate = devRates.hourlyRate !== undefined && devRates.hourlyRate !== null
+                                const hasHoursWorked = devRates.hoursWorked !== undefined && devRates.hoursWorked !== null
+
                                 // If we have fixed price, we're in fixed mode
                                 // If we have hourly rate or hours worked, we're in hourly mode
                                 // Otherwise, check defaults
@@ -677,7 +537,7 @@ export function EnhancedInvoiceForm({
                                   isFixed = false
                                 } else {
                                   // No user input yet, check defaults
-                                  isFixed = parseFloat(developer.fixedPrice || '0') > 0
+                                  isFixed = developer.fixedPrice !== null && developer.fixedPrice !== undefined
                                 }
 
                                 return (
@@ -695,7 +555,7 @@ export function EnhancedInvoiceForm({
                                                 developerRates: {
                                                   ...prev.developerRates,
                                                   [devId]: {
-                                                    hourlyRate: devRates.hourlyRate || parseFloat(developer.hourlyRate || '50'),
+                                                    hourlyRate: devRates.hourlyRate ?? parseFloat(developer.hourlyRate || '0'),
                                                     hoursWorked: devRates.hoursWorked || 0,
                                                     fixedPrice: undefined // Clear fixed price
                                                   }
@@ -703,8 +563,8 @@ export function EnhancedInvoiceForm({
                                               }))
                                             }}
                                             className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                              !isFixed 
-                                                ? 'bg-blue-500 text-white' 
+                                              !isFixed
+                                                ? 'bg-blue-500 text-white'
                                                 : 'text-gray-600 hover:text-gray-800'
                                             }`}
                                           >
@@ -719,7 +579,7 @@ export function EnhancedInvoiceForm({
                                                 developerRates: {
                                                   ...prev.developerRates,
                                                   [devId]: {
-                                                    fixedPrice: devRates.fixedPrice || parseFloat(developer.fixedPrice || '5000'),
+                                                    fixedPrice: devRates.fixedPrice ?? parseFloat(developer.fixedPrice || '0'),
                                                     hourlyRate: undefined, // Clear hourly rate
                                                     hoursWorked: undefined  // Clear hours worked
                                                   }
@@ -727,8 +587,8 @@ export function EnhancedInvoiceForm({
                                               }))
                                             }}
                                             className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                              isFixed 
-                                                ? 'bg-blue-500 text-white' 
+                                              isFixed
+                                                ? 'bg-blue-500 text-white'
                                                 : 'text-gray-600 hover:text-gray-800'
                                             }`}
                                           >
@@ -746,7 +606,7 @@ export function EnhancedInvoiceForm({
                                         </Button>
                                       </div>
                                     </div>
-                                    
+
                                     {!isFixed ? (
                                       <div className="grid grid-cols-2 gap-2">
                                         <div>
@@ -754,7 +614,7 @@ export function EnhancedInvoiceForm({
                                           <Input
                                             type="number"
                                             placeholder="0.00"
-                                            value={devRates.hourlyRate || developer.hourlyRate || ''}
+                                            value={devRates.hourlyRate ?? developer.hourlyRate ?? ''}
                                             onChange={(e) => handleDeveloperRateChange(devId, 'hourlyRate', e.target.value)}
                                             className="h-8 text-sm"
                                           />
@@ -776,35 +636,35 @@ export function EnhancedInvoiceForm({
                                         <Input
                                           type="number"
                                           placeholder="0.00"
-                                          value={devRates.fixedPrice || developer.fixedPrice || ''}
+                                          value={devRates.fixedPrice ?? developer.fixedPrice ?? ''}
                                           onChange={(e) => handleDeveloperRateChange(devId, 'fixedPrice', e.target.value)}
                                           className="h-8 text-sm"
                                         />
                                       </div>
                                     )}
-                                    
+
                                     <div className="text-right text-sm font-medium text-green-600">
                                       Total: ${(() => {
                                         // Try to get calculated amount from server first, otherwise calculate locally
                                         if (pricingCalculation) {
-                                          const serviceCalc = pricingCalculation.find(calc => 
-                                            localClientServices.some(service => 
-                                              service.id === calc.serviceId && 
+                                          const serviceCalc = pricingCalculation.find(calc =>
+                                            localClientServices.some(service =>
+                                              service.id === calc.serviceId &&
                                               service.developers.some(dev => dev.id === developer.id)
                                             )
                                           )
-                                          const serverDev = serviceCalc?.developers.find(dev => 
+                                          const serverDev = serviceCalc?.developers.find(dev =>
                                             dev.id === developer.id
                                           )
-                                          if (serverDev?.amount) {
+                                          if (serverDev?.amount !== undefined) {
                                             return parseFloat(serverDev.amount.toString()).toLocaleString()
                                           }
                                         }
-                                        
+
                                         // Fallback to local calculation
-                                        const hourlyRate = devRates.hourlyRate || parseFloat(developer.hourlyRate || '0')
+                                        const hourlyRate = devRates.hourlyRate ?? parseFloat(developer.hourlyRate || '0')
                                         const hoursWorked = devRates.hoursWorked || 0
-                                        const fixedPrice = devRates.fixedPrice || parseFloat(developer.fixedPrice || '0')
+                                        const fixedPrice = devRates.fixedPrice ?? parseFloat(developer.fixedPrice || '0')
                                         const total = isFixed ? fixedPrice : (hourlyRate * hoursWorked)
                                         return total.toLocaleString()
                                       })()}
@@ -863,8 +723,8 @@ export function EnhancedInvoiceForm({
                             <div className="font-medium">{service.name}</div>
                             <div className="text-sm text-gray-500">{service.category} • {service.billingModel} billing</div>
                           </div>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => handleOpenAddServiceDialog(service)}
                             disabled={addServiceToClientMutation.isPending}
@@ -892,35 +752,17 @@ export function EnhancedInvoiceForm({
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{calc.serviceTitle || calc.serviceName}</span>
                         <span className="font-bold">
-                          ${(() => {
-                            const customPrice = customServicePrices[calc.serviceId]
-                            if (customPrice !== undefined) {
-                              return customPrice.toLocaleString()
-                            }
-                            
-                            // Calculate total using current user input values
-                            const developerTotal = calc.developers.reduce((sum, dev) => {
-                              const devId = dev.id
-                              const userRates = invoiceData.developerRates?.[devId] || {}
-                              const hourlyRate = userRates.hourlyRate || dev.hourlyRate || 0
-                              const hoursWorked = userRates.hoursWorked || dev.hoursWorked || 0
-                              const fixedPrice = userRates.fixedPrice || dev.fixedPrice || 0
-                              const amount = fixedPrice > 0 ? fixedPrice : (hourlyRate * hoursWorked)
-                              return sum + amount
-                            }, 0)
-                            
-                            return developerTotal.toLocaleString()
-                          })()}
+                          ${Number(calc.finalAmount).toFixed(2)}
                         </span>
                       </div>
-                      {calc.serviceLevelPrice && (
+                      {calc.serviceLevelPrice !== undefined && (
                         <div className="flex items-center gap-2 text-sm">
                           <label className="text-gray-600">Service price:</label>
                           <Input
                             type="number"
                             step="0.01"
-                            value={customServicePrices[calc.serviceId] !== undefined 
-                              ? customServicePrices[calc.serviceId] 
+                            value={customServicePrices[calc.serviceId] !== undefined
+                              ? customServicePrices[calc.serviceId]
                               : calc.finalAmount}
                             onChange={(e) => updateCustomServicePrice(calc.serviceId, parseFloat(e.target.value) || 0)}
                             className="w-24 h-6 text-sm"
@@ -930,14 +772,7 @@ export function EnhancedInvoiceForm({
                       {calc.developers.length > 0 && (
                         <div className="text-sm text-gray-600 ml-4">
                           {calc.developers.map((dev, i) => {
-                            // Calculate using current user input values
-                            const devId = dev.id
-                            const userRates = invoiceData.developerRates?.[devId] || {}
-                            const hourlyRate = userRates.hourlyRate || dev.hourlyRate || 0
-                            const hoursWorked = userRates.hoursWorked || dev.hoursWorked || 0
-                            const fixedPrice = userRates.fixedPrice || dev.fixedPrice || 0
-                            const amount = fixedPrice > 0 ? fixedPrice : (hourlyRate * hoursWorked)
-                            
+                            const hourlyRate=Number(dev.hourlyRate || 0), hoursWorked=Number(dev.hoursWorked || 0), amount=Number(dev.amount)
                             return (
                               <div key={i}>
                                 {dev.name}: ${amount.toLocaleString()}
@@ -962,14 +797,14 @@ export function EnhancedInvoiceForm({
                 type="number"
                 step="0.01"
                 value={invoiceData.amount}
-                onChange={(e) => setInvoiceData({ 
-                  ...invoiceData, 
-                  amount: parseFloat(e.target.value) || 0 
+                onChange={(e) => setInvoiceData({
+                  ...invoiceData,
+                  amount: parseFloat(e.target.value) || 0
                 })}
                 placeholder="0.00"
               />
             </div>
-            
+
             <div>
               <AdvancedDatePicker
                 id="manualInvoiceDate"
@@ -978,7 +813,7 @@ export function EnhancedInvoiceForm({
                 onChange={(date) => setInvoiceData({ ...invoiceData, invoiceDate: date || '' })}
               />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <DateRangePicker
@@ -1033,7 +868,7 @@ export function EnhancedInvoiceForm({
               )}
             </div>
           </div>
-          
+
           <div>
             <Label htmlFor="notes">Notes</Label>
             <Textarea
@@ -1046,18 +881,19 @@ export function EnhancedInvoiceForm({
         </div>
 
         <DialogFooter>
+          {pricingError && <p role="alert" className="text-sm text-red-600">{pricingError}</p>}
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleCreateInvoice}
             disabled={
-              createInvoiceMutation.isPending || 
+              createInvoiceMutation.isPending || (activeTab === 'service-based' && (pricingLoading || !!pricingError)) ||
               (activeTab === 'manual' && !invoiceData.amount) ||
               (activeTab === 'service-based' && selectedServices.length === 0)
             }
           >
-            {createInvoiceMutation.isPending ? 'Creating...' : 'Create Invoice'}
+            {createInvoiceMutation.isPending ? 'Creating...' : pricingLoading ? 'Calculating...' : 'Create Invoice'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1072,7 +908,7 @@ export function EnhancedInvoiceForm({
             Set the pricing for {selectedServiceToAdd?.name}
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4">
           <div>
             <Label>Service</Label>
@@ -1083,11 +919,11 @@ export function EnhancedInvoiceForm({
               </div>
             </div>
           </div>
-          
+
           <div>
             <Label htmlFor="serviceRate">
-              Service Rate {selectedServiceToAdd?.billingModel === 'hourly' ? '(per hour)' : 
-                           selectedServiceToAdd?.billingModel === 'fixed' ? '(fixed price)' : 
+              Service Rate {selectedServiceToAdd?.billingModel === 'hourly' ? '(per hour)' :
+                           selectedServiceToAdd?.billingModel === 'fixed' ? '(fixed price)' :
                            '(monthly rate)'} - Optional
             </Label>
             <Input
@@ -1103,7 +939,7 @@ export function EnhancedInvoiceForm({
             </div>
           </div>
         </div>
-        
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -1115,7 +951,7 @@ export function EnhancedInvoiceForm({
           >
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleAddServiceWithRate}
             disabled={addServiceToClientMutation.isPending}
           >
@@ -1134,7 +970,7 @@ export function EnhancedInvoiceForm({
             Select a developer and set their pricing for this service
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4">
           <div>
             <Label htmlFor="developer">Developer</Label>
@@ -1154,7 +990,7 @@ export function EnhancedInvoiceForm({
                 {allDevelopers?.filter((dev: any) => {
                   // Filter out developers already assigned to this service
                   const service = localClientServices.find(s => s.id === selectedServiceForDeveloper)
-                  return !service?.developers.some(assigned => assigned.id === dev.id)
+                  return !service?.developers.some(assigned => assigned.teamMemberId === dev.id)
                 }).map((developer: any) => (
                   <SelectItem key={developer.id} value={developer.id.toString()} label={developer.name}>
                     {developer.name} {developer.hourlyRate && `($${developer.hourlyRate}/hr)`}
@@ -1163,18 +999,18 @@ export function EnhancedInvoiceForm({
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="space-y-3">
             <div className="flex items-center justify-center">
               <div className="flex items-center gap-1 bg-gray-100 rounded-md p-1">
                 <button
                   type="button"
                   onClick={() => {
-                    setDeveloperRates(prev => ({ ...prev, fixedPrice: 0 }))
+                    setDeveloperPricingMode('hourly')
                   }}
                   className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                    !developerRates.fixedPrice || developerRates.fixedPrice === 0
-                      ? 'bg-blue-500 text-white' 
+                    developerPricingMode === 'hourly'
+                      ? 'bg-blue-500 text-white'
                       : 'text-gray-600 hover:text-gray-800'
                   }`}
                 >
@@ -1183,11 +1019,11 @@ export function EnhancedInvoiceForm({
                 <button
                   type="button"
                   onClick={() => {
-                    setDeveloperRates(prev => ({ ...prev, hoursWorked: 0 }))
+                    setDeveloperPricingMode('fixed')
                   }}
                   className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                    developerRates.fixedPrice > 0
-                      ? 'bg-blue-500 text-white' 
+                    developerPricingMode === 'fixed'
+                      ? 'bg-blue-500 text-white'
                       : 'text-gray-600 hover:text-gray-800'
                   }`}
                 >
@@ -1195,8 +1031,8 @@ export function EnhancedInvoiceForm({
                 </button>
               </div>
             </div>
-            
-            {(!developerRates.fixedPrice || developerRates.fixedPrice === 0) ? (
+
+            {(developerPricingMode === 'hourly') ? (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor="hourlyRate">Hourly Rate ($)</Label>
@@ -1205,23 +1041,23 @@ export function EnhancedInvoiceForm({
                     type="number"
                     step="0.01"
                     value={developerRates.hourlyRate || ''}
-                    onChange={(e) => setDeveloperRates(prev => ({ 
-                      ...prev, 
-                      hourlyRate: parseFloat(e.target.value) || 0 
+                    onChange={(e) => setDeveloperRates(prev => ({
+                      ...prev,
+                      hourlyRate: parseFloat(e.target.value) || 0
                     }))}
                     placeholder="0.00"
                   />
                 </div>
-                
+
                 <div>
-                  <Label htmlFor="hoursWorked">Hours Worked</Label>
+                  <p className="text-xs text-muted-foreground">Adding a person also creates their project assignment from the invoice period start.</p><Label htmlFor="hoursWorked">Hours Worked</Label>
                   <Input
                     id="hoursWorked"
                     type="number"
                     value={developerRates.hoursWorked || ''}
-                    onChange={(e) => setDeveloperRates(prev => ({ 
-                      ...prev, 
-                      hoursWorked: parseFloat(e.target.value) || 0 
+                    onChange={(e) => setDeveloperRates(prev => ({
+                      ...prev,
+                      hoursWorked: parseFloat(e.target.value) || 0
                     }))}
                     placeholder="0"
                   />
@@ -1235,22 +1071,22 @@ export function EnhancedInvoiceForm({
                   type="number"
                   step="0.01"
                   value={developerRates.fixedPrice || ''}
-                  onChange={(e) => setDeveloperRates(prev => ({ 
-                    ...prev, 
-                    fixedPrice: parseFloat(e.target.value) || 0 
+                  onChange={(e) => setDeveloperRates(prev => ({
+                    ...prev,
+                    fixedPrice: parseFloat(e.target.value) || 0
                   }))}
                   placeholder="0.00"
                 />
               </div>
             )}
-            
+
             {(developerRates.hourlyRate > 0 || developerRates.fixedPrice > 0) && (
               <div className="p-3 bg-green-50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-green-800">Total Amount:</span>
                   <span className="text-lg font-bold text-green-600">
-                    ${(developerRates.fixedPrice > 0 
-                      ? developerRates.fixedPrice 
+                    ${(developerPricingMode === 'fixed'
+                      ? developerRates.fixedPrice
                       : (developerRates.hourlyRate * developerRates.hoursWorked)
                     ).toLocaleString()}
                   </span>
@@ -1259,7 +1095,7 @@ export function EnhancedInvoiceForm({
             )}
           </div>
         </div>
-        
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -1272,9 +1108,9 @@ export function EnhancedInvoiceForm({
           >
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleAddDeveloperSubmit}
-            disabled={!selectedDeveloperToAdd}
+            disabled={!selectedDeveloperToAdd || addingDeveloper}
           >
             Add Developer
           </Button>

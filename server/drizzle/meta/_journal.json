@@ -197,6 +197,13 @@
       "when": 1786107600000,
       "tag": "0037_add_project_updates_bot",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788739200000,
+      "tag": "0038_functional_integrity",
+      "breakpoints": true
     }
   ]
 }

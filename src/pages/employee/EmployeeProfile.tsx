@@ -26,6 +26,7 @@ interface TeamMember {
 export function EmployeeProfile() {
   const { showAlert } = useCustomAlert()
   const [teamMember, setTeamMember] = useState<TeamMember | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -42,6 +43,7 @@ export function EmployeeProfile() {
   const loadProfile = async () => {
     try {
       setLoading(true)
+      setLoadError(null)
       const member = await api.request('/vacation/my-profile')
 
       setTeamMember(member)
@@ -52,6 +54,7 @@ export function EmployeeProfile() {
       })
     } catch (error) {
       console.error('Error loading profile:', error)
+      setLoadError(error instanceof Error ? error.message : 'Profile could not be loaded')
     } finally {
       setLoading(false)
     }
@@ -63,7 +66,6 @@ export function EmployeeProfile() {
     try {
       setSaving(true)
       await api.updateTeamMember(String(teamMember.id), {
-        ...teamMember,
         ...formData,
       })
 
@@ -71,7 +73,7 @@ export function EmployeeProfile() {
       setEditing(false)
     } catch (error) {
       console.error('Error saving profile:', error)
-      showAlert({ message: 'Failed to save profile. Please try again.', type: 'error' })
+      showAlert({ message: error instanceof Error ? error.message : 'Failed to save profile', type: 'error' })
     } finally {
       setSaving(false)
     }
@@ -96,11 +98,11 @@ export function EmployeeProfile() {
 
   if (!teamMember) {
     return (
-      <EmptyState
+      <div><EmptyState
         icon={<User className="h-6 w-6" />}
         title="Profile not found"
-        description="Your employee profile is unavailable right now."
-      />
+        description={loadError || "Your employee profile is unavailable right now."}
+      /><Button variant="outline" onClick={loadProfile}>Retry</Button></div>
     )
   }
 

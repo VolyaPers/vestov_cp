@@ -292,14 +292,7 @@ npm start
 
 ## 🧪 Testing
 
-The application includes comprehensive test scenarios for:
-- User authentication flow
-- Leave request creation with days calculation
-- Leave request approval/denial workflow
-- Team member navigation (clickable rows)
-- Employee details tab navigation
-- Balance calculations
-- Calendar view functionality
+Use the guarded `npm run test:functional` suite with a disposable local PostgreSQL database. See [setup and verification](docs/testing.md) and the [current functional QA report](docs/audits/2026-09-06/results.md). The September 2026 run passed 50 tests with no skips.
 
 ## 🤝 Contributing
 
@@ -325,6 +318,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Export to various formats (PDF, Excel)
 - Automated leave accrual calculations
 - Public holiday management
+
+## Production file storage
+
+The API requires an explicit `UPLOADS_DIR` in production. The Render blueprint includes a persistent disk; review the [storage deployment and migration procedure](docs/deployment/render-storage.md) before applying it to an existing service.
 
 ## 📞 Support
 

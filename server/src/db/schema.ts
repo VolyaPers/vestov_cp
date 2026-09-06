@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
   pgTable,
   serial,
@@ -256,6 +257,23 @@ export const financialData = pgTable('financial_data', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// Salary accruals are immutable snapshots of the conditions for an employee/month.
+export const payrollPeriods = pgTable('payroll_periods', {
+  id: serial('id').primaryKey(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
+  salaryMonth: varchar('salary_month', { length: 7 }).notNull(),
+  currency: varchar('currency', { length: 3 }).default('USD').notNull(),
+  baseSalary: decimal('base_salary', { precision: 12, scale: 2 }).notNull(),
+  defaultExtras: jsonb('default_extras').default([]).notNull(),
+  status: varchar('status', { length: 20 }).default('open').notNull(),
+  calculationNote: text('calculation_note'),
+  createdBy: integer('created_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  employeeMonthUnique: uniqueIndex('payroll_periods_employee_month_unique').on(table.teamMemberId, table.salaryMonth),
+}))
+
 // Financial Transactions table
 export const financialTransactions = pgTable('financial_transactions', {
   id: serial('id').primaryKey(),
@@ -268,6 +286,11 @@ export const financialTransactions = pgTable('financial_transactions', {
   clientId: integer('client_id').references(() => clients.id),
   invoiceId: integer('invoice_id').references(() => invoices.id),
   isRecurring: boolean('is_recurring').default(false),
+  voidedAt: timestamp('voided_at'),
+  voidReason: text('void_reason'),
+  payrollPeriodId: integer('payroll_period_id').references(() => payrollPeriods.id),
+  payrollData: jsonb('payroll_data'),
+  idempotencyKey: varchar('idempotency_key', { length: 100 }).unique(),
   createdBy: integer('created_by').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -399,6 +422,7 @@ export const clickupDailyRollups = pgTable('clickup_daily_rollups', {
 
 // Salary Rate History table
 export const salaryRateHistory = pgTable('salary_rate_history', {
+  monthlyExtras: jsonb('monthly_extras'),
   id: serial('id').primaryKey(),
   teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
   monthlyRate: decimal('monthly_rate', { precision: 10, scale: 2 }).notNull(),
@@ -434,7 +458,7 @@ export const employmentCycles = pgTable('employment_cycles', {
   cycleMidpoint: date('cycle_midpoint').notNull(), // For 50/50 vacation split
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+}, (table) => ({ uniqueAllocation: uniqueIndex('employment_cycles_employee_start_unique').on(table.employeeId, table.cycleStart) }))
 
 // Leave Types table
 export const leaveTypes = pgTable('leave_types', {
@@ -455,7 +479,7 @@ export const leaveBalances = pgTable('leave_balances', {
   adjustmentDays: decimal('adjustment_days', { precision: 5, scale: 1 }).default('0'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+}, (table) => ({ uniqueAllocation: uniqueIndex('leave_balances_cycle_type_unique').on(table.employeeId, table.employmentCycleId, table.leaveTypeId) }))
 
 // Leave Requests table
 export const leaveRequests = pgTable('leave_requests', {
@@ -473,6 +497,7 @@ export const leaveRequests = pgTable('leave_requests', {
   decisionBy: integer('decision_by').references(() => users.id),
   decisionAt: timestamp('decision_at'),
   decisionReason: text('decision_reason'),
+  archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -504,6 +529,9 @@ export const reimbursementRequests = pgTable('reimbursement_requests', {
   approvedAt: timestamp('approved_at'),
   approvalNote: text('approval_note'),
   evidenceUrl: text('evidence_url'), // URL to uploaded receipt/product image
+  idempotencyKey: varchar('idempotency_key', { length: 100 }).unique(),
+  paidAt: timestamp('paid_at'),
+  paymentTransactionId: integer('payment_transaction_id').references(() => financialTransactions.id).unique(),
   confirmedAt: timestamp('confirmed_at'), // When employee confirmed with evidence
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -599,7 +627,9 @@ export const shiftSchedules = pgTable('shift_schedules', {
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+}, (table) => ({
+  activeUnique: uniqueIndex('shift_schedules_active_day_unique').on(table.employeeId, table.dayOfWeek).where(sql`${table.isActive} = true`),
+}))
 
 // Shift Schedule Overrides table (day-specific shift time overrides)
 export const shiftScheduleOverrides = pgTable('shift_schedule_overrides', {
@@ -617,6 +647,10 @@ export const shiftScheduleOverrides = pgTable('shift_schedule_overrides', {
 export const shifts = pgTable('shifts', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id').references(() => teamMembers.id).notNull(),
+  workDate: date('work_date'),
+  timezone: text('timezone'),
+  scheduledStartAt: timestamp('scheduled_start_at'),
+  scheduledEndAt: timestamp('scheduled_end_at'),
   scheduleId: integer('schedule_id').references(() => shiftSchedules.id), // Optional reference to expected schedule
   serviceId: integer('service_id').references(() => clientServices.id), // Service this shift is for (determines Slack channel)
   startTime: timestamp('start_time').notNull(),
@@ -627,7 +661,9 @@ export const shifts = pgTable('shifts', {
   notes: text('notes'), // Optional notes about the shift
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+}, (table) => ({
+  activeUnique: uniqueIndex('shifts_one_open_per_employee').on(table.employeeId).where(sql`${table.endTime} IS NULL`),
+}))
 
 // Shift Breaks table (breaks during a shift)
 export const shiftBreaks = pgTable('shift_breaks', {
@@ -638,4 +674,20 @@ export const shiftBreaks = pgTable('shift_breaks', {
   breakType: varchar('break_type', { length: 20 }).default('regular'), // 'regular' | 'lunch' | 'other'
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  activeUnique: uniqueIndex('shift_breaks_one_open_per_shift').on(table.shiftId).where(sql`${table.endTime} IS NULL`),
+}))
+
+// Administration of allocations and cycles retains its own audit history.
+export const leaveAdminEvents = pgTable('leave_admin_events', {
+ id: serial('id').primaryKey(),
+ employeeId: integer('employee_id').references(() => teamMembers.id),
+ actorId: integer('actor_id').references(() => users.id).notNull(),
+ entityType: text('entity_type').notNull(),
+ entityId: integer('entity_id'),
+ action: text('action').notNull(),
+ beforeData: jsonb('before_data'),
+ afterData: jsonb('after_data'),
+ reason: text('reason'),
+ createdAt: timestamp('created_at').defaultNow().notNull(),
 })

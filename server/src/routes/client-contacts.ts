@@ -1,18 +1,24 @@
 import { Router } from 'express'
 import multer from 'multer'
 import path from 'path'
+import { uploadsDirectory } from '../utils/uploads.js'
 import fs from 'fs'
 import { db } from '../db/index.js'
 import { clientContacts, clients } from '../db/schema.js'
-import { requireAuth } from '../middleware/auth.js'
+import { canAccessClient } from '../services/access.js'
+import { requireAuth, requireAdmin } from '../middleware/auth.js'
 import { eq, and, desc } from 'drizzle-orm'
 
 const router = Router()
+for (const param of ['clientId', 'contactId']) router.param(param, (_req, res, next, value) => {
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0) return res.status(400).json({ error: `Invalid ${param}` })
+  next()
+})
 
 const avatarUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => {
-      const uploadPath = path.join(process.cwd(), 'uploads', 'contacts')
+      const uploadPath = path.join(uploadsDirectory, 'contacts')
       if (!fs.existsSync(uploadPath)) {
         fs.mkdirSync(uploadPath, { recursive: true })
       }
@@ -37,7 +43,7 @@ const avatarUpload = multer({
 router.get('/client/:clientId', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user
-    if (user.role !== 'admin') {
+    if (!['admin', 'client'].includes(user.role) || !await canAccessClient(user, Number(req.params.clientId))) {
       return res.status(403).json({ error: 'Admin access required' })
     }
 
@@ -52,7 +58,7 @@ router.get('/client/:clientId', requireAuth, async (req, res) => {
       ))
       .orderBy(desc(clientContacts.isPrimary), desc(clientContacts.createdAt))
 
-    res.json(contacts)
+    res.json(user.role === 'admin' ? contacts : contacts.map(({ id, clientId, fullName, position, email, phone, avatarUrl, isPrimary }) => ({ id, clientId, fullName, position, email, phone, avatarUrl, isPrimary })))
   } catch (error) {
     console.error('Error fetching client contacts:', error)
     res.status(500).json({ error: 'Failed to fetch contacts' })
@@ -212,7 +218,7 @@ router.delete('/:contactId', requireAuth, async (req, res) => {
 })
 
 // Upload or replace a contact avatar
-router.post('/:contactId/avatar', requireAuth, avatarUpload.single('avatar'), async (req, res) => {
+router.post('/:contactId/avatar', requireAuth, requireAdmin, avatarUpload.single('avatar'), async (req, res) => {
   try {
     const user = (req as any).user
     if (user.role !== 'admin') {
@@ -236,17 +242,6 @@ router.post('/:contactId/avatar', requireAuth, avatarUpload.single('avatar'), as
       return res.status(404).json({ error: 'Contact not found' })
     }
 
-    if (currentContact[0].avatarUrl) {
-      const oldAvatarPath = path.join(process.cwd(), 'uploads', 'contacts', path.basename(currentContact[0].avatarUrl))
-      try {
-        if (fs.existsSync(oldAvatarPath)) {
-          fs.unlinkSync(oldAvatarPath)
-        }
-      } catch (error) {
-        console.error('Error deleting old contact avatar:', error)
-      }
-    }
-
     const avatarUrl = `/api/uploads/contacts/${req.file.filename}`
     const [updatedContact] = await db
       .update(clientContacts)
@@ -256,6 +251,16 @@ router.post('/:contactId/avatar', requireAuth, avatarUpload.single('avatar'), as
       })
       .where(eq(clientContacts.id, parseInt(contactId)))
       .returning()
+
+    if (!updatedContact) {
+      fs.unlinkSync(req.file.path)
+      return res.status(404).json({ error: 'Contact not found' })
+    }
+    if (currentContact[0].avatarUrl?.startsWith('/api/uploads/contacts/')) {
+      const oldAvatarPath = path.join(uploadsDirectory, 'contacts', path.basename(currentContact[0].avatarUrl))
+      try { await fs.promises.unlink(oldAvatarPath) }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error('[CONTACTS] Previous avatar cleanup failed') }
+    }
 
     res.json({
       ...updatedContact,

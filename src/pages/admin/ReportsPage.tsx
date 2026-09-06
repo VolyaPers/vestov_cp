@@ -34,6 +34,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { invoiceAmount, sumInvoiceAmounts, previousReportPeriod } from '@/lib/reportCalculations'
 import { getDatePreset, type DatePreset } from '@/lib/datePresets'
 import { CardSkeleton, EmptyState, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleton, TableSkeleton } from '@/components/page-primitives'
 
@@ -41,7 +42,7 @@ interface Client {
   id: number
   name: string
   createdAt: string
-  isActive?: boolean
+  status: string
 }
 
 interface TeamMember {
@@ -49,7 +50,8 @@ interface TeamMember {
   name: string
   startDate?: string
   status: string
-  billable?: boolean
+  isBillable: boolean
+  clientIds?: number[]
   clientId?: number
 }
 
@@ -57,8 +59,8 @@ interface Invoice {
   id: number
   clientId: number
   client?: { name: string }
-  amount: number
-  total: number
+  amount: number | string
+  total?: number | string
   status: string
   invoiceDate: string
   paidAt?: string
@@ -96,25 +98,25 @@ export function ReportsPage() {
   }, [datePreset])
 
   // Fetch all necessary data
-  const { data: clients = [], isLoading: isLoadingClients } = useQuery<Client[]>({
+  const { data: clients = [], isLoading: isLoadingClients, error: clientsError, refetch: refetchClients } = useQuery<Client[]>({
     queryKey: ['clients'],
     queryFn: () => api.getClients(),
     staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
-  const { data: teamMembers = [], isLoading: isLoadingTeam } = useQuery<TeamMember[]>({
+  const { data: teamMembers = [], isLoading: isLoadingTeam, error: teamError, refetch: refetchTeam } = useQuery<TeamMember[]>({
     queryKey: ['teamMembers'],
     queryFn: () => api.request('/admin/team-members'),
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: allInvoices = [], isLoading: isLoadingInvoices } = useQuery<Invoice[]>({
+  const { data: allInvoices = [], isLoading: isLoadingInvoices, error: invoicesError, refetch: refetchInvoices } = useQuery<Invoice[]>({
     queryKey: ['allInvoices'],
     queryFn: () => api.getAllInvoices(),
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: clientServices = [], isLoading: isLoadingServices } = useQuery<ClientService[]>({
+  const { data: clientServices = [], isLoading: isLoadingServices, error: servicesError, refetch: refetchServices } = useQuery<ClientService[]>({
     queryKey: ['clientServices'],
     queryFn: () => api.request('/services/client-services'),
     staleTime: 5 * 60 * 1000,
@@ -140,11 +142,13 @@ export function ReportsPage() {
     return filtered
   }, [allInvoices, selectedClient, startDate, endDate])
 
+  const receiptInvoices = useMemo(()=>allInvoices.filter(inv=>inv.status==='paid'&&inv.paidAt&&(selectedClient==='all'||inv.clientId===Number(selectedClient))&&(!startDate||inv.paidAt.slice(0,10)>=startDate)&&(!endDate||inv.paidAt.slice(0,10)<=endDate)),[allInvoices,selectedClient,startDate,endDate])
+
   const filteredTeamMembers = useMemo(() => {
     let filtered = teamMembers
 
     if (selectedClient !== 'all') {
-      filtered = filtered.filter((member) => member.clientId === parseInt(selectedClient))
+      filtered = filtered.filter((member) => (member.clientIds || [member.clientId]).includes(parseInt(selectedClient)))
     }
 
     return filtered
@@ -165,8 +169,8 @@ export function ReportsPage() {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value)
   }
 
@@ -178,7 +182,7 @@ export function ReportsPage() {
     const grouped: { [key: string]: { date: string; revenue: number; count: number } } = {}
 
     data.forEach((item) => {
-      const date = new Date(item.invoiceDate || item.periodStart || '')
+      const date = new Date(item.paidAt || item.invoiceDate || item.periodStart || '')
       let key: string
 
       if (period === 'month') {
@@ -195,7 +199,7 @@ export function ReportsPage() {
       }
 
       if (item.status === 'paid') {
-        grouped[key].revenue += item.total || item.amount || 0
+        grouped[key].revenue = Math.round((grouped[key].revenue + invoiceAmount(item))*100)/100
         grouped[key].count += 1
       }
     })
@@ -252,7 +256,7 @@ export function ReportsPage() {
   }
 
   // KPI Calculations
-  const revenueData = useMemo(() => aggregateByPeriod(filteredInvoices, granularity), [filteredInvoices, granularity])
+  const revenueData = useMemo(() => aggregateByPeriod(receiptInvoices, granularity), [receiptInvoices, granularity])
   const teamGrowthData = useMemo(() => calculateTeamGrowth(filteredTeamMembers), [filteredTeamMembers])
   const clientGrowthData = useMemo(() => {
     // When filtering by specific client, client growth doesn't make sense
@@ -260,27 +264,19 @@ export function ReportsPage() {
     return calculateClientGrowth(clients)
   }, [clients, selectedClient])
 
-  const totalRevenue = filteredInvoices
-    .filter((inv) => inv.status === 'paid')
-    .reduce((sum, inv) => sum + (inv.total || inv.amount || 0), 0)
-
-  const previousPeriodStart = new Date(startDate)
-  previousPeriodStart.setMonth(previousPeriodStart.getMonth() - 1)
-  const previousPeriodEnd = new Date(endDate)
-  previousPeriodEnd.setMonth(previousPeriodEnd.getMonth() - 1)
-
-  const previousRevenue = allInvoices
-    .filter((inv) => {
-      const invDate = new Date(inv.invoiceDate || inv.periodStart || '')
-      return invDate >= previousPeriodStart && invDate <= previousPeriodEnd && inv.status === 'paid'
-    })
-    .reduce((sum, inv) => sum + (inv.total || inv.amount || 0), 0)
+  const totalRevenue = sumInvoiceAmounts(receiptInvoices)
+  const previousPeriod = startDate && endDate && startDate<=endDate ? previousReportPeriod(startDate,endDate) : null
+  const previousRevenue = sumInvoiceAmounts(allInvoices.filter(inv=>{
+    if(!previousPeriod || (selectedClient!=='all' && inv.clientId!==Number(selectedClient)))return false
+    const date=new Date(inv.paidAt?.slice(0,10) || '')
+    return date>=previousPeriod.start&&date<=previousPeriod.end&&inv.status==='paid'
+  }))
 
   const revenueGrowth = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0
 
   const activeClients = selectedClient === 'all'
-    ? clients.filter((c) => c.isActive !== false).length
-    : 1
+    ? clients.filter((c) => c.status === 'active').length
+    : clients.filter(c=>c.id===Number(selectedClient)&&c.status==='active').length
 
   const activeTeamMembers = filteredTeamMembers.filter((m) => m.status === 'active').length
 
@@ -290,7 +286,7 @@ export function ReportsPage() {
   const revenueByClient = useMemo(() => {
     const clientRevenue: { [key: number]: { name: string; revenue: number } } = {}
 
-    filteredInvoices.forEach((inv) => {
+    receiptInvoices.forEach((inv) => {
       if (inv.status !== 'paid') return
 
       if (!clientRevenue[inv.clientId]) {
@@ -301,17 +297,17 @@ export function ReportsPage() {
         }
       }
 
-      clientRevenue[inv.clientId].revenue += inv.total || inv.amount || 0
+      clientRevenue[inv.clientId].revenue = Math.round((clientRevenue[inv.clientId].revenue + invoiceAmount(inv))*100)/100
     })
 
     return Object.values(clientRevenue)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [filteredInvoices, clients])
+  }, [receiptInvoices, clients])
 
   // Invoice status distribution
   const invoiceStatusData = useMemo(() => {
-    const statusCounts = { paid: 0, sent: 0, draft: 0, overdue: 0 }
+    const statusCounts = { paid: 0, sent: 0, draft: 0, overdue: 0, cancelled: 0 }
 
     filteredInvoices.forEach((inv) => {
       if (inv.status === 'paid') {
@@ -320,7 +316,11 @@ export function ReportsPage() {
         const now = new Date()
         // Simple overdue check - in production you'd check against due date
         statusCounts.sent++
-      } else {
+      } else if (inv.status === 'overdue') {
+        statusCounts.overdue++
+      } else if (inv.status === 'cancelled') {
+        statusCounts.cancelled++
+      } else if (inv.status === 'draft') {
         statusCounts.draft++
       }
     })
@@ -329,6 +329,8 @@ export function ReportsPage() {
       { name: 'Paid', value: statusCounts.paid, color: '#10b981' },
       { name: 'Sent', value: statusCounts.sent, color: '#f59e0b' },
       { name: 'Draft', value: statusCounts.draft, color: '#6b7280' },
+      { name: 'Overdue', value: statusCounts.overdue, color: '#ef4444' },
+      { name: 'Cancelled', value: statusCounts.cancelled, color: '#94a3b8' },
     ].filter((item) => item.value > 0)
   }, [filteredInvoices])
 
@@ -348,6 +350,8 @@ export function ReportsPage() {
     }))
   }, [filteredTeamMembers])
 
+  const reportError=clientsError || teamError || invoicesError || servicesError
+  if(reportError)return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6"><h2 className="font-semibold">Report data is unavailable</h2><p>{reportError instanceof Error?reportError.message:'A required data source failed. Totals are not shown until all sources load.'}</p><button className="mt-4 underline" onClick={()=>{void refetchClients();void refetchTeam();void refetchInvoices();void refetchServices()}}>Retry</button></div>
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -487,7 +491,7 @@ export function ReportsPage() {
         <MetricTile
           label="Active Team"
           value={activeTeamMembers}
-          hint={`${filteredTeamMembers.filter((m) => m.billable).length} billable in this view`}
+          hint={`${filteredTeamMembers.filter((m) => m.isBillable).length} billable in this view`}
           icon={<Users className="h-5 w-5" />}
           tone="primary"
         />
@@ -759,20 +763,20 @@ export function ReportsPage() {
                 <div className="flex items-center justify-between p-3 stripe-surface rounded-lg">
                   <span className="text-sm font-medium stripe-text-secondary">Billable Members</span>
                   <span className="text-lg font-bold stripe-text-primary">
-                    {filteredTeamMembers.filter((m) => m.billable).length}
+                    {filteredTeamMembers.filter((m) => m.isBillable).length}
                   </span>
                 </div>
                 <div className="flex items-center justify-between p-3 stripe-surface rounded-lg">
                   <span className="text-sm font-medium stripe-text-secondary">Non-Billable Members</span>
                   <span className="text-lg font-bold stripe-text-primary">
-                    {filteredTeamMembers.filter((m) => !m.billable).length}
+                    {filteredTeamMembers.filter((m) => !m.isBillable).length}
                   </span>
                 </div>
                 <div className="flex items-center justify-between p-3 stripe-surface rounded-lg">
-                  <span className="text-sm font-medium stripe-text-secondary">Utilization Rate</span>
+                  <span className="text-sm font-medium stripe-text-secondary">Billable Share</span>
                   <span className="text-lg font-bold stripe-text-primary">
                     {filteredTeamMembers.length > 0
-                      ? Math.round((filteredTeamMembers.filter((m) => m.billable).length / filteredTeamMembers.length) * 100)
+                      ? Math.round((filteredTeamMembers.filter((m) => m.isBillable).length / filteredTeamMembers.length) * 100)
                       : 0}
                     %
                   </span>
@@ -846,7 +850,7 @@ export function ReportsPage() {
                 <div className="flex items-center justify-between p-4 stripe-surface rounded-lg">
                   <div>
                     <div className="text-3xl font-bold text-gray-900">
-                      {clients.filter((c) => c.isActive === false).length}
+                      {clients.filter((c) => c.status === 'inactive').length}
                     </div>
                     <div className="text-sm text-gray-500">Inactive Clients</div>
                   </div>

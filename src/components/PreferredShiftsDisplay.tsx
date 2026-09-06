@@ -8,7 +8,7 @@ interface PreferredShiftsDisplayProps {
   showEmployeeTime?: boolean
 }
 
-const WEEKDAY_ORDER = [1, 2, 3, 4, 5] // Mon-Fri
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
 function formatTimeRange(start: string, end: string, tz: string): string {
   const abbr = getTimezoneAbbreviation(tz)
@@ -46,8 +46,12 @@ export function PreferredShiftsDisplay({
         <div>{isSameTimezone ? 'Time' : 'Your Time'}</div>
       </div>
       {sorted.map((schedule) => {
-        const converted = convertTime(schedule.startTime, empTz, viewerTz)
-        const convertedEnd = convertTime(schedule.endTime, empTz, viewerTz)
+        const reference = new Date()
+        reference.setDate(reference.getDate() + ((schedule.dayOfWeek - reference.getDay() + 7) % 7))
+        const endReference = new Date(reference)
+        if (schedule.endTime <= schedule.startTime) endReference.setDate(endReference.getDate() + 1)
+        const converted = convertTime(schedule.startTime, empTz, viewerTz, new Date(reference))
+        const convertedEnd = convertTime(schedule.endTime, empTz, viewerTz, endReference)
 
         const dayName = getDayName(schedule.dayOfWeek)
         const shortDay = dayName.slice(0, 3)
@@ -68,7 +72,7 @@ export function PreferredShiftsDisplay({
               </div>
             )}
             <div className="text-gray-900 font-medium">
-              {converted.time} - {convertedEnd.time} {converted.abbreviation}
+              {converted.time} - {convertedEnd.time} {converted.abbreviation}{schedule.endTime <= schedule.startTime ? ' (+1 day)' : ''}
               {viewerDayLabel && <span className="text-xs text-gray-400 ml-1">{viewerDayLabel}</span>}
             </div>
           </div>

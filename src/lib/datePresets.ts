@@ -4,6 +4,8 @@
 
 export type DatePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime'
 
+const localDateKey = (date:Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
+
 export interface DateRange {
   startDate: string
   endDate: string
@@ -22,8 +24,8 @@ export function getDatePreset(preset: DatePreset): DateRange {
       const firstDay = new Date(year, month, 1)
       const lastDay = new Date(year, month + 1, 0)
       return {
-        startDate: firstDay.toISOString().split('T')[0],
-        endDate: lastDay.toISOString().split('T')[0],
+        startDate: localDateKey(firstDay),
+        endDate: localDateKey(lastDay),
       }
     }
 
@@ -31,8 +33,8 @@ export function getDatePreset(preset: DatePreset): DateRange {
       const firstDay = new Date(year, month - 1, 1)
       const lastDay = new Date(year, month, 0)
       return {
-        startDate: firstDay.toISOString().split('T')[0],
-        endDate: lastDay.toISOString().split('T')[0],
+        startDate: localDateKey(firstDay),
+        endDate: localDateKey(lastDay),
       }
     }
 
@@ -40,8 +42,8 @@ export function getDatePreset(preset: DatePreset): DateRange {
       const firstDay = new Date(year, 0, 1)
       const lastDay = new Date(year, 11, 31)
       return {
-        startDate: firstDay.toISOString().split('T')[0],
-        endDate: lastDay.toISOString().split('T')[0],
+        startDate: localDateKey(firstDay),
+        endDate: localDateKey(lastDay),
       }
     }
 
@@ -49,8 +51,8 @@ export function getDatePreset(preset: DatePreset): DateRange {
       const firstDay = new Date(year - 1, 0, 1)
       const lastDay = new Date(year - 1, 11, 31)
       return {
-        startDate: firstDay.toISOString().split('T')[0],
-        endDate: lastDay.toISOString().split('T')[0],
+        startDate: localDateKey(firstDay),
+        endDate: localDateKey(lastDay),
       }
     }
 
@@ -58,14 +60,14 @@ export function getDatePreset(preset: DatePreset): DateRange {
       // Use a very early date and today
       return {
         startDate: '2000-01-01',
-        endDate: today.toISOString().split('T')[0],
+        endDate: localDateKey(today),
       }
     }
 
     default:
       return {
-        startDate: today.toISOString().split('T')[0],
-        endDate: today.toISOString().split('T')[0],
+        startDate: localDateKey(today),
+        endDate: localDateKey(today),
       }
   }
 }
