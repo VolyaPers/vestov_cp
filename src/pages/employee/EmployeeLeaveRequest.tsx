@@ -119,7 +119,7 @@ export function EmployeeLeaveRequest() {
     try {
       setSubmitting(true)
 
-      await api.createLeaveRequest({
+      const saved = await api.createLeaveRequest({
         employeeId: teamMemberId,
         leaveTypeId: parseInt(formData.leaveTypeId),
         startDate: formData.startDate,
@@ -138,7 +138,7 @@ export function EmployeeLeaveRequest() {
       // Reload data
       await loadData()
 
-      showAlert({ message: 'Leave request submitted successfully!', type: 'success' })
+      showAlert({ message: saved.status === 'approved' ? 'Leave approved and added to your calendar.' : 'Request saved. Awaiting Volodymyr or Patricia.', type: 'success' })
     } catch (error) {
       console.error('Error submitting leave request:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.'
@@ -224,6 +224,7 @@ export function EmployeeLeaveRequest() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-sm text-muted-foreground">Sick leave of up to 2 working days is approved automatically. Adjacent sick days count together. Longer sick leave and vacations need approval from Volodymyr or Patricia.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Leave Type */}
               <div>

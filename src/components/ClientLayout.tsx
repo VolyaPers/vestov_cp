@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
-import { useLocation, Route, Switch, Redirect } from 'wouter'
+import { useLocation, useSearch, Route, Switch, Redirect } from 'wouter'
 import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -75,6 +75,7 @@ const ClientPortalRoute = createLazyRoute(ClientPortal)
 
 export function ClientLayout({ user }: ClientLayoutProps) {
   const [location, setLocation] = useLocation()
+  const search = useSearch()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const signOut = useAppSignOut()
   const { data: assignedClients = [], isLoading, error: loadError, refetch } = useQuery<Client[]>({
@@ -86,20 +87,20 @@ export function ClientLayout({ user }: ClientLayoutProps) {
 
   useEffect(() => {
     if (!assignedClients.length) return
-    const routeId = Number(window.location.pathname.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
+    const routeId = Number(window.location.pathname.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1] || new URLSearchParams(search).get('clientId'))
     let savedId = 0
     try { savedId = Number(localStorage.getItem(`client-workspace:${user.id}`)) } catch {}
     const selected = assignedClients.find(client => client.id === routeId)
       || assignedClients.find(client => client.id === savedId) || assignedClients[0]
     setCurrentClient(selected)
     if (['/client', '/client/', '/client/portal'].includes(window.location.pathname)) setLocation(`/client/portal/${selected.id}`)
-  }, [assignedClients, user.id, setLocation])
+  }, [assignedClients, user.id, setLocation, search])
 
   useEffect(() => {
-    const id = Number(location.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1])
+    const id = Number(location.match(/^\/client\/(?:portal|documents|invoices)\/(\d+)/)?.[1] || new URLSearchParams(search).get('clientId'))
     const selected = assignedClients.find(client => client.id === id)
     if (selected) setCurrentClient(selected)
-  }, [location, assignedClients])
+  }, [location, assignedClients, search])
 
   const selectClient = (id: number) => {
     const selected = assignedClients.find(client => client.id === id)
@@ -107,6 +108,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
     setCurrentClient(selected)
     try { localStorage.setItem(`client-workspace:${user.id}`, String(id)) } catch {}
     if (/^\/client\/(?:portal|documents|invoices)\//.test(location)) setLocation(location.replace(/\d+$/, String(id)))
+    else if (search) setLocation(location + '?clientId=' + id)
   }
 
   const handleLogout = async () => {

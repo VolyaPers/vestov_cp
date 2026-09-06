@@ -1,457 +1,145 @@
-import { useEffect, useState, useRef } from 'react'
-import {
-  Briefcase,
-  Calendar,
-  Check,
-  MessageSquare,
-  Send,
-  Star,
-  User,
-} from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { useClientWorkspace, ClientLoadError } from '@/lib/clientWorkspace'
+import { useEffect, useRef, useState } from 'react'
+import { useSearch } from 'wouter'
+import { MessageSquare, Star } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useClientWorkspace, ClientLoadError } from '@/lib/clientWorkspace'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
 import { useCustomAlert } from '@/components/ui/custom-alert'
-import { EmptyState, MetricTile, PageHero, SectionHeading } from '@/components/page-primitives'
+import { EmptyState, PageHero } from '@/components/page-primitives'
+import { FeedbackThread, type FeedbackEntry } from '@/components/FeedbackThread'
 
-interface Service {
-  id: number
-  clientId: number
-  clientName: string
-  serviceTitle: string
-  serviceCategory: string
-}
-
-interface Developer {
-  id: number
-  fullName: string
-  role: string
-  avatarUrl: string | null
-}
-
-interface Feedback {
-  id: number
-  rating: number
-  comments: string
-  feedbackType: string
-  status: string
-  createdAt: string
-  adminResponse: string | null
-  adminRespondedAt: string | null
-  service: { id: number; serviceTitle: string } | null
-  teamMember: { id: number; fullName: string } | null
-}
+interface Service { id: number; serviceTitle: string }
+interface TeamMember { id: number; fullName: string; role: string }
 
 export function ClientFeedbackPage() {
-  const { showAlert } = useCustomAlert()
   const { clientId } = useClientWorkspace()
-  const [loadError, setLoadError] = useState('')
-  const [developerError, setDeveloperError] = useState('')
-  const developerRequest = useRef(0)
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
+  const { showAlert } = useCustomAlert()
+  const [canWrite, setCanWrite] = useState(false)
+  const [feedbacks, setFeedbacks] = useState<FeedbackEntry[]>([])
   const [services, setServices] = useState<Service[]>([])
-  const [developers, setDevelopers] = useState<Developer[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [selectedServiceId, setSelectedServiceId] = useState<string>('')
-  const [selectedDeveloperId, setSelectedDeveloperId] = useState<string>('')
-  const [rating, setRating] = useState<number>(0)
+  const [members, setMembers] = useState<TeamMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [teamError, setTeamError] = useState('')
+  const [teamLoading, setTeamLoading] = useState(false)
+  const [teamRetry, setTeamRetry] = useState(0)
+  const [serviceId, setServiceId] = useState('')
+  const [memberId, setMemberId] = useState('')
+  const [rating, setRating] = useState(0)
   const [comments, setComments] = useState('')
-  const [loadingDevelopers, setLoadingDevelopers] = useState(false)
+  const [drafts, setDrafts] = useState<Record<number, string>>({})
+  const [busy, setBusy] = useState<number | 'new' | null>(null)
+  const [refresh, setRefresh] = useState(0)
+  const workspace = useRef(clientId)
+  workspace.current = clientId
+  const [nextCursor, setNextCursor] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const query = useSearch()
+  const selectedId = Number(new URLSearchParams(query).get('feedback'))
 
   useEffect(() => {
-    loadData()
+    setServiceId(''); setMemberId(''); setRating(0); setComments(''); setDrafts({}); setFeedbacks([]); setServices([])
   }, [clientId])
-
   useEffect(() => {
-    developerRequest.current += 1
-    setLoadingDevelopers(false)
-    setSelectedDeveloperId('')
-    setDevelopers([])
-    setDeveloperError('')
-    if (selectedServiceId && selectedServiceId !== 'none') {
-      loadDevelopers(parseInt(selectedServiceId, 10))
-    } else {
-      setDevelopers([])
-      setSelectedDeveloperId('')
+    if (!clientId) return
+    let active = true
+    setLoading(true); setError('')
+    Promise.all([api.getClientFeedbacks(clientId), api.getFeedbackClientServices(clientId)]).then(async ([threads, available]) => {
+      if (selectedId && !threads.feedbacks.some((item: FeedbackEntry) => item.id === selectedId)) {
+        const selected = await api.request(`/feedback/${selectedId}/thread`)
+        if (selected.client?.id === clientId) threads.feedbacks.unshift(selected)
+      }
+      if (active) { setFeedbacks(threads.feedbacks); setServices(available.services); setNextCursor(threads.nextCursor); setCanWrite(threads.canReply === true) }
+    }).catch(error => { if (active) setError(error instanceof Error ? error.message : 'Unable to load feedback') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [clientId, refresh, selectedId])
+  useEffect(() => {
+    let active = true
+    setMemberId(''); setMembers([]); setTeamError(''); setTeamLoading(false)
+    if (serviceId) {
+      setTeamLoading(true)
+      api.getFeedbackServiceDevelopers(Number(serviceId)).then(data => { if (active) setMembers(data.developers) })
+        .catch(() => { if (active) setTeamError('Unable to load the project team.') })
+        .finally(() => { if (active) setTeamLoading(false) })
     }
-  }, [selectedServiceId])
+    return () => { active = false }
+  }, [serviceId, teamRetry])
+  useEffect(() => {
+    if (!loading && selectedId) document.getElementById(`feedback-${selectedId}`)?.scrollIntoView({ block: 'start' })
+  }, [loading, selectedId])
 
-  const loadData = async () => {
+  const loadMore = async () => {
+    if (!clientId || !nextCursor || loadingMore) return
+    const requestedWorkspace = clientId
+    setLoadingMore(true)
     try {
-      setIsLoading(true)
-      setLoadError('')
-      const [feedbacksData, servicesData] = await Promise.all([
-        api.getClientFeedbacks(clientId),
-        api.getFeedbackClientServices(clientId),
-      ])
-      setFeedbacks(feedbacksData.feedbacks)
-      setServices(servicesData.services)
-    } catch (error) {
-      setLoadError('Unable to load your feedback and projects. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
+      const data = await api.request(`/feedback/client?clientId=${clientId}&before=${nextCursor}`)
+      if (workspace.current === requestedWorkspace) {
+        setFeedbacks(current => [...new Map([...current, ...data.feedbacks].map(item => [item.id, item])).values()])
+        setNextCursor(data.nextCursor)
+      }
+    } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Unable to load older conversations', type: 'error' }) }
+    finally { setLoadingMore(false) }
   }
 
-  const loadDevelopers = async (serviceId: number) => {
-    const requestId = ++developerRequest.current
-    try {
-      setLoadingDevelopers(true)
-      const data = await api.getFeedbackServiceDevelopers(serviceId)
-      if (requestId === developerRequest.current) setDevelopers(data.developers)
-    } catch (error) {
-      if (requestId === developerRequest.current) { setDevelopers([]); setDeveloperError('Unable to load this project’s team. Retry before submitting.') }
-    } finally {
-      if (requestId === developerRequest.current) setLoadingDevelopers(false)
-    }
-  }
-
-  const handleSubmit = async (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-
-    if (rating === 0) {
-      showAlert({ message: 'Please select a rating', type: 'warning' })
-      return
-    }
-
-    if (!comments.trim()) {
-      showAlert({ message: 'Please enter your feedback', type: 'warning' })
-      return
-    }
-
+    if (busy !== null || !clientId || !rating || !comments.trim()) return
+    const submittedWorkspace = clientId
+    setBusy('new')
     try {
-      setIsSubmitting(true)
-      await api.submitFeedback({
-        clientId,
-        clientServiceId: selectedServiceId && selectedServiceId !== 'none' ? parseInt(selectedServiceId, 10) : undefined,
-        teamMemberId: selectedDeveloperId && selectedDeveloperId !== 'none' ? parseInt(selectedDeveloperId, 10) : undefined,
-        rating,
-        comments: comments.trim(),
-        feedbackType: selectedDeveloperId && selectedDeveloperId !== 'none' ? 'team_member' : 'general',
-      })
-
-      setSelectedServiceId('')
-      setSelectedDeveloperId('')
-      setRating(0)
-      setComments('')
-
-      await loadData()
-      showAlert({ message: 'Thank you for your feedback!', type: 'success' })
-    } catch (error) {
-      console.error('Error submitting feedback:', error)
-      showAlert({ message: 'Failed to submit feedback. Please try again.', type: 'error' })
-    } finally {
-      setIsSubmitting(false)
-    }
+      await api.submitFeedback({ clientId, clientServiceId: serviceId ? Number(serviceId) : undefined, teamMemberId: memberId ? Number(memberId) : undefined, rating, comments: comments.trim(), feedbackType: memberId ? 'team_member' : serviceId ? 'team' : 'general' })
+      if (workspace.current === submittedWorkspace) { setComments(''); setRating(0); setServiceId(''); setMemberId(''); setRefresh(value => value + 1) }
+      showAlert({ message: 'Feedback sent. Your first reply is due within one working day.', type: 'success' })
+    } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Unable to send feedback', type: 'error' }) }
+    finally { setBusy(null) }
+  }
+  const act = async (item: FeedbackEntry, action: 'reply' | 'confirm' | 'reopen') => {
+    if (busy !== null || action !== 'confirm' && !drafts[item.id]?.trim()) return
+    const submittedWorkspace = clientId
+    setBusy(item.id)
+    try {
+      await api.request(`/feedback/${item.id}/${action}`, { method: 'POST', body: JSON.stringify(action === 'confirm' ? {} : { body: drafts[item.id].trim() }) })
+      if (workspace.current === submittedWorkspace) { setDrafts(previous => ({ ...previous, [item.id]: '' })); setRefresh(value => value + 1) }
+      showAlert({ message: action === 'confirm' ? 'Resolution confirmed. You can reopen this thread if needed.' : action === 'reopen' ? 'Thread reopened. Your message was sent to Volodymyr.' : 'Reply sent.', type: 'success' })
+    } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Unable to update feedback', type: 'error' }) }
+    finally { setBusy(null) }
   }
 
-  const renderStars = (currentRating: number, interactive = false, size: 'sm' | 'md' = 'md') => {
-    const starClass = size === 'sm' ? 'h-4 w-4' : 'h-6 w-6'
-
-    return (
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            aria-label={`Rate ${star} out of 5`}
-            aria-pressed={star === currentRating}
-            onClick={interactive ? () => setRating(star) : undefined}
-            disabled={!interactive}
-            className={interactive ? 'cursor-pointer transition-transform hover:scale-110' : 'cursor-default'}
-          >
-            <Star
-              className={`${starClass} ${star <= currentRating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
-            />
-          </button>
-        ))}
-      </div>
-    )
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
-      </div>
-    )
-  }
-
-  if (loadError) return <ClientLoadError message={loadError} onRetry={loadData} />
-
-  const respondedCount = feedbacks.filter((feedback) => feedback.status === 'reviewed').length
-  const averageRating = feedbacks.length
-    ? (feedbacks.reduce((sum, feedback) => sum + feedback.rating, 0) / feedbacks.length).toFixed(1)
-    : '0.0'
-
-  return (
-    <div className="space-y-6">
-      <PageHero
-        eyebrow="Client Experience"
-        title="Feedback loop with your delivery team"
-        description="Send structured feedback, rate work quality, and track responses from Vestov operations in one stream."
-        theme="teal"
-        meta={(
-          <>
-            <span className="hero-meta-pill">
-              {services.length} service{services.length !== 1 ? 's' : ''} available
-            </span>
-            <span className="hero-meta-pill">
-              {feedbacks.length} feedback thread{feedbacks.length !== 1 ? 's' : ''}
-            </span>
-          </>
-        )}
-      />
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricTile
-          label="Submitted"
-          value={feedbacks.length}
-          hint="All historical entries"
-          icon={<MessageSquare className="h-5 w-5" />}
-          tone="primary"
-        />
-        <MetricTile
-          label="Responded"
-          value={respondedCount}
-          hint={`${feedbacks.length - respondedCount} still open`}
-          icon={<Check className="h-5 w-5" />}
-          tone="emerald"
-        />
-        <MetricTile
-          label="Average Rating"
-          value={averageRating}
-          hint="Across submitted feedback"
-          icon={<Star className="h-5 w-5" />}
-          tone="amber"
-        />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.04fr_0.96fr]">
-        <Card className="border-white/80 bg-white/88">
-          <CardContent className="p-6 sm:p-7">
-            <SectionHeading
-              title="Submit feedback"
-              description="Tie feedback to a service or teammate, or keep it general."
-              icon={<Send className="h-5 w-5" />}
-            />
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="service">Service</Label>
-                  <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder="Select a service..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none" label="General Feedback">
-                        General Feedback
-                      </SelectItem>
-                      {services.map((service) => (
-                        <SelectItem key={service.id} value={service.id.toString()} label={service.serviceTitle}>
-                          {service.serviceTitle}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="developer">Team Member</Label>
-                  {developerError && <ClientLoadError message={developerError} onRetry={() => loadDevelopers(Number(selectedServiceId))} />}
-                  {!selectedServiceId || selectedServiceId === 'none' || loadingDevelopers ? (
-                    <div className="mt-2 flex h-11 w-full items-center justify-between rounded-xl border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
-                      {loadingDevelopers ? 'Loading team members...' : 'Select a service first'}
-                    </div>
-                  ) : (
-                    <Select value={selectedDeveloperId} onValueChange={setSelectedDeveloperId}>
-                      <SelectTrigger className="mt-2">
-                        <SelectValue placeholder="Select a team member..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none" label="No specific person">
-                          No specific person
-                        </SelectItem>
-                        {developers.map((developer) => (
-                          <SelectItem key={developer.id} value={developer.id.toString()} label={developer.fullName}>
-                            {developer.fullName} ({developer.role})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
-                <Label>Rating</Label>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                  {renderStars(rating, true)}
-                  <p className="text-sm text-muted-foreground">
-                    {rating > 0 ? `${rating}/5 selected` : 'Choose a rating before submitting'}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="comments">Your Feedback</Label>
-                <Textarea
-                  id="comments"
-                  value={comments}
-                  onChange={(event) => setComments(event.target.value)}
-                  placeholder="What is working well, where are you seeing friction, and what should improve?"
-                  rows={6}
-                  maxLength={10000}
-                  className="mt-2"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-dashed border-border/70 bg-muted/15 px-4 py-3">
-                <p className="text-sm text-muted-foreground">
-                  Feedback can be general, service-specific, or attached to a teammate.
-                </p>
-                <Button type="submit" disabled={isSubmitting || loadingDevelopers || !!developerError || rating === 0 || !comments.trim()}>
-                  {isSubmitting ? 'Submitting...' : 'Submit feedback'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/80 bg-white/88">
-          <CardContent className="p-6 sm:p-7">
-            <SectionHeading
-              title="How responses work"
-              description="What to expect after your feedback is sent."
-              icon={<MessageSquare className="h-5 w-5" />}
-            />
-
-            <div className="space-y-3">
-              <div className="rounded-[1.2rem] border border-white/80 bg-white/76 p-5 shadow-[0_22px_36px_-30px_rgba(15,23,42,0.22)]">
-                <p className="text-sm font-semibold text-foreground">Direct visibility</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Vestov operations reviews incoming feedback and can respond directly inside the same thread.
-                </p>
-              </div>
-              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-5">
-                <p className="text-sm font-semibold text-foreground">Service context</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Link feedback to a service or specific teammate when the request needs targeted follow-up.
-                </p>
-              </div>
-              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-5">
-                <p className="text-sm font-semibold text-foreground">Clear status tracking</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Each feedback item moves from pending review to responded once the team closes the loop.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border-white/80 bg-white/88">
-        <CardContent className="p-6 sm:p-7">
-          <SectionHeading
-            title="Submitted feedback"
-            description="Historical entries and responses from the team."
-            icon={<MessageSquare className="h-5 w-5" />}
-          />
-
-          {feedbacks.length === 0 ? (
-            <EmptyState
-              icon={<MessageSquare className="h-6 w-6" />}
-              title="No feedback yet"
-              description="Use the form above to start the first feedback thread."
-            />
-          ) : (
-            <div className="space-y-4">
-              {feedbacks.map((feedback) => (
-                <div
-                  key={feedback.id}
-                  className="rounded-[1.35rem] border border-border/70 bg-muted/15 p-5 shadow-[0_26px_50px_-38px_rgba(15,23,42,0.4)]"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {feedback.service ? (
-                          <Badge className="bg-primary text-white">
-                            <Briefcase className="mr-1 h-3 w-3" />
-                            {feedback.service.serviceTitle}
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-primary text-white">
-                            <MessageSquare className="mr-1 h-3 w-3" />
-                            General Feedback
-                          </Badge>
-                        )}
-
-                        {feedback.teamMember && (
-                          <Badge variant="outline">
-                            <User className="mr-1 h-3 w-3" />
-                            {feedback.teamMember.fullName}
-                          </Badge>
-                        )}
-
-                        <Badge
-                          className={feedback.status === 'reviewed'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'}
-                        >
-                          {feedback.status === 'reviewed' ? 'Responded' : 'Pending'}
-                        </Badge>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-4">
-                        {renderStars(feedback.rating, false, 'sm')}
-                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {formatDate(feedback.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-[1.1rem] border border-border/60 bg-white/85 p-4">
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{feedback.comments}</p>
-                  </div>
-
-                  {feedback.adminResponse && (
-                    <div className="mt-4 rounded-[1.1rem] border border-sky-200/80 bg-sky-50/80 p-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-sky-900">Response from team</p>
-                        {feedback.adminRespondedAt && (
-                          <span className="text-xs text-sky-700">{formatDate(feedback.adminRespondedAt)}</span>
-                        )}
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-sky-900">
-                        {feedback.adminResponse}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+  if (loading) return <p role="status" className="p-6">Loading your feedback…</p>
+  if (error) return <ClientLoadError message={error} onRetry={() => setRefresh(value => value + 1)} />
+  return <div className="space-y-6">
+    <PageHero eyebrow="Feedback" title="Your feedback" description="Share feedback, follow the conversation and confirm when the issue is resolved." meta={<span>{feedbacks.filter(item => item.status !== 'resolved').length} open in loaded conversations · {feedbacks.filter(item => item.status === 'awaiting_client').length} awaiting your confirmation</span>} />
+    <p className="rounded-lg border bg-muted/30 p-4 text-sm leading-6">Your feedback and replies are private to you and the Vestov management team. Other users at your company cannot read this conversation. We respond within one working day; working days are Monday–Friday in Europe/Kyiv.</p>
+    {!canWrite && <p className="rounded-lg border p-4 text-sm">This is a read-only preview. Exit user preview to reply as yourself. Only the client author can confirm resolution.</p>}
+    {canWrite && <Card><CardContent className="p-4 sm:p-6">
+      <h2 className="mb-4 font-semibold">New feedback</h2>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2"><Label htmlFor="feedback-project">Project</Label><select id="feedback-project" value={serviceId} onChange={event => setServiceId(event.target.value)} disabled={busy !== null} className="h-10 w-full rounded-md border bg-white px-3 text-sm"><option value="">General feedback</option>{services.map(service => <option key={service.id} value={service.id}>{service.serviceTitle}</option>)}</select></div>
+          <div className="space-y-2"><Label htmlFor="feedback-member">Team member</Label><select id="feedback-member" value={memberId} onChange={event => setMemberId(event.target.value)} disabled={!serviceId || teamLoading || !!teamError || busy !== null} className="h-10 w-full rounded-md border bg-white px-3 text-sm disabled:text-muted-foreground"><option value="">{teamLoading ? 'Loading team…' : serviceId ? 'Whole project team' : 'Select a project first'}</option>{members.map(member => <option key={member.id} value={member.id}>{member.fullName}{member.role ? ` · ${member.role}` : ''}</option>)}</select></div>
+        </div>
+        {teamError && <ClientLoadError message={teamError} onRetry={() => setTeamRetry(value => value + 1)} />}
+        <fieldset><legend className="mb-2 text-sm font-medium">Rating</legend><div className="flex items-center gap-2">{[1, 2, 3, 4, 5].map(star => <button key={star} type="button" aria-label={`Rate ${star} out of 5`} aria-pressed={rating === star} onClick={() => setRating(star)} disabled={busy !== null} className="rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><Star className={`h-6 w-6 ${star <= rating ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground'}`} /></button>)}<span className="text-sm text-muted-foreground">{rating ? `${rating}/5` : 'Choose a rating'}</span></div></fieldset>
+        <div className="space-y-2"><Label htmlFor="feedback-comments">Your feedback</Label><Textarea id="feedback-comments" value={comments} onChange={event => setComments(event.target.value)} maxLength={10000} rows={4} disabled={busy !== null} placeholder="What is working well, or what needs to change?" /></div>
+        <Button type="submit" disabled={busy !== null || !rating || !comments.trim() || teamLoading || !!teamError}>{busy === 'new' ? 'Sending…' : 'Submit feedback'}</Button>
+      </form>
+    </CardContent></Card>}
+    <div className="space-y-4"><h2 className="font-semibold">Your conversations</h2>
+      {!feedbacks.length && <EmptyState title="No feedback yet" description="Use the form above to start a private conversation." icon={<MessageSquare className="h-5 w-5" />} />}
+      {feedbacks.map(item => <FeedbackThread key={item.id} feedback={item} selected={selectedId === item.id}>
+        {canWrite && item.status === 'awaiting_client' && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/30 p-3"><p className="text-sm">Has the proposed solution resolved the issue?</p><Button onClick={() => void act(item, 'confirm')} disabled={busy !== null}>Confirm resolution</Button></div>}
+        {canWrite && <form onSubmit={event => { event.preventDefault(); void act(item, item.status === 'resolved' ? 'reopen' : 'reply') }} className="space-y-3">
+          <Label htmlFor={`reply-${item.id}`}>{item.status === 'resolved' ? 'Describe why you are reopening this thread' : item.status === 'awaiting_client' ? 'Or reply if more work is needed' : 'Your reply'}</Label>
+          <Textarea id={`reply-${item.id}`} rows={3} maxLength={10000} value={drafts[item.id] || ''} onChange={event => setDrafts(previous => ({ ...previous, [item.id]: event.target.value }))} disabled={busy !== null} />
+          <Button type="submit" variant="outline" disabled={busy !== null || !drafts[item.id]?.trim()}>{busy === item.id ? 'Saving…' : item.status === 'resolved' ? 'Reopen thread' : 'Send reply'}</Button>
+        </form>}
+      </FeedbackThread>)}
+      {nextCursor && <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Load older conversations'}</Button>}
     </div>
-  )
+  </div>
 }

@@ -42,6 +42,7 @@ import { DateRangePicker } from '@/components/ui/advanced-date-picker'
 import { useLocation } from 'wouter'
 import { api, type FinanceCategory, type FinanceCategoryKind, type FinanceAuditLog, type SalaryHistoryEntry } from '@/lib/api'
 import { CardSkeleton, MetricTileSkeleton, TableSkeleton } from '@/components/page-primitives'
+import { useWorkflowAccess } from '@/lib/workflow'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -601,6 +602,8 @@ type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories' | 
 const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'categories', 'logs']
 
 export function FinancesPage() {
+  const workflowAccess = useWorkflowAccess()
+  const canRecordPayment = workflowAccess.data?.canRecordPayment === true && !workflowAccess.error
   const [loadErrors,setLoadErrors]=useState<Record<string,string|undefined>>({})
   const currentYear = new Date().getFullYear()
   const [location, setLocation] = useLocation()
@@ -1293,11 +1296,12 @@ export function FinancesPage() {
   const salaryOverpayment = Math.max(salaryPaymentAmount - maxSalaryPayment, 0)
   const salaryBaseTooLow = plannedSalaryAmount < salaryMonthContext.alreadyPaidBase
   const salaryNeedsReview=Boolean(salaryPeriodInfo?.requiresTermsReview || (editingSalaryPayment&&editingSalaryPayment.payrollData?.version!==1))
-  const salaryCanSave = (!salaryNeedsReview||(salaryReviewConfirmed&&Boolean(salaryForm.note.trim()))) && salaryTotal > 0 && salaryPaymentAmount >= 0 && plannedSalaryAmount >= 0 && salaryForm.extras.every(e => e.label.trim() && parseMoney(e.amount) > 0) && !salaryBaseTooLow && salaryOverpayment <= 0 && (!salaryPeriodInfo?.legacyPaymentIds?.length || !!editingSalaryPayment)
+  const salaryCanSave = canRecordPayment && (!salaryNeedsReview||(salaryReviewConfirmed&&Boolean(salaryForm.note.trim()))) && salaryTotal > 0 && salaryPaymentAmount >= 0 && plannedSalaryAmount >= 0 && salaryForm.extras.every(e => e.label.trim() && parseMoney(e.amount) > 0) && !salaryBaseTooLow && salaryOverpayment <= 0 && (!salaryPeriodInfo?.legacyPaymentIds?.length || !!editingSalaryPayment)
   const salaryIsAdvance = remainingSalary > 0
 
   // Salary payment
   const openRecordSalary = async (member: SalaryMember) => {
+    if (!canRecordPayment) return
     try {
       const salaryMonth=toInputMonth()
       const period:SalaryPeriod=await api.request(`/finances/salaries/${member.id}/period/${salaryMonth}`)
@@ -1367,6 +1371,7 @@ export function FinancesPage() {
 
   // Edit structured components, or explicitly reconcile an unstructured historical payment.
   const openEditSalaryPayment = async (payment: SalaryPayment) => {
+    if (!canRecordPayment) return
     const member = salariesData?.members.find((m) => m.id === payment.teamMemberId)
     if (!member) return
 
@@ -1391,6 +1396,7 @@ export function FinancesPage() {
 
   // Delete salary payment
   const handleDeleteSalaryPayment = async (id: number) => {
+    if (!canRecordPayment) return
     if (!confirm('Void this recorded payment? The original record and audit history will be preserved.')) return
     try {
       await api.deleteFinancialTransaction(id)
@@ -2280,6 +2286,8 @@ export function FinancesPage() {
 
         {/* ========== TAB 3: SALARIES ========== */}
         <TabsContent value="salaries" className="space-y-6">
+          {workflowAccess.error ? <div role="alert" className="rounded-md border p-4 text-sm">Payroll payment permissions could not be loaded. Payment history is still available. <Button variant="link" onClick={() => void workflowAccess.refetch()}>Try again</Button></div>
+            : !workflowAccess.isLoading && !canRecordPayment && <p className="rounded-md border p-4 text-sm text-muted-foreground">Salary payments are read only. The workflow owner and finance deputy can record, edit and void payments.</p>}
           {/* Year Selector */}
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium stripe-text-secondary">Year:</label>
@@ -2445,14 +2453,14 @@ export function FinancesPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
+                      <div className={`grid gap-2 ${canRecordPayment ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        {canRecordPayment && <button
                           onClick={() => openRecordSalary(member)}
                           className="stripe-btn-primary flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
                         >
                           <Wallet className="w-4 h-4" />
                           Record Payment
-                        </button>
+                        </button>}
                         <button
                           onClick={() => openSalaryHistory(member)}
                           className="flex items-center justify-center gap-2 rounded-lg border stripe-border px-4 py-2 text-sm font-medium stripe-text-primary hover:bg-gray-50 transition-colors"
@@ -2495,9 +2503,9 @@ export function FinancesPage() {
                           <th className="text-right px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
                             Amount
                           </th>
-                          <th className="text-right px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
+                          {canRecordPayment && <th className="text-right px-6 py-3 text-xs font-medium stripe-text-muted uppercase tracking-wider">
                             Actions
-                          </th>
+                          </th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y stripe-border">
@@ -2515,7 +2523,7 @@ export function FinancesPage() {
                             <td className="px-6 py-4 text-sm font-semibold text-blue-600 text-right whitespace-nowrap">
                               {formatCurrency(payment.amount)}
                             </td>
-                            <td className="px-6 py-4 text-right">
+                            {canRecordPayment && <td className="px-6 py-4 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <button
                                   onClick={() => openEditSalaryPayment(payment)}
@@ -2527,12 +2535,12 @@ export function FinancesPage() {
                                 <button
                                   onClick={() => handleDeleteSalaryPayment(payment.id)}
                                   className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-red-400 hover:text-red-600"
-                                  title="Delete salary payment"
+                                  title="Void salary payment"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
-                            </td>
+                            </td>}
                           </tr>
                         ))}
                       </tbody>
@@ -3060,7 +3068,7 @@ export function FinancesPage() {
       )}
 
       {/* ========== SALARY PAYMENT MODAL ========== */}
-      {showSalaryModal && selectedMember && (
+      {showSalaryModal && selectedMember && canRecordPayment && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => { setShowSalaryModal(false); setEditingSalaryPayment(null) }}

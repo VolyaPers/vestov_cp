@@ -1,10 +1,9 @@
 import express from 'express'
-import { db, pool } from '../db/index.js'
+import { db } from '../db/index.js'
 import { reimbursementRequests, teamMembers, users, financialTransactions } from '../db/schema.js'
-import { eq, and, or, sql, desc, like } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import { calculateEmploymentMetrics } from '../utils/employment.js'
-import { notifyReimbursementRequest } from '../utils/slack.js'
-import { buildReimbursementRequestEmail, REQUEST_NOTIFICATION_EMAIL, sendEmail } from '../services/email.js'
+import { queueWorkflowNotification, requireWorkflowCapability, workflowRecipients } from '../services/workflow.js'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
@@ -17,6 +16,12 @@ import { logFinanceActivity } from '../lib/financeAudit.js'
 
 const router = express.Router()
 router.use(requireAuth)
+router.use((req, res, next) => {
+  if (req.user?.originalUserId && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return res.status(403).json({ error: 'Exit user preview before changing a reimbursement request.' })
+  }
+  next()
+})
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -57,36 +62,6 @@ function getYearlyLimit(yearsAtCompany: number): number {
   return 300 // 1 year
 }
 
-function notifyNewReimbursementRequest(options: {
-  member: { name?: string | null; email?: string | null }
-  requestId: number
-  description: string
-  category?: string | null
-  expenseAmount: number | string
-  reimbursementAmount: number | string
-  year: number
-}) {
-  notifyReimbursementRequest({
-    employeeName: options.member.name || null,
-    employeeEmail: options.member.email || 'unknown',
-    requestId: options.requestId,
-    description: options.description,
-    amount: String(options.reimbursementAmount)
-  }).catch((err) => console.error('[SLACK] reimbursement notify failed:', err))
-
-  sendEmail(buildReimbursementRequestEmail({
-    to: REQUEST_NOTIFICATION_EMAIL,
-    employeeName: options.member.name || null,
-    employeeEmail: options.member.email || null,
-    requestId: options.requestId,
-    description: options.description,
-    category: options.category || null,
-    expenseAmount: options.expenseAmount,
-    reimbursementAmount: options.reimbursementAmount,
-    year: options.year,
-  })).catch((err) => console.error('[email] reimbursement request notify failed:', err))
-}
-
 // GET /api/reimbursements/limits/:year - Get available limit for current employee
 router.get('/limits/:year',async(req,res)=>{
   try{
@@ -121,9 +96,10 @@ router.post('/', async(req,res)=>{
       const reimbursed=Math.min(Math.round(expense/2),getYearlyLimit(careerYear)*100-used)
       if(reimbursed<=0)throw new FinanceValidationError('No reimbursement budget is available',409)
       const [request]=await tx.insert(reimbursementRequests).values({employeeId:memberId,year:new Date().getFullYear(),careerYear,expenseAmount:money(expense),reimbursementAmount:money(reimbursed),description,category:req.body.category || null,status:'pending',requestedBy:req.user!.id,idempotencyKey:key}).returning()
+      const recipients = await workflowRecipients(tx)
+      await queueWorkflowNotification(tx, { eventKey: `purchase-${request.id}-created`, recipientIds: recipients.allIds, title: 'Purchase approval needed', body: `${member.name}: ${description}. Reimbursement: ${money(reimbursed)} USD.`, href: `/admin/reimbursements?request=${request.id}` })
       return {request,member,duplicate:false}
     })
-    if(!result.duplicate)notifyNewReimbursementRequest({member:result.member!,requestId:result.request.id,description:result.request.description,category:result.request.category,expenseAmount:result.request.expenseAmount,reimbursementAmount:result.request.reimbursementAmount,year:result.request.year})
     res.status(result.duplicate?200:201).json(result.request)
   }catch(error){financeError(res,error,'Failed to create reimbursement request')}
 })
@@ -187,7 +163,7 @@ router.get('/', async (req, res) => {
 // PUT /api/reimbursements/:id/approve - Approve request (admin only)
 async function reviewRequest(req:any,res:any,approved:boolean){
   try{
-    if(req.user?.role!=='admin')throw new FinanceValidationError('Admin access required',403)
+    await requireWorkflowCapability(req.user, 'canApprovePurchase')
     const id=positiveId(req.params.id),note=typeof req.body.note==='string'?req.body.note.trim():''
     if(!approved&&!note)throw new FinanceValidationError('Rejection reason is required')
     const result=await db.transaction(async(tx)=>{
@@ -196,6 +172,7 @@ async function reviewRequest(req:any,res:any,approved:boolean){
       await payrollLock(tx,request.employeeId)
       const [updated]=await tx.update(reimbursementRequests).set({status:approved?'approved':'rejected',approvedBy:req.user.id,approvedAt:new Date(),approvalNote:note || null,updatedAt:new Date()}).where(and(eq(reimbursementRequests.id,id),eq(reimbursementRequests.status,'pending'))).returning()
       if(!updated)throw new FinanceValidationError('Request was already reviewed. Refresh its status.',409)
+      await queueWorkflowNotification(tx, { eventKey: `purchase-${id}-${updated.status}`, recipientIds: [request.requestedBy], title: approved ? 'Purchase request approved' : 'Purchase request declined', body: approved ? `${request.description}. Upload your receipt to complete the request.${note ? ` Note: ${note}` : ''}` : `${request.description}. Reason: ${note}`, href: '/employee/reimbursements' })
       return updated
     });res.json(result)
   }catch(error){financeError(res,error,'Failed to review reimbursement request')}
@@ -204,7 +181,7 @@ router.put('/:id/approve',(req,res)=>reviewRequest(req,res,true))
 router.put('/:id/reject',(req,res)=>reviewRequest(req,res,false))
 router.post('/:id/pay',async(req,res)=>{
   try{
-    if(req.user!.role!=='admin')throw new FinanceValidationError('Admin access required',403)
+    await requireWorkflowCapability(req.user, 'canRecordPayment')
     const id=positiveId(req.params.id),date=validDate(req.body.transactionDate,'Payment date'),key=idempotencyKey(req.body.idempotencyKey)
     const result=await db.transaction(async(tx)=>{
       const [initial]=await tx.select().from(reimbursementRequests).where(eq(reimbursementRequests.id,id))
@@ -218,6 +195,7 @@ router.post('/:id/pay',async(req,res)=>{
       const [payment]=await tx.insert(financialTransactions).values({type:'expense',category:'workspace_reimbursement',amount:request.reimbursementAmount,description:`Reimbursement #${id}: ${request.description}`,transactionDate:date,teamMemberId:request.employeeId,createdBy:req.user!.id,idempotencyKey:key}).returning()
       const [updated]=await tx.update(reimbursementRequests).set({status:'paid',paymentTransactionId:payment.id,paidAt:new Date(`${date}T12:00:00Z`),updatedAt:new Date()}).where(eq(reimbursementRequests.id,id)).returning()
       await logFinanceActivity(tx,{action:'reimbursement_paid',entityType:'transaction',entityId:payment.id,transactionId:payment.id,teamMemberId:request.employeeId,actorId:req.user!.id,summary:`Recorded reimbursement #${id} payment`,afterData:{amount:payment.amount,requestId:id,transactionDate:date}})
+      await queueWorkflowNotification(tx, { eventKey: `purchase-${id}-paid`, recipientIds: [request.requestedBy], title: 'Reimbursement payment recorded', body: `${request.reimbursementAmount} USD for ${request.description}. Payment date: ${date}.`, href: '/employee/reimbursements' })
       return updated
     });res.json(result)
   }catch(error){financeError(res,error,'Failed to record reimbursement payment')}
@@ -228,8 +206,14 @@ router.post('/:id/upload',async(req,res,next)=>{
 },upload.single('evidence'),async(req,res)=>{
   try{
     if(!req.file)throw new FinanceValidationError('Evidence file is required')
-    const [updated]=await db.update(reimbursementRequests).set({evidenceUrl:`/uploads/${req.file.filename}`,confirmedAt:new Date(),status:'confirmed',updatedAt:new Date()}).where(and(eq(reimbursementRequests.id,positiveId(req.params.id)),eq(reimbursementRequests.status,'approved'))).returning()
-    if(!updated)throw new FinanceValidationError('Request status changed. Reload before uploading evidence.',409)
+    const filename = req.file.filename
+    const updated = await db.transaction(async tx => {
+      const [request] = await tx.update(reimbursementRequests).set({evidenceUrl:`/uploads/${filename}`,confirmedAt:new Date(),status:'confirmed',updatedAt:new Date()}).where(and(eq(reimbursementRequests.id,positiveId(req.params.id)),eq(reimbursementRequests.status,'approved'))).returning()
+      if(!request)throw new FinanceValidationError('Request status changed. Reload before uploading evidence.',409)
+      const recipients = await workflowRecipients(tx)
+      await queueWorkflowNotification(tx, { eventKey: `purchase-${request.id}-receipt`, recipientIds: recipients.allIds, title: 'Reimbursement ready for payment', body: `Receipt uploaded for ${request.description}. Reimbursement: ${request.reimbursementAmount} USD.`, href: `/admin/reimbursements?request=${request.id}` })
+      return request
+    })
     res.json(updated)
   }catch(error){if(req.file)fs.unlink(req.file.path,()=>{});financeError(res,error,'Failed to upload evidence')}
 })

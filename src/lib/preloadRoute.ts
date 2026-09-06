@@ -1,5 +1,6 @@
 const pages = import.meta.glob('../pages/**/*.tsx')
 const routes: Record<string, string> = {
+  '/admin/decisions': 'admin/MyDecisionsPage',
   '/admin/dashboard': 'admin/AdminDashboard', '/admin/reports': 'admin/ReportsPage',
   '/admin/clients': 'admin/ClientsPage', '/admin/invoices': 'admin/InvoicesPage',
   '/admin/finances': 'admin/FinancesPage', '/admin/services': 'admin/ServicesPage',

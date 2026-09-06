@@ -55,6 +55,7 @@ export interface SearchShortcut {
 
 export const adminNavigation: NavItem[] = [
   { name: 'Home', href: '/admin/dashboard', icon: Home, section: 'Overview' },
+  { name: 'My decisions', href: '/admin/decisions', icon: FileText, section: 'Overview' },
   { name: 'Reports', href: '/admin/reports', icon: TrendingUp, section: 'Overview' },
   { name: 'Clients', href: '/admin/clients', icon: Building2, section: 'Business' },
   { name: 'Invoices', href: '/admin/invoices', icon: DollarSign, section: 'Business' },

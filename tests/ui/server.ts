@@ -42,6 +42,8 @@ await db.insert(s.invoices).values({invoiceNumber:'QA-2026-001',clientId:a.id,am
 return {roles,clients:[a,b],employeeIds:[employee.id,second.id],serviceIds:services.map(x=>x.id)}
 })()
 const roles=fixture.roles
+process.env.WORKFLOW_OWNER_USER_IDS=String(roles.admin.id)
+process.env.WORKFLOW_DEPUTY_USER_IDS=''
 app.get('/api/__fixture__/as/:role',(req,res)=>{
  const user=roles[req.params.role as keyof typeof roles];if(!user)return res.sendStatus(404)
  req.login(user as any,error=>error?res.sendStatus(500):res.redirect(user.role==='admin'?'/admin/dashboard':user.role==='team_member'?'/employee/dashboard':'/client/dashboard'))
@@ -54,7 +56,7 @@ app.get('/api/__fixture__/summary/:state',(req,res)=>{
  res.redirect('/admin/dashboard')
 })
 app.use('/api/admin/dashboard/summary',(_req,res,next)=>summaryUnavailable?res.status(503).json({error:'QA fixture: summary temporarily unavailable'}):next())
-for(const [base,file,name] of [['','auth','authRouter'],['/admin','admin','adminRouter'],['/client','client','clientRouter'],['/services','services','servicesRouter'],['/invoices','invoice','invoiceRouter'],['/vacation','client-calendar','clientCalendarRouter'],['/vacation','vacation','default'],['/documents','documents','documentsRouter'],['/uploads','uploads','uploadsRouter'],['/client-contacts','client-contacts','clientContactsRouter'],['/users','users','default'],['/reimbursements','reimbursements','default'],['/roadmap','roadmap','default'],['/shifts','shifts','default'],['/feedback','feedback','feedbackRouter'],['/finances','finances','financesRouter'],['/settings','settings','settingsRouter'],['/search','search','searchRouter'],['/clickup','clickup','clickupRouter'],['/project-bot','project-bot','projectBotRouter']]){
+for(const [base,file,name] of [['','auth','authRouter'],['/admin','admin','adminRouter'],['/client','client','clientRouter'],['/services','services','servicesRouter'],['/invoices','invoice','invoiceRouter'],['/vacation','client-calendar','clientCalendarRouter'],['/vacation','vacation','default'],['/documents','documents','documentsRouter'],['/uploads','uploads','uploadsRouter'],['/client-contacts','client-contacts','clientContactsRouter'],['/users','users','default'],['/reimbursements','reimbursements','default'],['/roadmap','roadmap','default'],['/shifts','shifts','default'],['/feedback','feedback','feedbackRouter'],['/finances','finances','financesRouter'],['/settings','settings','settingsRouter'],['/search','search','searchRouter'],['/clickup','clickup','clickupRouter'],['/project-bot','project-bot','projectBotRouter'],['/workflow','workflow','workflowRouter']]){
  const module=await import(`../../server/src/routes/${file}.ts`);app.use('/api'+base,module[name])
 }
 app.use((error:any,_req:any,res:any,_next:any)=>{console.error(error.message);res.status(500).json({error:error.message})})

@@ -11,10 +11,14 @@ import { calculateInvoice } from './invoiceCalculator.js'
 const url=process.env.TEST_DATABASE_URL
 if(url&&!/(?:audit|test|fresh_)/.test(new URL(url).pathname))throw new Error('Finance integration tests require an explicitly named test/audit/fresh database')
 test('real PostgreSQL payroll transactions protect balances, retries, snapshots, and invoice assignment selection',{skip:!url},async()=>{
+  process.env.DATABASE_URL=url!
+  delete process.env.WORKFLOW_OWNER_USER_IDS
+  delete process.env.WORKFLOW_DEPUTY_USER_IDS
   const pool=new Pool({connectionString:url}),db=drizzle(pool,{schema}),tag=`finance_${randomUUID()}`
   let userId:number|undefined,memberId:number|undefined,clientId:number|undefined,typeId:number|undefined,serviceId:number|undefined,assignmentId:number|undefined
   try{
     const [user]=await db.insert(schema.users).values({username:tag,email:`${tag}@example.test`,password:'test-fixture-not-a-login',fullName:'Finance test',role:'admin',isActive:true}).returning();userId=user.id
+    await db.insert(schema.workflowAssignments).values({ userId: user.id, role: 'owner', displayName: 'Finance test' })
     const [member]=await db.insert(schema.teamMembers).values({name:'Finance fixture',email:`${tag}_employee@example.test`,position:'Tester',startDate:'2026-01-01',monthlyRate:'1000.00',monthlySalaryExtras:[],status:'active'}).returning();memberId=member.id
     const base={teamMemberId:member.id,salaryMonth:'2026-09',transactionDate:'2026-09-20',baseSalary:'1000.00',salaryPaidNow:'1000.00',amount:'1000.00',extras:[],note:''}
     const key=randomUUID(),key2=randomUUID()

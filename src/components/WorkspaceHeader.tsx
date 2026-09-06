@@ -2,6 +2,7 @@ import { UserButton } from '@clerk/react'
 import { HamburgerMenuIcon, SlashIcon } from '@radix-ui/react-icons'
 import { GlobalSearchLauncher } from '@/components/GlobalSearchLauncher'
 import { Button } from '@/components/ui/button'
+import { WorkflowNotifications } from '@/components/WorkflowNotifications'
 
 export function WorkspaceHeader({ workspace, title, onOpenMenu }: {
   workspace: string
@@ -19,8 +20,9 @@ export function WorkspaceHeader({ workspace, title, onOpenMenu }: {
           <SlashIcon className="hidden h-3 w-3 text-border sm:block" />
           <span className="truncate font-medium text-foreground">{title}</span>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-4">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-3">
           <GlobalSearchLauncher className="workspace-search" />
+          <WorkflowNotifications />
           <UserButton />
         </div>
       </div>

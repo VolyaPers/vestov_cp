@@ -1,399 +1,109 @@
-import { useState, useEffect } from 'react'
-import {
-  MessageSquare,
-  Star,
-  User,
-  Building2,
-  Briefcase,
-  Calendar,
-  Send,
-  Trash2,
-  Search,
-  Filter,
-} from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useSearch } from 'wouter'
+import { MessageSquare } from 'lucide-react'
+import { api } from '@/lib/api'
+import { ClientLoadError } from '@/lib/clientWorkspace'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCustomAlert } from '@/components/ui/custom-alert'
-import { api } from '@/lib/api'
 import { EmptyState, PageHero } from '@/components/page-primitives'
-
-interface Feedback {
-  id: number
-  rating: number
-  comments: string
-  feedbackType: string
-  status: string
-  createdAt: string
-  adminResponse: string | null
-  adminRespondedAt: string | null
-  client: { id: number; name: string } | null
-  service: { id: number; serviceTitle: string } | null
-  teamMember: { id: number; fullName: string } | null
-  submittedBy: { id: number; fullName: string }
-}
+import { FeedbackThread, feedbackStatusLabels, type FeedbackEntry } from '@/components/FeedbackThread'
 
 export function AdminFeedbackPage() {
-  const { showAlert, showConfirm } = useCustomAlert()
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [clientFilter, setClientFilter] = useState<string>('all')
+  const { showAlert } = useCustomAlert()
+  const [feedbacks, setFeedbacks] = useState<FeedbackEntry[]>([])
+  const [canManage, setCanManage] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('open')
+  const [clientFilter, setClientFilter] = useState('all')
+  const [drafts, setDrafts] = useState<Record<number, string>>({})
+  const [confirmation, setConfirmation] = useState<Record<number, boolean>>({})
+  const [saving, setSaving] = useState<number | null>(null)
+  const [nextCursor, setNextCursor] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const query = useSearch()
+  const selectedId = Number(new URLSearchParams(query).get('feedback'))
 
-  // Dialog states
-  const [isRespondDialogOpen, setIsRespondDialogOpen] = useState(false)
-  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null)
-  const [adminResponse, setAdminResponse] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
-
-  useEffect(() => {
-    loadFeedbacks()
-  }, [])
-
-  const loadFeedbacks = async () => {
+  const load = async () => {
     try {
-      setIsLoading(true)
+      setError('')
       const data = await api.getAdminFeedbacks()
-      setFeedbacks(data.feedbacks)
-    } catch (error) {
-      console.error('Error loading feedbacks:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleOpenRespondDialog = (feedback: Feedback) => {
-    setSelectedFeedback(feedback)
-    setAdminResponse(feedback.adminResponse || '')
-    setIsRespondDialogOpen(true)
-  }
-
-  const handleRespond = async () => {
-    if (!selectedFeedback || !adminResponse.trim()) return
-
-    try {
-      setIsSaving(true)
-      await api.respondToFeedback(selectedFeedback.id, adminResponse.trim())
-      await loadFeedbacks()
-      setIsRespondDialogOpen(false)
-      setSelectedFeedback(null)
-      setAdminResponse('')
-    } catch (error) {
-      console.error('Error responding to feedback:', error)
-      showAlert({ message: 'Failed to send response', type: 'error' })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleDelete = async (feedback: Feedback) => {
-    const confirmed = await showConfirm({
-      title: 'Delete Feedback',
-      message: `Are you sure you want to delete this feedback from ${feedback.submittedBy.fullName}?`,
-      type: 'warning',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      destructive: true,
-    })
-
-    if (!confirmed) return
-
-    try {
-      await api.deleteFeedback(feedback.id)
-      await loadFeedbacks()
-    } catch (error) {
-      console.error('Error deleting feedback:', error)
-      showAlert({ message: 'Failed to delete feedback', type: 'error' })
-    }
-  }
-
-  const renderStars = (rating: number) => {
-    return (
-      <div className="flex items-center gap-0.5">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <Star
-            key={star}
-            className={`h-4 w-4 ${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
-          />
-        ))}
-      </div>
-    )
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  // Get unique clients for filter
-  const uniqueClients = Array.from(
-    new Set(feedbacks.filter(f => f.client).map(f => JSON.stringify(f.client)))
-  ).map(s => JSON.parse(s) as { id: number; name: string })
-
-  // Filter feedbacks
-  const filteredFeedbacks = feedbacks.filter(feedback => {
-    // Status filter
-    if (statusFilter !== 'all' && feedback.status !== statusFilter) return false
-
-    // Client filter
-    if (clientFilter !== 'all' && feedback.client?.id.toString() !== clientFilter) return false
-
-    // Search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      const matchesComment = feedback.comments?.toLowerCase().includes(query)
-      const matchesClient = feedback.client?.name?.toLowerCase().includes(query)
-      const matchesService = feedback.service?.serviceTitle?.toLowerCase().includes(query)
-      const matchesTeamMember = feedback.teamMember?.fullName?.toLowerCase().includes(query)
-      const matchesSubmitter = feedback.submittedBy?.fullName?.toLowerCase().includes(query)
-
-      if (!matchesComment && !matchesClient && !matchesService && !matchesTeamMember && !matchesSubmitter) {
-        return false
+      if (selectedId && !data.feedbacks.some((item: FeedbackEntry) => item.id === selectedId)) {
+        const selected = await api.request(`/feedback/${selectedId}/thread`)
+        data.feedbacks.unshift(selected)
       }
+      setFeedbacks(data.feedbacks)
+      setNextCursor(data.nextCursor)
+      setCanManage(data.canManageFeedback === true)
+    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to load feedback') }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { void load() }, [selectedId])
+  useEffect(() => {
+    if (selectedId && feedbacks.some(item => item.id === selectedId)) {
+      setStatus('all')
+      requestAnimationFrame(() => document.getElementById(`feedback-${selectedId}`)?.scrollIntoView({ block: 'start' }))
     }
+  }, [feedbacks, selectedId])
 
-    return true
-  })
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="h-10 w-10 animate-pulse rounded-full bg-slate-300/70" />
-      </div>
-    )
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const data = await api.request(`/feedback/admin?before=${nextCursor}`)
+      setFeedbacks(current => [...new Map([...current, ...data.feedbacks].map(item => [item.id, item])).values()])
+      setNextCursor(data.nextCursor)
+    } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Unable to load older threads', type: 'error' }) }
+    finally { setLoadingMore(false) }
   }
 
-  return (
-    <div className="space-y-6">
-      <PageHero
-        eyebrow="Feedback Management"
-        title="Client sentiment and response workflow in one place."
-        description="Review client feedback and respond to your team’s requests."
-        theme="teal"
-        meta={
-          <>
-            <span>{feedbacks.length} total feedback items</span>
-            <span className="h-1 w-1 rounded-full bg-slate-400"></span>
-            <span>{filteredFeedbacks.length} currently visible</span>
-          </>
-        }
-      />
+  const respond = async (item: FeedbackEntry) => {
+    if (saving !== null || !drafts[item.id]?.trim()) return
+    setSaving(item.id)
+    try {
+      await api.request(`/feedback/${item.id}/respond`, { method: 'POST', body: JSON.stringify({ adminResponse: drafts[item.id].trim(), requestConfirmation: confirmation[item.id] === true }) })
+      setDrafts(previous => ({ ...previous, [item.id]: '' }))
+      setConfirmation(previous => ({ ...previous, [item.id]: false }))
+      await load()
+      showAlert({ message: 'Reply sent to the client author.', type: 'success' })
+    } catch (error) { showAlert({ message: error instanceof Error ? error.message : 'Unable to send reply', type: 'error' }) }
+    finally { setSaving(null) }
+  }
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search feedbacks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div className="w-full sm:w-48">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" label="All Status">All Status</SelectItem>
-                  <SelectItem value="pending" label="Pending">Pending</SelectItem>
-                  <SelectItem value="reviewed" label="Reviewed">Reviewed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-full sm:w-48">
-              <Select value={clientFilter} onValueChange={setClientFilter}>
-                <SelectTrigger>
-                  <Building2 className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Client" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" label="All Clients">All Clients</SelectItem>
-                  {uniqueClients.map(client => (
-                    <SelectItem key={client.id} value={client.id.toString()} label={client.name}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  if (loading) return <p role="status" className="p-6">Loading feedback…</p>
+  if (error) return <ClientLoadError message={error} onRetry={load} />
+  const clients = [...new Map(feedbacks.filter(item => item.client).map(item => [item.client!.id, item.client!])).values()]
+  const visible = feedbacks.filter(item => (status === 'all' || status === 'open' && item.status !== 'resolved' || item.status === status)
+    && (clientFilter === 'all' || String(item.client?.id) === clientFilter)
+    && [item.comments, item.client?.name, item.service?.serviceTitle, item.teamMember?.fullName, item.submittedBy.fullName, ...item.messages.map(message => message.body)].some(value => value?.toLowerCase().includes(search.toLowerCase())))
+  const overdue = feedbacks.filter(item => item.firstResponseOverdue).length
 
-      {/* Feedbacks List */}
-      {filteredFeedbacks.length === 0 ? (
-        <Card>
-          <CardContent className="py-12">
-            <EmptyState
-              icon={<MessageSquare className="h-6 w-6" />}
-              title="No feedbacks found"
-              description={feedbacks.length === 0
-                ? 'No feedback has been submitted yet.'
-                : 'No feedbacks match your current filters.'}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {filteredFeedbacks.map(feedback => (
-            <Card key={feedback.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                {/* Header Row */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    {feedback.client && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Building2 className="h-4 w-4" />
-                        <span className="font-medium">{feedback.client.name}</span>
-                      </div>
-                    )}
-                    {feedback.service && (
-                      <Badge variant="secondary" className="text-xs">
-                        <Briefcase className="h-3 w-3 mr-1" />
-                        {feedback.service.serviceTitle}
-                      </Badge>
-                    )}
-                    {feedback.teamMember && (
-                      <Badge variant="outline" className="text-xs">
-                        <User className="h-3 w-3 mr-1" />
-                        For: {feedback.teamMember.fullName}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={feedback.status === 'reviewed' ? 'default' : 'secondary'}
-                      className={feedback.status === 'reviewed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
-                    >
-                      {feedback.status === 'reviewed' ? 'Reviewed' : 'Pending'}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(feedback)}
-                      className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
-                      title="Delete this feedback"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Rating and Date */}
-                <div className="flex items-center gap-4 mb-3">
-                  {renderStars(feedback.rating)}
-                  <span className="text-sm text-gray-500 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatDate(feedback.createdAt)}
-                  </span>
-                  <span className="text-sm text-gray-500 flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    {feedback.submittedBy.fullName}
-                  </span>
-                </div>
-
-                {/* Comment */}
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <p className="text-gray-700 whitespace-pre-wrap">{feedback.comments}</p>
-                </div>
-
-                {/* Admin Response Section */}
-                {feedback.adminResponse ? (
-                  <div className="border-l-4 border-blue-500 pl-4 mt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-medium text-blue-600">Admin Response</span>
-                      {feedback.adminRespondedAt && (
-                        <span className="text-xs text-gray-400">
-                          {formatDate(feedback.adminRespondedAt)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-gray-700 text-sm whitespace-pre-wrap">{feedback.adminResponse}</p>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenRespondDialog(feedback)}
-                    className="mt-2"
-                    title="Respond to this feedback"
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    Respond
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Respond Dialog */}
-      <Dialog open={isRespondDialogOpen} onOpenChange={setIsRespondDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Respond to Feedback</DialogTitle>
-            <DialogDescription>
-              Write your response to this feedback. The client will be able to see your response.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedFeedback && (
-            <div className="space-y-4">
-              {/* Original Feedback Preview */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium text-gray-600">
-                    {selectedFeedback.submittedBy.fullName}
-                  </span>
-                  {renderStars(selectedFeedback.rating)}
-                </div>
-                <p className="text-sm text-gray-700">{selectedFeedback.comments}</p>
-              </div>
-
-              {/* Response Input */}
-              <div>
-                <Label htmlFor="adminResponse">Your Response</Label>
-                <Textarea
-                  id="adminResponse"
-                  value={adminResponse}
-                  onChange={(e) => setAdminResponse(e.target.value)}
-                  placeholder="Write your response here..."
-                  rows={4}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRespondDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleRespond} disabled={isSaving || !adminResponse.trim()}>
-              {isSaving ? 'Sending...' : 'Send Response'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+  return <div className="space-y-6">
+    <PageHero eyebrow="Feedback" title="Client feedback" description="Reply within one working day. The client confirms when the issue is resolved." meta={<span>{feedbacks.filter(item => item.status !== 'resolved').length} open in loaded conversations · {overdue} first responses overdue</span>} />
+    {!canManage && <p className="rounded-lg border bg-muted/30 p-4 text-sm">You can review the queue. Client replies and decisions are handled by Volodymyr.</p>}
+    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_220px]">
+      <Input aria-label="Search feedback" placeholder="Search feedback, client or teammate…" value={search} onChange={event => setSearch(event.target.value)} />
+      <select aria-label="Feedback status" value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-md border bg-white px-3 text-sm">
+        <option value="open">Open threads</option><option value="all">All threads</option>
+        {Object.entries(feedbackStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+      <select aria-label="Client" value={clientFilter} onChange={event => setClientFilter(event.target.value)} className="h-10 rounded-md border bg-white px-3 text-sm">
+        <option value="all">All clients</option>{clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
+      </select>
     </div>
-  )
+    {!visible.length && <EmptyState title="No feedback found" description="No threads match the current filters." icon={<MessageSquare className="h-5 w-5" />} />}
+    <div className="space-y-4">{visible.map(item => <FeedbackThread key={item.id} feedback={item} showClient selected={selectedId === item.id}>
+      {canManage && item.status !== 'resolved' ? <form onSubmit={event => { event.preventDefault(); void respond(item) }} className="space-y-3">
+        <Label htmlFor={`response-${item.id}`}>Reply to {item.submittedBy.fullName}</Label>
+        <Textarea id={`response-${item.id}`} maxLength={10000} rows={3} value={drafts[item.id] || ''} onChange={event => setDrafts(previous => ({ ...previous, [item.id]: event.target.value }))} placeholder="Acknowledge the issue, explain the next step or propose a resolution." disabled={saving !== null} />
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={confirmation[item.id] || false} disabled={saving !== null} onChange={event => setConfirmation(previous => ({ ...previous, [item.id]: event.target.checked }))} />Ask the client to confirm resolution</label>
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Only the client author can read and confirm this reply in their workspace.</p><Button type="submit" disabled={saving !== null || !drafts[item.id]?.trim()}>{saving === item.id ? 'Sending…' : confirmation[item.id] ? 'Propose resolution' : 'Send reply'}</Button></div>
+      </form> : <p className="text-sm text-muted-foreground">{item.status === 'resolved' ? 'The client has confirmed resolution. They can reopen the thread if the issue returns.' : 'Client decisions are assigned to Volodymyr.'}</p>}
+    </FeedbackThread>)}</div>
+    {nextCursor && <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? 'Loading…' : 'Load older conversations'}</Button>}
+  </div>
 }

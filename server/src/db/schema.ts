@@ -11,6 +11,7 @@ import {
   jsonb,
   varchar,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core'
 
 // Users table
@@ -446,8 +447,48 @@ export const feedback = pgTable('feedback', {
   adminResponse: text('admin_response'),
   adminRespondedBy: integer('admin_responded_by').references(() => users.id),
   adminRespondedAt: timestamp('admin_responded_at'),
+  firstResponseDueAt: timestamp('first_response_due_at'),
+  firstRespondedAt: timestamp('first_responded_at'),
+  resolvedAt: timestamp('resolved_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
+
+export const feedbackMessages = pgTable('feedback_messages', {
+  id: serial('id').primaryKey(),
+  feedbackId: integer('feedback_id').references(() => feedback.id, { onDelete: 'cascade' }).notNull(),
+  authorId: integer('author_id').references(() => users.id).notNull(),
+  body: text('body').notNull(),
+  kind: varchar('kind', { length: 30 }).default('reply').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, table => ({ threadIndex: index('feedback_messages_thread_idx').on(table.feedbackId, table.createdAt) }))
+
+export const workflowAssignments = pgTable('workflow_assignments', {
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
+  role: varchar('role', { length: 20 }).notNull(),
+  displayName: text('display_name').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// HUB inbox and durable Slack outbox are committed with the business operation.
+export const workflowNotifications = pgTable('workflow_notifications', {
+  id: serial('id').primaryKey(),
+  eventKey: varchar('event_key', { length: 200 }).notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  href: text('href').notNull(),
+  readAt: timestamp('read_at'),
+  slackSentAt: timestamp('slack_sent_at'),
+  supersededAt: timestamp('superseded_at'),
+  slackAttempts: integer('slack_attempts').notNull().default(0),
+  slackNextAttemptAt: timestamp('slack_next_attempt_at').defaultNow().notNull(),
+  slackLastError: text('slack_last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, table => ({
+  eventRecipient: uniqueIndex('workflow_notifications_event_user_unique').on(table.eventKey, table.userId),
+  inboxIndex: index('workflow_notifications_inbox_idx').on(table.userId, table.createdAt),
+}))
 
 // Employment Cycles table
 export const employmentCycles = pgTable('employment_cycles', {
@@ -497,6 +538,7 @@ export const leaveRequests = pgTable('leave_requests', {
   decisionBy: integer('decision_by').references(() => users.id),
   decisionAt: timestamp('decision_at'),
   decisionReason: text('decision_reason'),
+  decisionRequestedAt: timestamp('decision_requested_at'),
   archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

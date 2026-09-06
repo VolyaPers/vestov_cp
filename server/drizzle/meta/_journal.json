@@ -204,6 +204,13 @@
       "when": 1788739200000,
       "tag": "0038_functional_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788825600000,
+      "tag": "0039_workflow_decisions",
+      "breakpoints": true
     }
   ]
 }

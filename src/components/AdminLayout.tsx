@@ -27,6 +27,8 @@ const AdminDashboard = lazy(async () => {
   return { default: module.AdminDashboard }
 })
 
+const MyDecisionsPage = lazy(() => import('@/pages/admin/MyDecisionsPage').then(module => ({ default: module.MyDecisionsPage })))
+
 const ReportsPage = lazy(async () => {
   const module = await import('@/pages/admin/ReportsPage')
   return { default: module.ReportsPage }
@@ -118,6 +120,7 @@ function createLazyRoute(PageComponent: LazyExoticComponent<ComponentType<any>>)
 }
 
 const AdminDashboardRoute = createLazyRoute(AdminDashboard)
+const MyDecisionsRoute = createLazyRoute(MyDecisionsPage)
 const ReportsPageRoute = createLazyRoute(ReportsPage)
 const ServicesPageRoute = createLazyRoute(ServicesPage)
 const ClientDetailsPageRoute = createLazyRoute(ClientDetailsPage)
@@ -176,6 +179,7 @@ export function AdminLayout({ user }: AdminLayoutProps = {}) {
             <div className="mx-auto max-w-[1400px]">
               <Switch>
                 <Route path="/admin/dashboard" component={AdminDashboardRoute} />
+                <Route path="/admin/decisions" component={MyDecisionsRoute} />
                 <Route path="/admin/reports" component={ReportsPageRoute} />
                 <Route path="/admin/services" component={ServicesPageRoute} />
                 <Route path="/admin/clients/:id" component={ClientDetailsPageRoute} />

@@ -1,5 +1,5 @@
 import { and, eq, gte, lte, desc, isNull, sql } from 'drizzle-orm'
-import { teamMembers, salaryRateHistory, payrollPeriods, financialTransactions, reimbursementRequests } from '../db/schema.js'
+import { teamMembers, salaryRateHistory, payrollPeriods, financialTransactions, reimbursementRequests, users } from '../db/schema.js'
 import { cents, money, salaryExtras, validDate, validMonth, positiveId, idempotencyKey, FinanceValidationError, type MoneyExtra } from '../lib/money.js'
 import { logFinanceActivity, pickTransactionSnapshot } from '../lib/financeAudit.js'
 
@@ -69,6 +69,16 @@ export async function initializePayrollPeriod(tx:any,memberId:number,month:strin
   return salaryPeriodView(tx,member,month)
 }
 export async function recordPayroll(tx:any, userId:number, input:any, editingId?:number) {
+  // Enforce the payment role at the service boundary as well as the HTTP route.
+  // Use the caller's transaction so direct callers cannot bypass authorization.
+  const { workflowRecipients, queueWorkflowNotification } = await import('./workflow.js')
+  const [[actor], recipients] = await Promise.all([
+    tx.select({ role: users.role, isActive: users.isActive }).from(users).where(eq(users.id, userId)),
+    workflowRecipients(tx),
+  ])
+  if (!actor || actor.role !== 'admin' || actor.isActive === false || !recipients.allIds.includes(userId)) {
+    throw new FinanceValidationError('Salary payments require the workflow owner or authorized finance deputy.', 403)
+  }
   const memberId = positiveId(input.teamMemberId,'Team member'), month=validMonth(input.salaryMonth), date=validDate(input.transactionDate,'Payment date')
   const key = editingId ? null : idempotencyKey(input.idempotencyKey)
   const paidBase = cents(input.salaryPaidNow,'Base salary paid'), extras=salaryExtras(input.extras), total=paidBase+extras.reduce((s,e)=>s+cents(e.amount),0)
@@ -109,7 +119,10 @@ export async function recordPayroll(tx:any, userId:number, input:any, editingId?
   const data:PayrollData={version:1,salaryMonth:month,baseSalary:period.baseSalary,paidBase:money(paidBase),extras,note,termsEvidence:readPayrollData(existing?.payrollData)?.termsEvidence || {...(terms.termsEvidence || {rateSource:'saved_period',extrasSource:'saved_period'}),reviewed:needsHistoricalConfirmation,reviewNote:needsHistoricalConfirmation?note:undefined}}
   const values={amount:money(total),transactionDate:date,description:`Salary ${month}${note?` — ${note}`:''}`,payrollPeriodId:period.id,payrollData:data,updatedAt:new Date()}
   const [payment]=editingId ? await tx.update(financialTransactions).set(values).where(eq(financialTransactions.id,editingId)).returning() : await tx.insert(financialTransactions).values({...values,type:'salary',category:'monthly_salary',teamMemberId:memberId,createdBy:userId,idempotencyKey:key}).returning()
-  for(const id of reimbursementIds) await tx.update(reimbursementRequests).set({status:'paid',paymentTransactionId:payment.id,paidAt:new Date(`${date}T12:00:00Z`),updatedAt:new Date()}).where(eq(reimbursementRequests.id,id))
+  for(const id of reimbursementIds) {
+    const [request] = await tx.update(reimbursementRequests).set({status:'paid',paymentTransactionId:payment.id,paidAt:new Date(`${date}T12:00:00Z`),updatedAt:new Date()}).where(eq(reimbursementRequests.id,id)).returning()
+    await queueWorkflowNotification(tx, { eventKey: `purchase-${id}-paid`, recipientIds: [request.requestedBy], title: 'Reimbursement payment recorded', body: `${request.reimbursementAmount} USD for ${request.description}. Payment date: ${date}.`, href: '/employee/reimbursements' })
+  }
   const afterSummary=summarizePeriod(period.baseSalary,period.defaultExtras,[...prior,payment])
   await tx.update(payrollPeriods).set({status:cents(afterSummary.remainingTotal)===0?'closed':'open',updatedAt:new Date()}).where(eq(payrollPeriods.id,period.id))
   await logFinanceActivity(tx,{action:editingId?'salary_payment_updated':'salary_payment_created',entityType:'salary_payment',entityId:payment.id,transactionId:payment.id,teamMemberId:memberId,actorId:userId,summary:`${editingId?'Updated':'Recorded'} salary payment for ${month}`,beforeData:existing?{...pickTransactionSnapshot(existing),payrollData:existing.payrollData}:null,afterData:{...pickTransactionSnapshot(payment),payrollData:data}})

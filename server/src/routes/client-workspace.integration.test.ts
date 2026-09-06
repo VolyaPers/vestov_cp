@@ -53,6 +53,8 @@ test('client and Users real routers preserve tenant/date scope, feedback and ide
       userIds.push(user.id); return user
     }
     const admin = await createUser('admin', 'admin'), clientA = await createUser('client', 'a'), multi = await createUser('client', 'multi'), employee = await createUser('team_member', 'employee')
+    process.env.WORKFLOW_OWNER_USER_IDS = String(admin.id)
+    process.env.WORKFLOW_DEPUTY_USER_IDS = ''
     const [a, b] = await db.insert(schema.clients).values([{ name: `${tag} A` }, { name: `${tag} B` }]).returning(); clientIds.push(a.id, b.id)
     await db.insert(schema.clientUsers).values([{ userId: clientA.id, clientId: a.id, accessLevel: 'read', assignedBy: admin.id }, { userId: multi.id, clientId: a.id, accessLevel: 'write', assignedBy: admin.id }, { userId: multi.id, clientId: b.id, accessLevel: 'read', assignedBy: admin.id }])
     const [type] = await db.insert(schema.serviceTypes).values({ name: `${tag} service`, category: 'outstaffing', billingModel: 'hourly' }).returning(); serviceTypeId = type.id

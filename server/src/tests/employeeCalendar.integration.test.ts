@@ -75,6 +75,7 @@ test('employee calendar and shifts: transactional real-router integration on dis
       isActive: true
     }).returning();
     userIds.push(admin.id);
+    await db.insert(schema.workflowAssignments).values({ userId: admin.id, role: 'owner', displayName: 'Fixture leave approver' });
     const types = await db.select().from(schema.leaveTypes);
     const vacation = types.find(t => t.name === 'Vacation')!,
       sick = types.find(t => t.name === 'Sick Leave')!;

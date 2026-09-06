@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useSearch } from 'wouter'
 import { CheckCircle, XCircle, Clock, AlertCircle, Search, Filter } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +16,8 @@ import {
 } from '@/components/ui/select'
 import { useCustomAlert } from '@/components/ui/custom-alert'
 import { api } from '@/lib/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { useWorkflowAccess } from '@/lib/workflow'
 
 const getEvidenceUrl = (evidencePath: string | null) => {
   if (!evidencePath) return null
@@ -47,6 +50,11 @@ interface ReimbursementRequest {
 }
 
 export function AdminReimbursements() {
+  const search = useSearch()
+  const requestedId = new URLSearchParams(search).get('request')
+  const focusedRequest = useRef<string | null>(null)
+  const access = useWorkflowAccess()
+  const queryClient = useQueryClient()
   const [loadError,setLoadError]=useState('')
   const { showAlert } = useCustomAlert()
   const [requests, setRequests] = useState<ReimbursementRequest[]>([])
@@ -57,7 +65,7 @@ export function AdminReimbursements() {
   // Filters
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString())
+  const [yearFilter, setYearFilter] = useState(() => new URLSearchParams(window.location.search).has('request') ? 'all' : new Date().getFullYear().toString())
 
   // Dialog state for approve/reject
   const [showDialog, setShowDialog] = useState(false)
@@ -72,6 +80,25 @@ export function AdminReimbursements() {
   useEffect(() => {
     applyFilters()
   }, [requests, statusFilter, searchTerm, yearFilter])
+
+  useEffect(() => {
+    if (requestedId && /^\d+$/.test(requestedId)) {
+      setYearFilter('all')
+      setStatusFilter('all')
+      setSearchTerm('')
+      focusedRequest.current = null
+    }
+  }, [requestedId])
+
+  useEffect(() => {
+    if (loading) return
+    if (!requestedId || !/^\d+$/.test(requestedId) || focusedRequest.current === requestedId) return
+    const frame = requestAnimationFrame(() => {
+      const element = document.getElementById(`request-${requestedId}`)
+      if (element) { element.scrollIntoView({ block: 'center' }); focusedRequest.current = requestedId }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [loading, filteredRequests, requestedId])
 
   const loadRequests = async () => {
     try {
@@ -113,10 +140,17 @@ export function AdminReimbursements() {
   }
 
   const handleRecordPayment = async (request: ReimbursementRequest) => {
+    if (!access.data?.canRecordPayment) return
     const date=window.prompt('Record a completed reimbursement payment. Payment date (YYYY-MM-DD):',new Date().toISOString().slice(0,10))
     if(!date)return
-    try{setProcessing(request.id);await api.request(`/reimbursements/${request.id}/pay`,{method:'POST',body:JSON.stringify({transactionDate:date,idempotencyKey:`reimbursement-payment-${request.id}`})});await loadRequests();showAlert({message:'Payment recorded in Finances',type:'success'})}catch(error){showAlert({message:error instanceof Error?error.message:'Payment could not be recorded',type:'error'})}finally{setProcessing(null)}
+    try{setProcessing(request.id);await api.request(`/reimbursements/${request.id}/pay`,{method:'POST',body:JSON.stringify({transactionDate:date,idempotencyKey:`reimbursement-payment-${request.id}`})});await loadRequests();await refreshWorkflow();showAlert({message:'Payment recorded in Finances',type:'success'})}catch(error){showAlert({message:error instanceof Error?error.message:'Payment could not be recorded',type:'error'})}finally{setProcessing(null)}
   }
+
+  const refreshWorkflow = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['workflowDecisions'] }),
+    queryClient.invalidateQueries({ queryKey: ['workflowNotifications'] }),
+    queryClient.invalidateQueries({ queryKey: ['adminNavigationIndicators'] }),
+  ])
 
   const handleApproveClick = (request: ReimbursementRequest) => {
     setDialogRequest(request)
@@ -133,7 +167,7 @@ export function AdminReimbursements() {
   }
 
   const handleDialogSubmit = async () => {
-    if (!dialogRequest) return
+    if (!dialogRequest || !access.data?.canApprovePurchase) return
 
     if (dialogAction === 'reject' && !dialogNote.trim()) {
       showAlert({ message: 'Please provide a reason for rejection', type: 'warning' })
@@ -153,6 +187,7 @@ export function AdminReimbursements() {
       setDialogRequest(null)
       setDialogNote('')
       await loadRequests()
+      await refreshWorkflow()
       showAlert({ message: `Request ${dialogAction === 'approve' ? 'approved' : 'rejected'} successfully!`, type: 'success' })
     } catch (error: any) {
       console.error(`Error ${dialogAction}ing request:`, error)
@@ -222,6 +257,7 @@ export function AdminReimbursements() {
 
   return (
     <div className="space-y-6">
+      {access.error && <p role="alert" className="text-sm text-red-700">Approval permissions could not be loaded. <Button variant="link" onClick={() => void access.refetch()}>Try again</Button></p>}
       {/* Header Section - Stripe style */}
       <div className="stripe-card p-8">
         <div className="flex items-center justify-between">
@@ -354,6 +390,7 @@ export function AdminReimbursements() {
               {filteredRequests.map((request) => (
                 <div
                   key={request.id}
+                  id={`request-${request.id}`}
                   className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
                 >
                   <div className="flex items-start justify-between mb-3">
@@ -420,8 +457,9 @@ export function AdminReimbursements() {
                     </div>
                   )}
 
-                  {request.status === 'confirmed' && <Button onClick={()=>handleRecordPayment(request)} disabled={processing===request.id}>Record completed payment</Button>}
-                  {request.status === 'pending' && (
+                  {request.status === 'confirmed' && access.data?.canRecordPayment && <Button onClick={()=>handleRecordPayment(request)} disabled={processing===request.id}>Record completed payment</Button>}
+                  {request.status === 'pending' && !access.isLoading && !access.data?.canApprovePurchase && <p className="text-sm text-muted-foreground">Purchase approval is handled by the workflow owner.</p>}
+                  {request.status === 'pending' && access.data?.canApprovePurchase && (
                     <div className="flex gap-2 pt-3 border-t border-gray-200">
                       <Button
                         size="sm"

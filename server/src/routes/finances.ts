@@ -24,6 +24,7 @@ import {
 import { buildSalaryPaymentEmail, sendEmail } from '../services/email.js'
 import { requireAuth } from '../middleware/auth.js'
 import { resolveEmployeeId } from '../services/access.js'
+import { requireWorkflowCapability } from '../services/workflow.js'
 
 import { cents, money, salaryExtras, validDate, validMonth, positiveId, financeError, FinanceValidationError } from '../lib/money.js'
 import { recordPayroll, initializePayrollPeriod, salaryPeriodView, salaryTerms, payrollLock, readPayrollData, summarizePeriod } from '../services/payroll.js'
@@ -527,6 +528,7 @@ router.delete('/transactions/:id', async (req, res) => {
     await db.transaction(async(tx)=>{
       let [existing]=await tx.select().from(financialTransactions).where(eq(financialTransactions.id,id))
       if(!existing) throw new FinanceValidationError('Transaction not found',404)
+      if (existing.type === 'salary' || existing.payrollPeriodId) await requireWorkflowCapability(req.user!, 'canRecordPayment')
       if(existing.teamMemberId) await payrollLock(tx,existing.teamMemberId)
       ;[existing]=await tx.select().from(financialTransactions).where(eq(financialTransactions.id,id)).for('update')
       if(existing.voidedAt) return
@@ -699,6 +701,7 @@ router.post('/salaries/:teamMemberId/period/:month/initialize',async(req,res)=>{
 router.post('/salaries/record', async (req,res)=>{
   if(!isAdmin(req,res)) return
   try {
+    await requireWorkflowCapability(req.user!, 'canRecordPayment')
     const result=await db.transaction(tx=>recordPayroll(tx,req.user!.id,req.body))
     let email:SalaryPaymentEmailStatus={delivered:false,skipped:true,provider:'none'}
     if(!result.duplicate){const data=readPayrollData(result.payment.payrollData)!;try {email=await sendEmail(buildSalaryPaymentEmail({to:result.member.email,employeeName:result.member.name,salaryMonth:data.salaryMonth,paymentDate:result.payment.transactionDate,baseSalary:Number(data.baseSalary),salaryPaidNow:Number(data.paidBase),remainingSalary:Number(result.summary.remainingBase),extras:data.extras.map(e=>({label:e.label,amount:Number(e.amount)})),totalPayout:Number(result.payment.amount),note:data.note}))} catch(error){email={delivered:false,error:error instanceof Error?error.message:'Email failed'}}}
@@ -707,7 +710,7 @@ router.post('/salaries/record', async (req,res)=>{
 })
 router.put('/salaries/payments/:id',async(req,res)=>{
   if(!isAdmin(req,res)) return
-  try { const result=await db.transaction(tx=>recordPayroll(tx,req.user!.id,req.body,positiveId(req.params.id))); res.json(result.payment) }catch(error){financeError(res,error,'Failed to update salary payment')}
+  try { await requireWorkflowCapability(req.user!, 'canRecordPayment'); const result=await db.transaction(tx=>recordPayroll(tx,req.user!.id,req.body,positiveId(req.params.id))); res.json(result.payment) }catch(error){financeError(res,error,'Failed to update salary payment')}
 })
 // Employees receive their own payslips only; the linked team member is resolved on the server.
 router.get('/my-salary',async(req,res)=>{

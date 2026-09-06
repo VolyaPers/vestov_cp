@@ -472,8 +472,9 @@ export function EmployeeVacations() {
         halfDayStart: formData.halfDayStart,
         halfDayEnd: formData.halfDayEnd
       }
-      if (editingRequestId) await api.request(`/vacation/requests/${editingRequestId}`, { method: 'PUT', body: JSON.stringify(payload) })
-      else await api.createLeaveRequest(payload)
+      const saved = editingRequestId
+        ? await api.request(`/vacation/requests/${editingRequestId}`, { method: 'PUT', body: JSON.stringify(payload) })
+        : await api.createLeaveRequest(payload)
 
       // Reset form
       setFormData({
@@ -493,7 +494,7 @@ export function EmployeeVacations() {
       // Close modal
       setShowCalendarModal(false)
 
-      showAlert({ message: 'Leave request saved successfully', type: 'success' })
+      showAlert({ message: saved.status === 'approved' ? 'Leave approved and added to your calendar.' : 'Request saved. It will appear as approved after Volodymyr or Patricia decides.', type: 'success' })
     } catch (error) {
       console.error('Error submitting leave request:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit leave request. Please try again.'
@@ -838,6 +839,7 @@ export function EmployeeVacations() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-muted-foreground">Sick leave of up to 2 working days is approved automatically. Adjacent sick days count together. Longer sick leave and vacations need approval from Volodymyr or Patricia.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label>Leave Type *</Label>
@@ -1011,6 +1013,7 @@ export function EmployeeVacations() {
             </CardHeader>
             <CardContent className="overflow-visible">
               <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-muted-foreground">Sick leave of up to 2 working days is approved automatically. Adjacent sick days count together. Extending approved sick leave beyond 2 working days sends the edited request for approval; those days remain pending until a decision.</p>
                 {/* Leave Type */}
                 <div>
                   <Label>Leave Type *</Label>

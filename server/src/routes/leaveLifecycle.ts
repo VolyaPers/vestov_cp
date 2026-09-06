@@ -4,13 +4,17 @@ import { db } from '../db/index.js';
 import { employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, leaveTypes, teamMembers, users, clientServices, clientServiceTeamMembers } from '../db/schema.js';
 import { requireAuth } from '../middleware/auth.js';
 import { resolveEmployeeId } from '../services/access.js';
-import { assertLeaveRequestAllowed, calculateVacationBalance, configuredAllocation, loadLeaveContext, summarizeLeave } from '../utils/vacationBalanceCalculator.js';
+import { assertLeaveRequestAllowed, calculateVacationBalance, configuredAllocation, isSickType, loadLeaveContext, summarizeLeave } from '../utils/vacationBalanceCalculator.js';
 import { calculateSickLeaveBalance } from '../utils/sickLeaveBalanceCalculator.js';
 import { employmentCycleForDate, isoDate, leaveDaySegments, leaveDays, leaveOverlaps, timezoneLocalDate } from '../utils/calendar.js';
-import { notifyVacationRequest } from '../utils/slack.js';
-import { buildVacationRequestEmail, REQUEST_NOTIFICATION_EMAIL, sendEmail } from '../services/email.js';
+import { getWorkflowAccess, queueWorkflowNotification, requireWorkflowCapability, workflowRecipients } from '../services/workflow.js';
+import { SHORT_SICK_LEAVE_REASON, sickEpisodeDays } from '../services/leavePolicy.js';
 const router = Router();
 router.use(requireAuth);
+router.use((req, res, next) => {
+  if (req.user?.originalUserId && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return res.status(403).json({ error: 'Exit user preview before changing leave requests.' });
+  next();
+});
 class LeaveError extends Error {
   constructor(message: string, public status = 400) {
     super(message);
@@ -24,15 +28,21 @@ const id = (value: any) => {
   if (!Number.isSafeInteger(n) || n <= 0) throw new LeaveError('Invalid identifier');
   return n;
 };
-function admin(req: any) {
-  if (req.user.role !== 'admin') throw new LeaveError('Admin access required', 403);
+async function admin(req: any) {
+  await requireWorkflowCapability(req.user, 'canApproveLeave');
 }
 async function ownEmployee(req: any, requested?: any) {
   const own = await resolveEmployeeId(req.user);
-  if (req.user.role === 'admin' && requested !== undefined) return id(requested);
+  if (requested !== undefined && (await getWorkflowAccess(req.user)).canApproveLeave) return id(requested);
   if (!own) throw new LeaveError('Employee access required', 403);
   if (requested !== undefined && id(requested) !== own) throw new LeaveError('You can only access your own employee record', 403);
   return own;
+}
+function readableEmployee(req: any, requested: any) {
+  return req.user.role === 'admin' ? Promise.resolve(id(requested)) : ownEmployee(req, requested);
+}
+function adminRead(req: any) {
+  if (req.user.role !== 'admin') throw new LeaveError('Admin access required', 403);
 }
 function inputDates(body: any, existing?: any) {
   const data = {
@@ -42,7 +52,7 @@ function inputDates(body: any, existing?: any) {
     halfDayEnd: body.halfDayEnd ?? existing?.halfDayEnd ?? false
   };
   if (typeof data.halfDayStart !== 'boolean' || typeof data.halfDayEnd !== 'boolean') throw new LeaveError('Half-day values must be boolean');
-  leaveDays(data);
+  if (leaveDays(data) <= 0) throw new LeaveError('Choose at least half a working day for an absence');
   return data;
 }
 export async function lock(tx: any, employeeId: number) {
@@ -90,7 +100,7 @@ async function validate(tx: any, employeeId: number, leaveTypeId: number, dates:
   return context;
 }
 async function audit(tx: any, request: any, actorId: number, before: any, note: string) {
-  await tx.insert(leaveRequestEvents).values({
+  const [event] = await tx.insert(leaveRequestEvents).values({
     leaveRequestId: request.id,
     status: request.status,
     actorId,
@@ -110,20 +120,61 @@ async function audit(tx: any, request: any, actorId: number, before: any, note: 
         archivedAt: request.archivedAt
       }
     })
+  }).returning({ id: leaveRequestEvents.id });
+  return event.id;
+}
+
+function automaticSickApproval(context: any, leaveTypeId: number, dates: any, excludeRequestId?: number) {
+  const sickTypeIds = context.types.filter((type: any) => isSickType(type.name)).map((type: any) => type.id);
+  if (!sickTypeIds.includes(leaveTypeId)) return false;
+  const totalDays = sickEpisodeDays(dates, context.requests, sickTypeIds, excludeRequestId);
+  return totalDays > 0 && totalDays <= 2;
+}
+
+function isAutomaticSickRequest(request: any, type: any) {
+  return isSickType(type?.name || '') && request.status === 'approved' && !request.decisionBy && request.decisionReason === SHORT_SICK_LEAVE_REASON;
+}
+
+async function notifyLeave(tx: any, request: any, context: any, eventId: number, action: string) {
+  const employees = await tx.select({ id: users.id }).from(users).where(and(eq(users.teamMemberId, request.employeeId), eq(users.isActive, true)));
+  const employeeIds = employees.map((user: any) => user.id);
+  const managers = await workflowRecipients(tx);
+  const type = context.types.find((type: any) => type.id === request.leaveTypeId);
+  const automaticallyApproved = isAutomaticSickRequest(request, type);
+  const status = action === 'archive' ? 'archived' : request.status;
+  const body = `${context.member.name}: ${type?.name || 'Leave'}, ${request.startDate} – ${request.endDate} (${request.daysCount} working days). ${automaticallyApproved ? SHORT_SICK_LEAVE_REASON + '.' : `Status: ${status}.`}${request.status === 'pending' ? ' Awaiting Volodymyr or Patricia.' : ''}`;
+  await queueWorkflowNotification(tx, {
+    eventKey: `leave:${request.id}:event:${eventId}:employee`,
+    recipientIds: employeeIds,
+    title: automaticallyApproved ? 'Sick leave approved automatically' : `Leave request ${status}`,
+    body,
+    href: '/employee/vacations',
+  });
+  await queueWorkflowNotification(tx, {
+    eventKey: `leave:${request.id}:event:${eventId}:managers`,
+    recipientIds: managers.allIds.filter((userId: number) => !employeeIds.includes(userId)),
+    title: request.status === 'pending' ? 'Leave request needs a decision' : `Leave ${status}: ${context.member.name}`,
+    body,
+    href: '/admin/vacation',
   });
 }
-async function create(req: any, autoApprove = false) {
+
+async function create(req: any, explicitlyApprove = false) {
+  if (explicitlyApprove) await admin(req);
   const employeeId = await ownEmployee(req, req.body.employeeId);
   const leaveTypeId = id(req.body.leaveTypeId);
   const dates = inputDates(req.body);
-  const request = await db.transaction(async tx => {
+  return db.transaction(async tx => {
     await lock(tx, employeeId);
     const context = await validate(tx, employeeId, leaveTypeId, dates);
-    if (autoApprove) await assertOpen(tx, {
+    const autoApprove = automaticSickApproval(context, leaveTypeId, dates);
+    const approved = explicitlyApprove || autoApprove;
+    if (approved) await assertOpen(tx, {
       ...dates,
       employeeId
     });
     await provision(tx, context, dates);
+    const submittedAt = new Date();
     const [row] = await tx.insert(leaveRequests).values({
       ...dates,
       employeeId,
@@ -131,44 +182,27 @@ async function create(req: any, autoApprove = false) {
       daysCount: String(leaveDays(dates)),
       reason: String(req.body.reason || '').trim().slice(0, 10000) || null,
       requestedBy: req.user.id,
-      status: autoApprove ? 'approved' : 'pending',
-      decisionBy: autoApprove ? req.user.id : null,
-      decisionAt: autoApprove ? new Date() : null,
-      decisionReason: autoApprove ? 'Approved by administrator' : null
+      status: approved ? 'approved' : 'pending',
+      decisionRequestedAt: approved ? null : submittedAt,
+      createdAt: submittedAt,
+      decisionBy: explicitlyApprove ? req.user.id : null,
+      decisionAt: approved ? new Date() : null,
+      decisionReason: explicitlyApprove ? 'Approved by leave approver' : autoApprove ? SHORT_SICK_LEAVE_REASON : null
     }).returning();
-    await audit(tx, row, req.user.id, null, 'Request submitted');
+    const eventId = await audit(tx, row, req.user.id, null, autoApprove && !explicitlyApprove ? 'Short sick leave automatically approved' : 'Request submitted');
+    await notifyLeave(tx, row, context, eventId, 'created');
     return row;
   });
-  void (async () => {
-    const context = await loadLeaveContext(employeeId);
-    const type = context.types.find((t: any) => t.id === leaveTypeId);
-    const notice = {
-      employeeName: context.member.name,
-      employeeEmail: context.member.email,
-      requestId: request.id,
-      leaveTypeName: type.name,
-      startDate: request.startDate,
-      endDate: request.endDate,
-      daysCount: request.daysCount,
-      reason: request.reason
-    };
-    notifyVacationRequest(notice).catch(() => {});
-    sendEmail(buildVacationRequestEmail({
-      to: REQUEST_NOTIFICATION_EMAIL,
-      ...notice
-    })).catch(() => {});
-  })().catch(error => console.error('Leave notification failed after commit', error.message));
-  return request;
 }
 async function change(req: any, requestId: number, action: string) {
   const [initial] = await db.select().from(leaveRequests).where(eq(leaveRequests.id, requestId));
   if (!initial) throw new LeaveError('Leave request not found', 404);
-  if (req.user.role !== 'admin') await ownEmployee(req, initial.employeeId);
+  const canApproveLeave = (await getWorkflowAccess(req.user)).canApproveLeave;
+  if (!canApproveLeave) await ownEmployee(req, initial.employeeId);
   return db.transaction(async tx => {
     await lock(tx, initial.employeeId);
     const [existing] = await tx.select().from(leaveRequests).where(eq(leaveRequests.id, requestId));
     if (existing.archivedAt) throw new LeaveError('Request has been archived', 409);
-    const isAdmin = req.user.role === 'admin';
     const context = await loadLeaveContext(existing.employeeId, tx);
     const today = timezoneLocalDate(new Date(), context.member.timezone);
     let values: any = {
@@ -176,13 +210,20 @@ async function change(req: any, requestId: number, action: string) {
     };
     if (action === 'edit') {
       if (!['pending', 'approved'].includes(existing.status)) throw new LeaveError('Closed requests are immutable; create a corrected request', 409);
-      if (!isAdmin && existing.status !== 'pending') throw new LeaveError('Only pending requests can be edited', 409);
+      const existingType = context.types.find((type: any) => type.id === existing.leaveTypeId);
+      if (!canApproveLeave && existing.status !== 'pending' && !isAutomaticSickRequest(existing, existingType)) throw new LeaveError('Only pending or automatically approved sick leave can be edited', 409);
       if (req.body.employeeId !== undefined && id(req.body.employeeId) !== existing.employeeId) throw new LeaveError('The employee of an existing request cannot be changed');
       const dates = inputDates(req.body, existing);
       const leaveTypeId = req.body.leaveTypeId === undefined ? existing.leaveTypeId : id(req.body.leaveTypeId);
       const updatedContext = await validate(tx, existing.employeeId, leaveTypeId, dates, existing.id);
-      if (existing.status === 'approved') {
-        await assertOpen(tx, existing);
+      const unchangedCoverage = leaveTypeId === existing.leaveTypeId && dates.startDate === existing.startDate && dates.endDate === existing.endDate && dates.halfDayStart === existing.halfDayStart && dates.halfDayEnd === existing.halfDayEnd;
+      const keepApproved = existing.status === 'approved' && (canApproveLeave || unchangedCoverage);
+      const reviewedChange = keepApproved && canApproveLeave && !unchangedCoverage;
+      const autoApprove = automaticSickApproval(updatedContext, leaveTypeId, dates, existing.id);
+      const approved = keepApproved || autoApprove;
+      const decisionRequestedAt = !approved && existing.status === 'approved' ? new Date() : existing.decisionRequestedAt;
+      if (existing.status === 'approved') await assertOpen(tx, existing);
+      if (existing.status === 'approved' || approved) {
         await assertOpen(tx, {
           ...dates,
           employeeId: existing.employeeId
@@ -194,10 +235,15 @@ async function change(req: any, requestId: number, action: string) {
         ...dates,
         leaveTypeId,
         daysCount: String(leaveDays(dates)),
-        reason: req.body.reason === undefined ? existing.reason : String(req.body.reason || '').trim().slice(0, 10000) || null
+        reason: req.body.reason === undefined ? existing.reason : String(req.body.reason || '').trim().slice(0, 10000) || null,
+        status: approved ? 'approved' : 'pending',
+        decisionRequestedAt,
+        decisionBy: reviewedChange ? req.user.id : keepApproved ? existing.decisionBy : null,
+        decisionAt: reviewedChange ? new Date() : keepApproved ? existing.decisionAt : autoApprove ? new Date() : null,
+        decisionReason: reviewedChange ? 'Updated and approved by leave approver' : keepApproved ? existing.decisionReason : autoApprove ? SHORT_SICK_LEAVE_REASON : null
       };
     } else if (action === 'approved' || action === 'denied') {
-      if (!isAdmin) throw new LeaveError('Admin access required', 403);
+      await admin(req);
       if (existing.status !== 'pending') throw new LeaveError('Only pending requests can be decided', 409);
       if (action === 'approved') {
         await validate(tx, existing.employeeId, existing.leaveTypeId, existing, existing.id);
@@ -214,7 +260,7 @@ async function change(req: any, requestId: number, action: string) {
       if (action === 'archive' && !['pending', 'denied', 'canceled'].includes(existing.status)) throw new LeaveError('Cancel the approved request before archiving it', 409);
       if (action === 'canceled' && !['pending', 'approved'].includes(existing.status)) throw new LeaveError('Only pending or approved requests can be canceled', 409);
       if (existing.status === 'approved') {
-        if (!isAdmin && existing.startDate <= today) throw new LeaveError('Only an administrator can correct an absence that has already started', 403);
+        if (!canApproveLeave && existing.startDate <= today) throw new LeaveError('Only a leave approver can cancel an absence that has already started', 403);
         await assertOpen(tx, existing);
       }
       values = {
@@ -227,7 +273,8 @@ async function change(req: any, requestId: number, action: string) {
       };
     } else throw new LeaveError('Invalid leave action');
     const [row] = await tx.update(leaveRequests).set(values).where(eq(leaveRequests.id, existing.id)).returning();
-    await audit(tx, row, req.user.id, existing, action);
+    const eventId = await audit(tx, row, req.user.id, existing, action);
+    await notifyLeave(tx, row, context, eventId, action);
     return row;
   });
 }
@@ -239,7 +286,7 @@ async function requestRows(req: any, employeeId?: number) {
     conditions.push(sql`${leaveRequests.startDate} <= ${isoDate(String(req.query.endDate))} AND ${leaveRequests.endDate} >= ${isoDate(String(req.query.startDate))}`);
   }
   if (req.query.clientId) {
-    admin(req);
+    adminRead(req);
     const assignments = await db.select({
       employeeId: clientServiceTeamMembers.teamMemberId
     }).from(clientServiceTeamMembers).innerJoin(clientServices, eq(clientServiceTeamMembers.clientServiceId, clientServices.id)).where(eq(clientServices.clientId, id(req.query.clientId)));
@@ -271,7 +318,7 @@ async function requestRows(req: any, employeeId?: number) {
         ...target,
         isActive: target.cycleStart <= today && target.cycleEnd >= today
       },
-      canEdit: row.request.status === 'pending',
+      canEdit: row.request.status === 'pending' || isAutomaticSickRequest(row.request, row.leaveType),
       canCancel: row.request.status === 'pending' || row.request.status === 'approved' && row.request.startDate > today,
       canArchive: ['canceled', 'denied'].includes(row.request.status)
     };
@@ -284,8 +331,8 @@ router.get('/my-profile', wrap(async (req: any, res: any) => {
 }));
 router.get('/my-balance', wrap(async (req: any, res: any) => res.json(await calculateVacationBalance(await ownEmployee(req)))));
 router.get('/my-sick-leave-balance', wrap(async (req: any, res: any) => res.json(await calculateSickLeaveBalance(await ownEmployee(req)))));
-router.get('/sick-leave-balance/:employeeId', wrap(async (req: any, res: any) => res.json(await calculateSickLeaveBalance(await ownEmployee(req, req.params.employeeId)))));
-router.get('/balance/:employeeId', wrap(async (req: any, res: any) => res.json(await calculateVacationBalance(await ownEmployee(req, req.params.employeeId)))));
+router.get('/sick-leave-balance/:employeeId', wrap(async (req: any, res: any) => res.json(await calculateSickLeaveBalance(await readableEmployee(req, req.params.employeeId)))));
+router.get('/balance/:employeeId', wrap(async (req: any, res: any) => res.json(await calculateVacationBalance(await readableEmployee(req, req.params.employeeId)))));
 router.get('/my-requests', wrap(async (req: any, res: any) => {
   const rows = await requestRows(req, await ownEmployee(req));
   res.json(rows.map(({
@@ -301,12 +348,12 @@ router.get('/my-requests', wrap(async (req: any, res: any) => {
   })));
 }));
 router.get('/requests', wrap(async (req: any, res: any) => {
-  admin(req);
+  adminRead(req);
   res.json(await requestRows(req, req.query.employeeId ? id(req.query.employeeId) : undefined));
 }));
-router.get('/requests/:employeeId', wrap(async (req: any, res: any) => res.json(await requestRows(req, await ownEmployee(req, req.params.employeeId)))));
+router.get('/requests/:employeeId', wrap(async (req: any, res: any) => res.json(await requestRows(req, await readableEmployee(req, req.params.employeeId)))));
 router.get('/employment-cycle/:employeeId', wrap(async (req: any, res: any) => {
-  const context = await loadLeaveContext(await ownEmployee(req, req.params.employeeId));
+  const context = await loadLeaveContext(await readableEmployee(req, req.params.employeeId));
   const today = timezoneLocalDate(new Date(), context.member.timezone);
   const cycle = employmentCycleForDate(context.member.startDate, today < context.member.startDate ? context.member.startDate : today);
   res.json({
@@ -317,7 +364,7 @@ router.get('/employment-cycle/:employeeId', wrap(async (req: any, res: any) => {
   });
 }));
 router.get(['/balances/:employeeId', '/employees/:employeeId/balances', '/balances/summary/:employeeId'], wrap(async (req: any, res: any) => {
-  const context = await loadLeaveContext(await ownEmployee(req, req.params.employeeId));
+  const context = await loadLeaveContext(await readableEmployee(req, req.params.employeeId));
   const today = timezoneLocalDate(new Date(), context.member.timezone);
   const balances = context.types.map((type: any) => summarizeLeave(context, type, today));
   if (req.path.startsWith('/employees/')) return res.json(balances.map(b => ({
@@ -352,12 +399,12 @@ router.get(['/balances/:employeeId', '/employees/:employeeId/balances', '/balanc
 }));
 router.post('/requests', wrap(async (req: any, res: any) => res.json(await create(req))));
 router.post('/admin/create-and-approve', wrap(async (req: any, res: any) => {
-  admin(req);
+  await admin(req);
   res.json(await create(req, req.body.autoApprove === true));
 }));
 router.put('/requests/:requestId', wrap(async (req: any, res: any) => res.json(await change(req, id(req.params.requestId), 'edit'))));
 router.put('/requests/:requestId/status', wrap(async (req: any, res: any) => {
-  admin(req);
+  await admin(req);
   if (!['approved', 'denied'].includes(req.body.status)) throw new LeaveError('Invalid status');
   res.json(await change(req, id(req.params.requestId), req.body.status));
 }));
@@ -370,7 +417,7 @@ router.delete('/requests/:requestId', wrap(async (req: any, res: any) => {
   });
 }));
 router.post('/admin/requests/bulk-action', wrap(async (req: any, res: any) => {
-  admin(req);
+  await admin(req);
   const {
     requestIds,
     action
@@ -398,7 +445,7 @@ router.post('/admin/requests/bulk-action', wrap(async (req: any, res: any) => {
   });
 }));
 router.delete('/admin/requests/bulk-delete', wrap(async (req: any, res: any) => {
-  admin(req);
+  await admin(req);
   if (!Array.isArray(req.body.requestIds) || req.body.requestIds.length > 500) throw new LeaveError('Invalid request IDs');
   const results = [];
   for (const requestId of [...new Set(req.body.requestIds)]) try {

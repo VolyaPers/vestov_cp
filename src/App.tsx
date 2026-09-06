@@ -4,6 +4,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { api } from './lib/api'
 import { WorkspaceShellSkeleton } from './components/page-primitives'
 import type { User } from './types/common'
+import { WorkflowUserProvider } from './lib/workflow'
 
 const AdminLayout = lazy(async () => {
   const module = await import('./components/AdminLayout')
@@ -165,12 +166,12 @@ function App() {
   }
 
   const withSearch = (content: JSX.Element) => (
-    <>
+    <WorkflowUserProvider userId={user.id} isPreview={user.isImpersonating}>
       {content}
       <Suspense fallback={null}>
         <GlobalSearch user={user} />
       </Suspense>
-    </>
+    </WorkflowUserProvider>
   )
 
   // Direct rendering based on path - bypassing wouter Router issues

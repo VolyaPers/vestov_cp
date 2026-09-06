@@ -75,7 +75,10 @@ export async function runDatabaseMigrations(pool: Pool) {
     // Fail startup on incomplete schema, including historically missing feedback.
     await connection.query('SELECT client_service_id, admin_response FROM feedback LIMIT 0')
     await connection.query('SELECT payroll_period_id, payroll_data, voided_at FROM financial_transactions LIMIT 0')
-    await connection.query('SELECT archived_at FROM leave_requests LIMIT 0')
+    await connection.query('SELECT archived_at, decision_requested_at FROM leave_requests LIMIT 0')
+    await connection.query('SELECT first_response_due_at, first_responded_at, resolved_at FROM feedback LIMIT 0')
+    await connection.query('SELECT event_key, superseded_at, slack_next_attempt_at FROM workflow_notifications LIMIT 0')
+    await connection.query('SELECT user_id, role FROM workflow_assignments LIMIT 0')
     await connection.query('COMMIT')
     console.info('[MIGRATIONS] Schema verified')
   } catch (error) {

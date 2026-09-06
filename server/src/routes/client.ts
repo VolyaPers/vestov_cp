@@ -1,15 +1,17 @@
 import { Router } from 'express'
-import { eq, desc, and, or, inArray } from 'drizzle-orm'
+import { eq, desc, and, or, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import {
   clients,
   teamMembers,
   serviceRequests,
   documents,
-  feedback,
+  feedback, users,
   messages, clientServices, serviceTypes, clientServiceTeamMembers
 } from '../db/schema.js'
 import { resolveClientScope, coversDate, dateKey, clientAssignmentDto, clientServiceDto } from '../services/clientWorkspace.js'
+import { feedbackStatus } from '../services/feedbackWorkflow.js'
+import { getWorkflowAccess } from '../services/workflow.js'
 import { requireClient } from '../middleware/auth.js'
 
 const router = Router()
@@ -20,6 +22,11 @@ router.use(requireClient)
 // Dashboard
 router.get('/dashboard', async (req, res) => {
   try {
+    const originalUserId = (req.user as any)?.originalUserId
+    if (originalUserId) {
+      const [originalUser] = await db.select().from(users).where(eq(users.id, originalUserId))
+      if (!originalUser || !(await getWorkflowAccess(originalUser)).canViewQueue) return res.status(403).json({ error: 'Feedback queue access is required to preview this private client dashboard' })
+    }
     const clientId = await resolveClientScope(req, res)
     if (!clientId) return
     const [client] = await db.select().from(clients).where(eq(clients.id, clientId))
@@ -31,9 +38,16 @@ router.get('/dashboard', async (req, res) => {
       .innerJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
       .where(inArray(clientServiceTeamMembers.clientServiceId, activeProjects.map(row => row.service.id))) : []
     const assignedTeam = [...new Set(assignments.filter(row => coversDate(row.assignment, dateKey()) && row.employee.status === 'active').map(row => row.employee.id))]
-    const recentFeedback = await db.select({ id: feedback.id, comments: feedback.comments, status: feedback.status, createdAt: feedback.createdAt, adminResponse: feedback.adminResponse })
-      .from(feedback).where(and(eq(feedback.userId, req.user!.id), eq(feedback.clientId, clientId)))
-      .orderBy(desc(feedback.createdAt))
+    const feedbackScope = and(eq(feedback.userId, req.user!.id), eq(feedback.clientId, clientId))
+    const [recentFeedback, pending] = await Promise.all([
+      // Explicit outer table names keep Drizzle's single-table projection from
+      // resolving the correlated ID against the inner message table.
+      db.select({ id: feedback.id, comments: feedback.comments, status: feedback.status, createdAt: feedback.createdAt,
+        adminResponse: sql<string>`coalesce((select fm.body from feedback_messages fm where fm.feedback_id = feedback.id and fm.author_id <> feedback.user_id and fm.kind in ('reply', 'resolution_requested') order by fm.id desc limit 1), ${feedback.adminResponse})`,
+      }).from(feedback).where(feedbackScope).orderBy(desc(feedback.createdAt)).limit(5),
+      db.select({ count: sql<number>`count(*)::int` }).from(feedback).where(and(feedbackScope, eq(feedback.status, 'pending'))),
+    ])
+    const dashboardFeedback = recentFeedback.map(item => ({ ...item, status: feedbackStatus(item.status) }))
     const contractActive = client.status === 'active' && (!client.contractStart || client.contractStart <= dateKey()) && (!client.contractEnd || client.contractEnd >= dateKey())
 
     res.json({
@@ -41,11 +55,11 @@ router.get('/dashboard', async (req, res) => {
       viewer: { fullName: req.user!.fullName },
       teamSize: assignedTeam.length,
       activeServices: activeProjects.map(row => row.service.serviceTitle || row.type?.name || 'Project'),
-      recentFeedback: recentFeedback.slice(0, 5),
+      recentFeedback: dashboardFeedback,
       stats: {
         totalTeamMembers: assignedTeam.length,
         activeServices: activeProjects.length,
-        pendingFeedback: recentFeedback.filter(item => item.status === 'pending').length,
+        pendingFeedback: pending[0]?.count || 0,
       }
     })
   } catch (error) {

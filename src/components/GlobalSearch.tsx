@@ -15,6 +15,7 @@ import {
 import { api, resolveApiAssetUrl } from '@/lib/api'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { GLOBAL_SEARCH_OPEN_EVENT } from '@/lib/globalSearch'
+import { useWorkflowAccess } from '@/lib/workflow'
 import { getSearchShortcuts } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import type { AdminGlobalSearchResponse, GlobalSearchResult, User } from '@/types/common'
@@ -115,6 +116,7 @@ function getGroupLabel(groupId: keyof AdminGlobalSearchResponse) {
 
 export function GlobalSearch({ user }: GlobalSearchProps) {
   const [location, setLocation] = useLocation()
+  const workflowAccess = useWorkflowAccess()
   const inputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -181,9 +183,9 @@ export function GlobalSearch({ user }: GlobalSearchProps) {
 
   const pageShortcuts = useMemo(() => {
     return getSearchShortcuts(user.role, currentClientId)
-      .filter((result) => matchesShortcut(result, query))
+      .filter((result) => (!['/admin/decisions', '/admin/feedback'].includes(result.href) || workflowAccess.data?.canViewQueue) && matchesShortcut(result, query))
       .slice(0, query.trim() ? 8 : 10)
-  }, [currentClientId, query, user.role])
+  }, [currentClientId, query, user.role, workflowAccess.data?.canViewQueue])
 
   const groups = useMemo<SearchGroup[]>(() => {
     const nextGroups: SearchGroup[] = []

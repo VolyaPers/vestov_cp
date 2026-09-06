@@ -13,6 +13,7 @@ const UserImpersonation = lazy(() => import('@/components/UserImpersonation').th
 const ShiftWidget = lazy(() => import('@/components/ShiftWidget').then(module => ({default: module.ShiftWidget})))
 import vestovLogo from '@/assets/vestov-logo.svg'
 import { getNavigation } from '@/lib/navigation'
+import { useWorkflowAccess } from '@/lib/workflow'
 import type { NavigationIndicators } from '@/lib/api'
 import type { User as UserType, Client } from '@/types/common'
 
@@ -27,9 +28,10 @@ export interface SidebarProps {
 
 export function Sidebar({ role, user, onLogout, currentClient, navigationIndicators }: SidebarProps) {
   const [location] = useLocation()
+  const workflowAccess = useWorkflowAccess()
 
   // Get navigation based on role
-  const navigation = getNavigation(role, currentClient)
+  const navigation = getNavigation(role, currentClient).filter(item => !['/admin/decisions', '/admin/feedback'].includes(item.href) || workflowAccess.data?.canViewQueue)
   const navigationGroups = navigation.reduce<Array<{ title: string; items: typeof navigation }>>((groups, item) => {
     const section = item.section || 'Workspace'
     const existingGroup = groups.find((group) => group.title === section)

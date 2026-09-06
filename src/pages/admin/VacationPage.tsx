@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation, useSearch } from 'wouter'
 import { Clock, Plus, Check, X, Search, ChevronLeft, ChevronRight, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { useWorkflowAccess } from '@/lib/workflow'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns'
 import { convertTime, getBrowserTimezone, getTimezoneAbbreviation } from '@/lib/timezone'
 import type { TeamMember, LeaveType, CreateLeaveRequestData, Client } from '@/types/common'
@@ -50,6 +52,13 @@ const isPublicHoliday = (date: Date) => {
 
 export function VacationPage() {
   const { showAlert, showConfirm } = useCustomAlert()
+  const search = useSearch()
+  const [, navigate] = useLocation()
+  const requestedId = new URLSearchParams(search).get('request')
+  const [focusedRequestId, setFocusedRequestId] = useState<string | null>(requestedId)
+  const [activeTab, setActiveTab] = useState(requestedId ? 'requests' : 'calendar')
+  const access = useWorkflowAccess()
+  const canApproveLeave = access.data?.canApproveLeave === true
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [selectedClientId, setSelectedClientId] = useState('all')
@@ -97,10 +106,19 @@ export function VacationPage() {
   const selectedClientNumericId = selectedClientId === 'all' ? undefined : Number(selectedClientId)
 
   // Fetch leave requests
-  const { data: leaveRequests = [] } = useQuery({
+  const { data: leaveRequests = [], error: requestsError, isLoading: requestsLoading } = useQuery({
     queryKey: ['leaveRequests', selectedClientNumericId ?? 'all'],
     queryFn: () => api.getLeaveRequests({ clientId: selectedClientNumericId }),
   })
+
+  useEffect(() => {
+    setFocusedRequestId(requestedId)
+    if (!requestedId) return
+    setActiveTab('requests')
+    setSearchTerm('')
+    setStatusFilter('all')
+    setSelectedClientId('all')
+  }, [requestedId])
 
   // Fetch team members
   const { data: teamMembers = [], isLoading: isLoadingTeamMembers, error: teamMembersError } = useQuery({
@@ -478,7 +496,7 @@ export function VacationPage() {
 
     const matchesStatus = statusFilter === 'all' || request?.status === statusFilter
 
-    return matchesSearch && matchesStatus
+    return matchesSearch && matchesStatus && (!focusedRequestId || String(request.id) === focusedRequestId)
   }) || []
 
   // Count pending requests
@@ -571,6 +589,7 @@ export function VacationPage() {
   return (
     <div className="space-y-6">
       {calendarError && <p role="alert" className="text-sm text-red-600">Calendar failed to load: {calendarError.message}</p>}
+      {requestsError && <p role="alert" className="text-sm text-red-600">Leave requests failed to load: {requestsError.message}</p>}
       {calendarLoading && <p role="status" className="text-sm text-muted-foreground">Loading work calendar…</p>}
 
       {/* Header Section - Stripe style */}
@@ -611,7 +630,7 @@ export function VacationPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="calendar" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
           <TabsTrigger value="requests">
@@ -628,6 +647,7 @@ export function VacationPage() {
 
         {/* Requests Tab */}
         <TabsContent value="requests" className="space-y-4">
+          {focusedRequestId && <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm"><span>Request #{focusedRequestId}{!requestsLoading && !requestsError && !filteredRequests.length ? ' is unavailable or archived.' : ''}</span><Button variant="outline" size="sm" onClick={() => { setFocusedRequestId(null); navigate('/admin/vacation', { replace: true }) }}>Show all requests</Button></div>}
           {/* Search and Filters */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
@@ -639,8 +659,8 @@ export function VacationPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex gap-2">
-              <Button
+            <div className="flex flex-wrap gap-2">
+              {canApproveLeave && <Button
                 onClick={() => setShowRequestModal(true)}
                 size="sm"
                 className="bg-primary hover:bg-primary/90"
@@ -648,7 +668,7 @@ export function VacationPage() {
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Add Request
-              </Button>
+              </Button>}
               <Button
                 variant={statusFilter === 'all' ? 'default' : 'outline'}
                 onClick={() => setStatusFilter('all')}
@@ -691,11 +711,11 @@ export function VacationPage() {
               }
 
               return (
-                <Card key={request.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between gap-4">
+                <Card key={request.id} id={`leave-request-${request.id}`} className={String(request.id) === focusedRequestId ? 'border-primary' : undefined}>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col items-start gap-4 xl:flex-row xl:items-center xl:justify-between">
                       {/* Employee Info */}
-                      <div className="flex items-center space-x-4 min-w-[200px]">
+                      <div className="flex min-w-0 items-center gap-3">
                         <Avatar className="h-10 w-10">
                           <AvatarImage src={employee?.avatarUrl} alt={employee?.name} />
                           <AvatarFallback className="bg-primary/10 text-primary">
@@ -719,7 +739,7 @@ export function VacationPage() {
                       </div>
 
                       {/* Dates */}
-                      <div className="text-right flex-1">
+                      <div className="min-w-0 text-left xl:flex-1 xl:text-right">
                         <p className="text-sm text-gray-600">
                           {request.startDate && formatDate(request.startDate)} - {request.endDate && formatDate(request.endDate)}
                         </p>
@@ -729,8 +749,8 @@ export function VacationPage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-2 flex-shrink-0">
-                        {request.status === 'pending' && (
+                      <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:flex-shrink-0">
+                        {canApproveLeave && request.status === 'pending' && (
                           <>
                             <Button
                               size="sm"
@@ -754,7 +774,7 @@ export function VacationPage() {
                             </Button>
                           </>
                         )}
-                        {request.status === 'approved' && (
+                        {canApproveLeave && request.status === 'approved' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -769,7 +789,7 @@ export function VacationPage() {
                         {(request.status === 'denied' || request.status === 'canceled') && (
                           <span className="text-sm text-gray-500 italic px-4">History retained</span>
                         )}
-                        <Button
+                        {canApproveLeave && <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleDelete(String(request.id), employee?.name || 'this employee')}
@@ -779,7 +799,8 @@ export function VacationPage() {
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
                           Archive
-                        </Button>
+                        </Button>}
+                        <Button size="sm" variant="outline" onClick={() => handleVacationClick(item)}>Details</Button>
                       </div>
                     </div>
                   </CardContent>
@@ -1053,14 +1074,14 @@ export function VacationPage() {
                           <div className="font-semibold text-sm text-gray-600">
                             {format(date, 'd')}
                           </div>
-                          <button
+                          {canApproveLeave && <button
                             onClick={() => handleDateClick(dateStr)}
                             type="button"
                             className="w-5 h-5 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-colors"
                             title="Add leave request"
                           >
                             <Plus className="w-3 h-3 text-primary" />
-                          </button>
+                          </button>}
                         </div>
 
                         {/* Public Holiday Badge */}
@@ -1216,6 +1237,20 @@ export function VacationPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {showEditModal && selectedVacation && !canApproveLeave && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowEditModal(false)}>
+        <Card className="w-full max-w-md" onClick={event => event.stopPropagation()}>
+          <CardHeader><CardTitle>Leave Request</CardTitle><CardDescription>{selectedVacation.employee?.name} · {selectedVacation.leaveType?.name}</CardDescription></CardHeader>
+          <CardContent className="space-y-4">
+            <p>{editFormData.startDate} – {editFormData.endDate}</p>
+            <p className="capitalize">{editFormData.status}</p>
+            {editFormData.reason && <p className="whitespace-pre-wrap text-sm">{editFormData.reason}</p>}
+            {(selectedVacation.request || selectedVacation).decisionReason && <p className="text-sm">Response: {(selectedVacation.request || selectedVacation).decisionReason}</p>}
+            <p className="text-sm text-muted-foreground">Leave decisions are handled by Volodymyr or Patricia.</p>
+            <Button variant="outline" onClick={() => setShowEditModal(false)}>Close</Button>
+          </CardContent>
+        </Card>
+      </div>}
 
       {/* Calendar Add Leave Modal */}
       {showCalendarModal && (
@@ -1495,7 +1530,7 @@ export function VacationPage() {
                     className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                   />
                   <label htmlFor="autoApprove" className="text-sm font-medium cursor-pointer">
-                    Automatically approve this request
+                    Approve this request now
                   </label>
                 </div>
 
@@ -1503,13 +1538,13 @@ export function VacationPage() {
                 {requestFormData.autoApprove ? (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                     <p className="text-sm text-green-800">
-                      ✓ This request will be automatically approved
+                      This decision will be recorded as your approval.
                     </p>
                   </div>
                 ) : (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-sm text-blue-800">
-                      ℹ This request will be created as pending and require manual approval
+                      Short sick leave is approved automatically. Other requests remain pending for Volodymyr or Patricia.
                     </p>
                   </div>
                 )}
@@ -1538,7 +1573,7 @@ export function VacationPage() {
       )}
 
       {/* Edit Vacation Modal */}
-      {showEditModal && selectedVacation && (
+      {showEditModal && selectedVacation && canApproveLeave && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowEditModal(false)}

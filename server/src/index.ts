@@ -29,6 +29,8 @@ import { settingsRouter } from './routes/settings.js'
 import { searchRouter } from './routes/search.js'
 import { clickupRouter } from './routes/clickup.js'
 import { projectBotRouter } from './routes/project-bot.js'
+import { workflowRouter } from './routes/workflow.js'
+import { startWorkflowScheduler } from './services/workflowNotifications.js'
 import { setupPassport } from './auth/passport.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -224,6 +226,7 @@ app.use('/api/settings', settingsRouter)
 app.use('/api/search', searchRouter)
 app.use('/api/clickup', clickupRouter)
 app.use('/api/project-bot', projectBotRouter)
+app.use('/api/workflow', workflowRouter)
 
 app.use('/api/uploads', uploadsRouter)
 app.use('/uploads', uploadsRouter)
@@ -260,6 +263,7 @@ runDatabaseMigrations(pool).then(async () => {
   initializeSocket(httpServer, corsOrigin, sessionMiddleware)
   startClickUpScheduler()
   startProjectBotScheduler()
+  startWorkflowScheduler()
 
   httpServer.listen(PORT, () => {
     console.log('========================================')
