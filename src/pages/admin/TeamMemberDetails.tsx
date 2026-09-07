@@ -339,6 +339,7 @@ export function TeamMemberDetails() {
         ...member,
         showOnCalendar: member.showOnCalendar !== false,
         hourlyRate: member.hourlyRate ? String(member.hourlyRate) : undefined,
+        monthlyRate: member.monthlyRate ? String(member.monthlyRate) : undefined,
       })
       setIsEditModalOpen(true)
     }
@@ -346,6 +347,10 @@ export function TeamMemberDetails() {
 
   const handleUpdateTeamMember = async () => {
     if (!editingMember || !editingMember.name.trim() || !editingMember.email.trim() || !editingMember.position?.trim()) {
+      return
+    }
+    if(member?.employmentType==='freelancer'&&editingMember.employmentType!=='freelancer'&&Number(editingMember.monthlyRate||0)<=0){
+      showAlert({message:'Enter the actual monthly salary before converting this freelancer.',type:'error'})
       return
     }
 
@@ -358,6 +363,7 @@ export function TeamMemberDetails() {
         employmentType: editingMember.employmentType,
         skills: editingMember.skills || [],
         hourlyRate: typeof editingMember.hourlyRate === 'number' ? editingMember.hourlyRate : parseFloat(String(editingMember.hourlyRate || '0')),
+        monthlyRate: editingMember.employmentType === 'freelancer' || editingMember.monthlyRate === '' || editingMember.monthlyRate === undefined ? undefined : Number(editingMember.monthlyRate),
         experienceLevel: 'middle', // Default, TeamMember interface doesn't include this
         status: editingMember.status as 'active' | 'bench' | 'unavailable',
         bio: editingMember.bio || undefined,
@@ -369,12 +375,14 @@ export function TeamMemberDetails() {
         isBillable: editingMember.isBillable, // Include isBillable
         showOnCalendar: editingMember.showOnCalendar,
       }
-      const updatedMember = await api.updateTeamMember(String(editingMember.id), updateData)
+      const updatedMember = await api.updateTeamMember(String(editingMember.id), updateData) as unknown as TeamMember & {portalAccount?:{status:string;needsInvitation:boolean}}
       setMember(updatedMember as unknown as TeamMember)
       setIsEditModalOpen(false)
       setEditingMember(null)
+      if(updatedMember.portalAccount) showAlert({message:updatedMember.portalAccount.needsInvitation?'Employee portal account is ready. Open Users to generate the invitation link. Previous freelancer payments are available in My Salary.':'Employee portal access is active. Previous freelancer payments are available in My Salary.',type:'success'})
     } catch (error) {
       console.error('Error updating team member:', error)
+      showAlert({message:error instanceof Error?error.message:'Failed to update team member',type:'error'})
     } finally {
       setIsSubmitting(false)
     }
@@ -656,7 +664,8 @@ export function TeamMemberDetails() {
         )}
 
         <EmploymentPolicyNotice type={member.employmentType}/>
-        {member.employmentType === 'freelancer' ? <FreelancerFees memberId={member.id}/> : <>
+        <FreelancerFees memberId={member.id} canAccrue={member.employmentType === 'freelancer'}/>
+        {member.employmentType !== 'freelancer' && <>
         {/* Preferred Shifts */}
         <Card className="bg-white shadow-sm border border-gray-200">
           <CardHeader className="pb-4">

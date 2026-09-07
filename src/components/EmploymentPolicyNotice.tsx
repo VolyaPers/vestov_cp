@@ -4,7 +4,7 @@ export function EmploymentPolicyNotice({ type = 'fulltime' }: { type?: string })
     {type === 'freelancer'
       ? 'Freelancer: no portal account, invitations, monthly salary or employee benefits. Add project fees and record payments in this profile. Settle open salary periods and reimbursements before switching; any existing employee account will be disabled.'
       : type === 'part_time'
-        ? 'Part-time: enter the actual monthly salary. Bonuses, paid leave, sick leave, personal days and reimbursement benefits are 50% of full-time. Existing payroll accruals and recorded payments keep their saved amounts.'
+        ? 'Part-time: enter the actual monthly salary. Bonuses, paid leave, sick leave, personal days and reimbursement benefits are 50% of full-time. Converting from Freelancer creates or restores portal access and keeps previous project-payment history.'
         : 'Full-time: standard salary and employee benefits.'}
   </p>
 }

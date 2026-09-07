@@ -23,12 +23,15 @@ Custom leave allocations and adjustments are stored as full-time equivalents and
 - **Team → profile → Edit** changes employment type. **Finances → Salaries** sets actual monthly salary and full-time-equivalent bonus/benefit amounts. The card and payment preview show payable amounts.
 - Assign freelancers to projects in **Clients → client → service → Team**. Assignment labels come from Team; project rates are client billing prices, not freelancer compensation.
 - **Freelancer profile → Project fees** records an agreed amount and milestone. Accrual does not create a cash expense. Only the workflow owner or finance deputy may record payment. Payments are linked to the project, team member and cash transaction, protected against retries and concurrent submissions. Unpaid accruals may be cancelled; paid records cannot be independently edited or deleted through generic transactions.
+- When the transfer is actually made, use **Record payment** on that accrual and enter the payment date. This is the step that creates the linked finance transaction and marks the fee as paid.
 
 ## Changing type and historical data
 
 Saved payroll periods and cash transactions retain their amounts and policy. Salary history snapshots retain employment type so later profile changes do not halve old draft salary terms again. A type change applies to unsaved current-month payroll and future terms; no automatic mid-month proration is performed. Current leave entitlements use the current Team type; past consumption and previously calculated reimbursement amounts are preserved. Reimbursement reservations count against the current type's budget and may leave no available budget after a reduction.
 
-Open salary periods and outstanding reimbursements must be resolved before changing an employee to Freelancer. Conversion clears recurring employee terms, hides the freelancer from employee scheduling/benefit lists and disables any linked employee account. An active administrator account must first be reassigned/deactivated in Users. Returning to employee status never silently reactivates an account; an administrator manages access in Users.
+Open salary periods and outstanding reimbursements must be resolved before changing an employee to Freelancer. Conversion clears recurring employee terms, hides the freelancer from employee scheduling/benefit lists and disables any linked employee account. An active administrator account must first be reassigned/deactivated in Users.
+
+Changing a Freelancer to Part-time or Full-time requires the actual monthly salary. The same Team profile and ID are retained, so project fees and linked cash transactions are not copied or rewritten. The conversion creates a new employee portal account or reactivates the previously linked account. If it has no Clerk identity yet, an administrator generates its invitation link in **Users**. Previous project payments remain visible in the Team profile and in the employee's **My Salary → Previous freelancer payments** section.
 
 Freelancer login, existing sessions, API access, Clerk linking, invitations and user impersonation are denied on the server. Freelancer profiles cannot request leave or initialize employee payroll, including through administrative API calls.
 

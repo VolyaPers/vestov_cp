@@ -10,6 +10,8 @@ import {
   integrationSettings,
   invoices,
   clients,
+  clientServices,
+  serviceTypes,
   teamMembers,
   users,
   salaryRateHistory,
@@ -723,7 +725,25 @@ router.put('/salaries/payments/:id',async(req,res)=>{
 })
 // Employees receive their own payslips only; the linked team member is resolved on the server.
 router.get('/my-salary',async(req,res)=>{
-  try { const employeeId=await resolveEmployeeId(req.user); if(!employeeId) throw new FinanceValidationError('Employee profile required',403); const [member]=await db.select().from(teamMembers).where(eq(teamMembers.id,employeeId)); if(!member) throw new FinanceValidationError('Employee profile not found',404); const payments=await db.select({id:financialTransactions.id,amount:financialTransactions.amount,transactionDate:financialTransactions.transactionDate,payrollData:financialTransactions.payrollData,description:financialTransactions.description}).from(financialTransactions).where(and(eq(financialTransactions.teamMemberId,member.id),eq(financialTransactions.type,'salary'),isNull(financialTransactions.voidedAt))).orderBy(desc(financialTransactions.transactionDate)); const periods=await db.select().from(payrollPeriods).where(eq(payrollPeriods.teamMemberId,member.id)); res.json({currency:'USD',payments,periods:await Promise.all(periods.map(p=>salaryPeriodView(db,member,p.salaryMonth)))}) }catch(error){financeError(res,error,'Failed to load payslips')}
+  try {
+    const employeeId=await resolveEmployeeId(req.user)
+    if(!employeeId) throw new FinanceValidationError('Employee profile required',403)
+    const [member]=await db.select().from(teamMembers).where(eq(teamMembers.id,employeeId))
+    if(!member) throw new FinanceValidationError('Employee profile not found',404)
+    const [payments,periods,projectPayments]=await Promise.all([
+      db.select({id:financialTransactions.id,amount:financialTransactions.amount,transactionDate:financialTransactions.transactionDate,payrollData:financialTransactions.payrollData,description:financialTransactions.description}).from(financialTransactions).where(and(eq(financialTransactions.teamMemberId,member.id),eq(financialTransactions.type,'salary'),isNull(financialTransactions.voidedAt))).orderBy(desc(financialTransactions.transactionDate)),
+      db.select().from(payrollPeriods).where(eq(payrollPeriods.teamMemberId,member.id)),
+      db.select({id:freelancerFees.id,description:freelancerFees.description,amount:freelancerFees.amount,accruedDate:freelancerFees.accruedDate,paymentDate:financialTransactions.transactionDate,projectName:clientServices.serviceTitle,serviceName:serviceTypes.name,clientName:clients.name,transactionId:freelancerFees.paymentTransactionId})
+        .from(freelancerFees)
+        .innerJoin(clientServices,eq(clientServices.id,freelancerFees.clientServiceId))
+        .innerJoin(serviceTypes,eq(serviceTypes.id,clientServices.serviceTypeId))
+        .innerJoin(clients,eq(clients.id,clientServices.clientId))
+        .innerJoin(financialTransactions,eq(financialTransactions.id,freelancerFees.paymentTransactionId))
+        .where(and(eq(freelancerFees.teamMemberId,member.id),eq(freelancerFees.status,'paid'),isNull(financialTransactions.voidedAt)))
+        .orderBy(desc(financialTransactions.transactionDate),desc(freelancerFees.id)),
+    ])
+    res.json({currency:'USD',payments,projectPayments,periods:await Promise.all(periods.map(p=>salaryPeriodView(db,member,p.salaryMonth)))})
+  }catch(error){financeError(res,error,'Failed to load payslips')}
 })
 
 // GET /categories

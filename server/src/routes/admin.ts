@@ -148,10 +148,11 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
       try { new Intl.DateTimeFormat('en-US',{timeZone:updateData.timezone}).format() }
       catch { return res.status(400).json({error:'Invalid timezone'}) }
     }
-    const member = await db.transaction(async tx => {
+    const result = await db.transaction(async tx => {
       await payrollLock(tx, memberId)
       const [current] = await tx.select().from(teamMembers).where(eq(teamMembers.id, memberId)).for('update')
       const nextType = updateData.employmentType ?? current.employmentType
+      let portalAccount: { userId: number; status: 'created' | 'reactivated' | 'existing'; needsInvitation: boolean } | null = null
       if (nextType === 'freelancer' && updateData.email !== undefined) {
         const email = typeof updateData.email === 'string' ? updateData.email.trim().toLowerCase() : ''
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new FinanceValidationError('A valid freelancer contact email is required')
@@ -170,7 +171,13 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
         updateData.monthlySalaryExtras = []
         updateData.showOnCalendar = false
       } else if (requestedMonthlyRate !== undefined && current.employmentType !== 'freelancer') await updateMonthlySalaryFromProfile(tx, memberId, requestedMonthlyRate ?? '0', req.user!.id)
-      if (current.employmentType === 'freelancer' && nextType !== 'freelancer') updateData.monthlyRate = requestedMonthlyRate ?? '0'
+      if (current.employmentType === 'freelancer' && nextType !== 'freelancer') {
+        if (requestedMonthlyRate === undefined || cents(requestedMonthlyRate, 'Actual monthly salary') <= 0) throw new FinanceValidationError('Enter the actual monthly salary before converting a freelancer to an employee')
+        const employeeEmail = typeof (updateData.email ?? current.email) === 'string' ? String(updateData.email ?? current.email).trim().toLowerCase() : ''
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeEmail)) throw new FinanceValidationError('A valid email is required to create employee portal access')
+        updateData.email = employeeEmail
+        updateData.monthlyRate = requestedMonthlyRate
+      }
       if (nextType !== current.employmentType) {
         const effectiveDate = new Date().toISOString().slice(0,7)+'-01'
         if (nextType !== 'freelancer') await tx.insert(salaryRateHistory).values({teamMemberId:memberId,employmentType:nextType,monthlyRate:requestedMonthlyRate ?? current.monthlyRate ?? '0',monthlyExtras:salaryExtras(current.monthlySalaryExtras || []),effectiveDate:current.startDate > effectiveDate ? current.startDate : effectiveDate,createdBy:req.user!.id,note:'Employment type changed; saved payroll periods remain unchanged'})
@@ -184,13 +191,49 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
         for (const user of disabled) revokeUserSockets(user.id)
       }
       const [updated] = await tx.update(teamMembers).set(updateData).where(eq(teamMembers.id, memberId)).returning()
-      return updated
+      if (current.employmentType === 'freelancer' && nextType !== 'freelancer') {
+        const normalizedEmail = updated.email.trim().toLowerCase()
+        const linked = await tx.select().from(users).where(sql`${users.teamMemberId} = ${memberId} OR lower(${users.email}) = ${normalizedEmail}`).for('update')
+        const conflicting = linked.find(user => user.teamMemberId && user.teamMemberId !== memberId)
+        if (conflicting) throw new FinanceValidationError('This email belongs to another employee portal account', 409)
+        const account = linked.find(user => user.teamMemberId === memberId) || linked[0]
+        if (account) {
+          if (account.clerkUserId && account.email.toLowerCase() !== normalizedEmail) throw new FinanceValidationError('Change the verified Clerk email before converting this profile', 409)
+          const [portalUser] = await tx.update(users).set({
+            teamMemberId: memberId,
+            email: normalizedEmail,
+            fullName: updated.name,
+            position: updated.position,
+            role: 'team_member',
+            isActive: true,
+            updatedAt: new Date(),
+          }).where(eq(users.id, account.id)).returning()
+          portalAccount = { userId: portalUser.id, status: account.isActive ? 'existing' : 'reactivated', needsInvitation: !portalUser.clerkUserId }
+        } else {
+          const preferredUsername = `team-${memberId}`
+          const [usernameOwner] = await tx.select({ id: users.id }).from(users).where(eq(users.username, preferredUsername)).limit(1)
+          const username = usernameOwner ? `team-${memberId}-employee` : preferredUsername
+          const [portalUser] = await tx.insert(users).values({
+            username,
+            password: null,
+            fullName: updated.name,
+            email: normalizedEmail,
+            role: 'team_member',
+            position: updated.position,
+            teamMemberId: memberId,
+            isActive: true,
+            authProvider: 'clerk',
+          }).returning()
+          portalAccount = { userId: portalUser.id, status: 'created', needsInvitation: true }
+        }
+      }
+      return { member: updated, portalAccount }
     })
 
-    if (!member) {
+    if (!result.member) {
       return res.status(404).json({ error: 'Team member not found' })
     }
-    res.json(member)
+    res.json({ ...result.member, portalAccount: result.portalAccount })
   } catch (error) {
     if((error as any).status) return res.status((error as any).status).json({error:(error as Error).message})
     console.error('Error updating team member:', error)

@@ -18,6 +18,7 @@ export interface EditTeamMemberData {
   skills?: string[]
   bio?: string
   hourlyRate?: string | number
+  monthlyRate?: string | number
   isBillable: boolean
   status: 'active' | 'bench' | 'unavailable' | string
   startDate: string
@@ -197,6 +198,11 @@ export function EditTeamMemberDialog({
               </div>
             </div>
             <EmploymentPolicyNotice type={member.employmentType}/>
+            {member.employmentType !== 'freelancer' && <div className="space-y-2">
+              <Label htmlFor="edit-monthlyRate" className="text-sm font-medium text-gray-700">Actual monthly salary ($)</Label>
+              <Input id="edit-monthlyRate" type="number" min="0.01" step="0.01" required value={member.monthlyRate || ''} onChange={(e)=>onMemberChange({monthlyRate:e.target.value})} placeholder="Enter the contracted monthly amount" className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl"/>
+              <p className="text-xs text-gray-500">For part-time, enter the actual agreed salary. It is not divided again.</p>
+            </div>}
             <div className="flex flex-wrap items-center gap-6">
               <div className="flex items-center space-x-2">
                 <Switch
@@ -278,4 +284,3 @@ export function EditTeamMemberDialog({
     </Dialog>
   )
 }
-
