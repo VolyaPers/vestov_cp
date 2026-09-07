@@ -1,3 +1,4 @@
+import { assertPortalAccount, isFreelancerAccount } from '../services/employmentPolicy.js'
 import { Router } from 'express'
 import { db, pool } from '../db/index.js'
 import { users, clientUsers, clients, teamMembers, messages, serviceRequests, financialData, feedback, timeEntries, employmentCycles, leaveBalances, leaveRequests, leaveRequestEvents, shiftSchedules, shifts, shiftBreaks, clientServiceTeamMembers, invoiceDevelopers, invoices, invoiceServices, reimbursementRequests, documents, documentFolders } from '../db/schema.js'
@@ -267,6 +268,7 @@ router.put('/:id', async (req, res) => {
     if (timezone) { try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }) } catch { return res.status(400).json({ error: 'Invalid timezone' }) } }
     const updated = await db.transaction(async tx => {
       const user = await guardAdminChange(tx, id, req.user!.id, isActive === false || (role !== undefined && role !== 'admin'))
+      if (isActive !== false) await assertPortalAccount({ teamMemberId: user.teamMemberId, email: email ?? user.email }, tx)
       if (user.clerkUserId && email !== undefined && email.trim().toLowerCase() !== user.email.toLowerCase()) throw Object.assign(new Error('Change the verified email in Clerk first; a linked identity cannot be reassigned by editing this field'), { status: 409 })
       if (user.teamMemberId && role === 'client') throw Object.assign(new Error('This account is linked to an employee profile. Preserve its employee role.'), { status: 409 })
       const updateData: any = { updatedAt: new Date() }
@@ -294,6 +296,7 @@ router.post('/:id/invitation', async (req, res) => {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, Number(req.params.id)))
     if (!user) return res.status(404).json({ error: 'User not found' })
+    await assertPortalAccount(user)
     if (!options.invitations && !process.env.CLERK_SECRET_KEY) return res.status(503).json({ error: 'Clerk is not configured. Configure it before generating invitations.' })
     const gateway = options.invitations || createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY }).invitations
     const invitation = await generateInvitationLink(user, gateway)

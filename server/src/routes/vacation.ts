@@ -1,3 +1,4 @@
+import { assertEmployeeBenefits } from '../services/employmentPolicy.js';
 import { Router } from 'express';
 import { and, eq, inArray, isNull, sql, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
@@ -91,7 +92,7 @@ function balanceView(context: any, type: any, date: string) {
   };
 }
 async function summaries() {
-  const members = await db.select().from(teamMembers).orderBy(teamMembers.name);
+  const members = await db.select().from(teamMembers).where(sql`${teamMembers.employmentType} <> 'freelancer'`).orderBy(teamMembers.name);
   return Promise.all(members.map(async member => {
     const context = await loadLeaveContext(member.id);
     return {
@@ -141,7 +142,7 @@ router.get('/employees', wrap(async (req: any, res: any) => {
     showOnCalendar: teamMembers.showOnCalendar,
     avatarUrl: teamMembers.avatarUrl,
     timezone: teamMembers.timezone
-  }).from(teamMembers).where(eq(teamMembers.status, 'active')).orderBy(teamMembers.name);
+  }).from(teamMembers).where(and(eq(teamMembers.status, 'active'),sql`${teamMembers.employmentType} <> 'freelancer'`)).orderBy(teamMembers.name);
   if (req.query.clientId) {
     const rows = await db.select({
       assignment: clientServiceTeamMembers,
@@ -199,6 +200,7 @@ async function updateBalance(tx: any, req: any, balanceId: number, values: any, 
     before = context.balances.find((b: any) => b.id === balanceId),
     cycle = context.cycles.find((c: any) => c.id === before.employmentCycleId),
     type = context.types.find((t: any) => t.id === before.leaveTypeId);
+  assertEmployeeBenefits(context.member);
   const totalDays = values.totalDays === undefined ? Number(before.totalDays) : days(values.totalDays);
   const adjustmentDays = values.adjustmentDays === undefined ? Number(before.adjustmentDays || 0) : days(values.adjustmentDays, true) + (addAdjustment ? Number(before.adjustmentDays || 0) : 0);
   if (totalDays + adjustmentDays < 0) throw new LeaveAdminError('Total available allocation cannot be negative');
@@ -249,6 +251,7 @@ router.post('/balances/adjust', wrap(async (req: any, res: any) => {
   const result = await db.transaction(async tx => {
     await lock(tx, employeeId);
     let context = await loadLeaveContext(employeeId, tx);
+    assertEmployeeBenefits(context.member);
     const cycle = currentFor(context);
     await provision(tx, context, {
       startDate: cycle.cycleStart,
@@ -265,6 +268,7 @@ async function initialize(req: any, employeeId: number) {
   return db.transaction(async tx => {
     await lock(tx, employeeId);
     let context = await loadLeaveContext(employeeId, tx);
+    assertEmployeeBenefits(context.member);
     const date = req.body.cycleStart ? isoDate(req.body.cycleStart) : currentFor(context).cycleStart,
       cycle = employmentCycleForDate(context.member.startDate, date);
     if (date !== cycle.cycleStart) throw new LeaveAdminError(`Employment cycles follow the employee anniversary. Use ${cycle.cycleStart}.`);
@@ -315,7 +319,7 @@ router.post('/admin/initialize-balances/:employeeId', wrap(async (req: any, res:
 router.post('/admin/bulk-initialize-balances', wrap(async (req: any, res: any) => {
   const ids = req.body.employeeIds ? req.body.employeeIds.map(id) : (await db.select({
     id: teamMembers.id
-  }).from(teamMembers)).map(r => r.id);
+  }).from(teamMembers).where(sql`${teamMembers.employmentType} <> 'freelancer'`)).map(r => r.id);
   if (ids.length > 5000) throw new LeaveAdminError('Too many employees');
   const results = [];
   for (const employeeId of [...new Set<number>(ids)]) try {

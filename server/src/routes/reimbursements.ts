@@ -1,3 +1,4 @@
+import { reimbursementPolicy, assertEmployeeBenefits } from '../services/employmentPolicy.js'
 import express from 'express'
 import { db } from '../db/index.js'
 import { reimbursementRequests, teamMembers, users, financialTransactions } from '../db/schema.js'
@@ -53,25 +54,16 @@ const upload = multer({
   }
 })
 
-// Helper function to get yearly limit based on years at company
-function getYearlyLimit(yearsAtCompany: number): number {
-  if (yearsAtCompany >= 5) return 700
-  if (yearsAtCompany >= 4) return 600
-  if (yearsAtCompany >= 3) return 500
-  if (yearsAtCompany >= 2) return 400
-  return 300 // 1 year
-}
-
 // GET /api/reimbursements/limits/:year - Get available limit for current employee
 router.get('/limits/:year',async(req,res)=>{
   try{
     const id=await resolveEmployeeId(req.user);if(!id)throw new FinanceValidationError('Employee profile required',403)
     const [member]=await db.select().from(teamMembers).where(eq(teamMembers.id,id))
-    const careerYear=calculateEmploymentMetrics(member.startDate).careerYear,limit=getYearlyLimit(careerYear)*100
+    const careerYear=calculateEmploymentMetrics(member.startDate).careerYear,policy=reimbursementPolicy(careerYear,member.employmentType),limit=policy.yearlyLimit*100
     const rows=await db.select().from(reimbursementRequests).where(and(eq(reimbursementRequests.employeeId,id),eq(reimbursementRequests.careerYear,careerYear)))
     const reserved=rows.filter(r=>['pending','approved','confirmed'].includes(r.status)).reduce((s,r)=>s+cents(r.reimbursementAmount),0)
     const paid=rows.filter(r=>r.status==='paid').reduce((s,r)=>s+cents(r.reimbursementAmount),0)
-    res.json({yearsAtCompany:careerYear,yearlyLimit:limit/100,usedAmount:(reserved+paid)/100,reservedAmount:reserved/100,paidAmount:paid/100,availableAmount:Math.max(limit-reserved-paid,0)/100,year:new Date().getFullYear()})
+    res.json({...policy,employmentType:member.employmentType,yearsAtCompany:careerYear,yearlyLimit:limit/100,usedAmount:(reserved+paid)/100,reservedAmount:reserved/100,paidAmount:paid/100,availableAmount:Math.max(limit-reserved-paid,0)/100,year:new Date().getFullYear()})
   }catch(error){financeError(res,error,'Failed to load reimbursement budget')}
 })
 router.get('/my-requests',async(req,res)=>{
@@ -93,7 +85,9 @@ router.post('/', async(req,res)=>{
       const careerYear=calculateEmploymentMetrics(member.startDate).careerYear
       const requests=await tx.select().from(reimbursementRequests).where(and(eq(reimbursementRequests.employeeId,memberId),eq(reimbursementRequests.careerYear,careerYear)))
       const used=requests.filter(r=>['pending','approved','confirmed','paid'].includes(r.status)).reduce((sum,r)=>sum+cents(r.reimbursementAmount),0)
-      const reimbursed=Math.min(Math.round(expense/2),getYearlyLimit(careerYear)*100-used)
+      assertEmployeeBenefits(member)
+      const policy=reimbursementPolicy(careerYear,member.employmentType)
+      const reimbursed=Math.min(Math.round(expense*policy.reimbursementRate),policy.yearlyLimit*100-used)
       if(reimbursed<=0)throw new FinanceValidationError('No reimbursement budget is available',409)
       const [request]=await tx.insert(reimbursementRequests).values({employeeId:memberId,year:new Date().getFullYear(),careerYear,expenseAmount:money(expense),reimbursementAmount:money(reimbursed),description,category:req.body.category || null,status:'pending',requestedBy:req.user!.id,idempotencyKey:key}).returning()
       const recipients = await workflowRecipients(tx)

@@ -211,6 +211,13 @@
       "when": 1788825600000,
       "tag": "0039_workflow_decisions",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788912000000,
+      "tag": "0040_employment_policy",
+      "breakpoints": true
     }
   ]
 }

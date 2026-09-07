@@ -31,6 +31,8 @@ const getEvidenceUrl = (evidencePath: string | null) => {
 interface ReimbursementLimits {
   yearsAtCompany: number
   yearlyLimit: number
+  reimbursementRate: number
+  employmentType: string
   usedAmount: number
   availableAmount: number
   year: number
@@ -159,7 +161,7 @@ export function EmployeeReimbursements() {
   const calculateReimbursement = () => {
     if (!limits) return 0
     const expense = parseFloat(expenseAmount) || 0
-    const halfExpense = expense * 0.5
+    const halfExpense = Math.round(expense * 100 * (limits?.reimbursementRate ?? 0.5)) / 100
     return Math.min(halfExpense, limits.availableAmount)
   }
 
@@ -256,7 +258,7 @@ export function EmployeeReimbursements() {
             </div>
             <div className="mt-4 text-sm text-gray-600">
               <p>• You can submit multiple requests throughout the year</p>
-              <p>• Reimbursement is 50% of expense amount, up to your available limit</p>
+              <p>• Reimbursement is {(limits.reimbursementRate ?? 0.5) * 100}% of expense amount, up to your available limit</p>
               <p>• After admin approval, you must upload receipt/product evidence</p>
             </div>
           </CardContent>
@@ -331,8 +333,8 @@ export function EmployeeReimbursements() {
                     ${calculateReimbursement().toFixed(2)}
                   </div>
                   <div className="text-xs text-blue-600 mt-1">
-                    50% of ${parseFloat(expenseAmount).toFixed(2)} expense
-                    {calculateReimbursement() < parseFloat(expenseAmount) * 0.5 && (
+                    {(limits?.reimbursementRate ?? 0.5) * 100}% of ${parseFloat(expenseAmount).toFixed(2)} expense
+                    {calculateReimbursement() < parseFloat(expenseAmount) * (limits?.reimbursementRate ?? 0.5) && (
                       <span className="block mt-1">
                         (Capped to available limit of ${limits.availableAmount.toFixed(2)})
                       </span>

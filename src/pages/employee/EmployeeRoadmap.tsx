@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { api } from '@/lib/api'
 
 interface RoadmapData {
+  benefitFactor?: number
+  employmentType?:string
   milestones: Array<{ year: number; vacationDays: number; reimbursementLimit: number }>
   currentYear: number
   startDate: string
@@ -183,11 +185,11 @@ export function EmployeeRoadmap() {
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">English Classes</h3>
                   <p className="text-sm text-gray-600">
-                    Full coverage of English language courses to improve your professional communication skills
+                    {data.employmentType==='part_time'?'50% coverage of English language courses to improve your professional communication skills':'Full coverage of English language courses to improve your professional communication skills'}
                   </p>
                   <div className="mt-3 inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
                     <CheckCircle className="w-3 h-3" />
-                    100% Covered
+                    {(data.benefitFactor ?? 1)*100}% Covered
                   </div>
                 </div>
               </div>
@@ -202,11 +204,11 @@ export function EmployeeRoadmap() {
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Work Tools Coverage</h3>
                   <p className="text-sm text-gray-600">
-                    All necessary software, subscriptions, and tools required for your work are fully covered
+                    {data.employmentType==='part_time'?'50% coverage of eligible software, subscriptions and work tools':'All necessary software, subscriptions, and tools required for your work are fully covered'}
                   </p>
                   <div className="mt-3 inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
                     <CheckCircle className="w-3 h-3" />
-                    100% Covered
+                    {(data.benefitFactor ?? 1)*100}% Covered
                   </div>
                 </div>
               </div>
@@ -221,11 +223,11 @@ export function EmployeeRoadmap() {
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Professional Education</h3>
                   <p className="text-sm text-gray-600">
-                    Partial or full coverage of professional courses, certifications, and educational programs
+                    {data.employmentType==='part_time'?'50% of the standard approved benefit for professional courses, certifications and educational programs':'Partial or full coverage of professional courses, certifications, and educational programs'}
                   </p>
                   <div className="mt-3 inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
                     <CheckCircle className="w-3 h-3" />
-                    Partial/Full Coverage
+                    {data.employmentType==='part_time'?'50% of standard benefit':'Partial/Full Coverage'}
                   </div>
                 </div>
               </div>

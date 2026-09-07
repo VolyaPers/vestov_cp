@@ -537,7 +537,7 @@ router.get('/service-developer-assignments', requireAuth, async (req, res) => {
         hourlyRate: clientServiceTeamMembers.hourlyRate,
         fixedPrice: clientServiceTeamMembers.fixedPrice,
         workSchedule: clientServiceTeamMembers.workSchedule,
-        employmentType: clientServiceTeamMembers.employmentType,
+        employmentType: teamMembers.employmentType,
         isActive: clientServiceTeamMembers.isActive,
         startDate: clientServiceTeamMembers.startDate,
         endDate: clientServiceTeamMembers.endDate,
@@ -887,7 +887,7 @@ router.get('/clients/:clientId/services/:serviceId/developers', requireAuth, asy
         hourlyRate: clientServiceTeamMembers.hourlyRate,
         fixedPrice: clientServiceTeamMembers.fixedPrice,
         workSchedule: clientServiceTeamMembers.workSchedule,
-        employmentType: clientServiceTeamMembers.employmentType,
+        employmentType: teamMembers.employmentType,
         isActive: clientServiceTeamMembers.isActive,
         startDate: clientServiceTeamMembers.startDate,
         endDate: clientServiceTeamMembers.endDate,
@@ -936,12 +936,14 @@ router.post('/clients/:clientId/services/:serviceId/developers', requireAuth, re
       return res.status(404).json({ error: 'Client service not found' })
     }
 
+    const [member] = await db.select().from(teamMembers).where(eq(teamMembers.id, Number(teamMemberId)))
+    if (!member) return res.status(404).json({ error: 'Team member not found' })
     const [newAssignment] = await db
       .insert(clientServiceTeamMembers)
       .values({
         clientServiceId: parseInt(serviceId),
         teamMemberId: parseInt(teamMemberId),
-        employmentType,
+        employmentType: member.employmentType,
         hourlyRate: hourlyRate ? hourlyRate.toString() : null,
         fixedPrice: fixedPrice ? fixedPrice.toString() : null,
         startDate,

@@ -1,3 +1,4 @@
+import { assertPortalAccount, isFreelancerAccount } from '../services/employmentPolicy.js'
 import { Router, type Request } from 'express'
 import { createClerkClient, verifyToken } from '@clerk/backend'
 import rateLimit from 'express-rate-limit'
@@ -121,6 +122,8 @@ export async function syncLocalUserWithClerk(clerkUser: ClerkUserSummary): Promi
     )
   }
 
+  if (await isFreelancerAccount(matchedUser)) throw new AuthRouteError(403, 'Freelancers do not have portal access')
+
   if (!matchedUser.isActive) {
     throw new AuthRouteError(
       403,
@@ -172,7 +175,7 @@ router.post('/logout', requireAuth, (req, res) => {
 })
 
 // Get current user
-router.get('/user', (req, res) => {
+router.get('/user', requireAuth, (req, res) => {
   if (req.isAuthenticated() && req.user) {
     const user = req.user
     res.json({
@@ -287,6 +290,8 @@ router.post('/impersonate/:userId', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
 
+    await assertPortalAccount(targetUser)
+
     // Don't allow impersonating self
     if (targetUser.id === currentUser.id) {
       return res.status(400).json({ error: 'Cannot impersonate yourself' })
@@ -342,7 +347,7 @@ router.post('/impersonate/:userId', requireAuth, async (req, res) => {
     })
   } catch (error) {
     console.error('Error impersonating user:', error)
-    res.status(500).json({ error: 'Failed to impersonate user' })
+    res.status((error as any).status || 500).json({ error: (error as any).status ? (error as Error).message : 'Failed to impersonate user' })
   }
 })
 
@@ -410,7 +415,7 @@ async function loadAuthUserForSession(userId: number): Promise<UserWithoutPasswo
     .where(eq(users.id, userId))
     .limit(1)
 
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || await isFreelancerAccount(user)) {
     return null
   }
 

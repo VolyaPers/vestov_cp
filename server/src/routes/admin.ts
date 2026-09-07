@@ -1,3 +1,8 @@
+import { employmentType, assertPortalAccount, benefitFactor } from '../services/employmentPolicy.js'
+import { FinanceValidationError, positiveId, validDate, cents, salaryExtras } from '../lib/money.js'
+import { revokeUserSockets } from '../socket.js'
+import { logFinanceActivity } from '../lib/financeAudit.js'
+import { payrollLock } from '../services/payroll.js'
 import { Router } from 'express'
 import { eq, desc, and, sql, isNull } from 'drizzle-orm'
 import multer from 'multer'
@@ -7,6 +12,8 @@ import { db } from '../db/index.js'
 import {
   clients,
   teamMembers,
+  salaryRateHistory,
+  payrollPeriods,
   leaveRequests,
   leaveBalances,
   leaveTypes,
@@ -134,6 +141,7 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
       }
     }
 
+    if (updateData.employmentType !== undefined) employmentType(updateData.employmentType)
     const requestedMonthlyRate = updateData.monthlyRate
     delete updateData.monthlyRate
     if (updateData.timezone) {
@@ -141,7 +149,40 @@ router.put('/team-members/:id', requireAuth, async (req, res) => {
       catch { return res.status(400).json({error:'Invalid timezone'}) }
     }
     const member = await db.transaction(async tx => {
-      if (requestedMonthlyRate !== undefined) await updateMonthlySalaryFromProfile(tx, memberId, requestedMonthlyRate, req.user!.id)
+      await payrollLock(tx, memberId)
+      const [current] = await tx.select().from(teamMembers).where(eq(teamMembers.id, memberId)).for('update')
+      const nextType = updateData.employmentType ?? current.employmentType
+      if (nextType === 'freelancer' && updateData.email !== undefined) {
+        const email = typeof updateData.email === 'string' ? updateData.email.trim().toLowerCase() : ''
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new FinanceValidationError('A valid freelancer contact email is required')
+        const accounts = await tx.select({id:users.id,teamMemberId:users.teamMemberId}).from(users).where(sql`lower(${users.email}) = ${email}`)
+        if (email !== current.email.toLowerCase() && accounts.some(account=>account.teamMemberId!==memberId)) throw new FinanceValidationError('This contact email belongs to another portal account',409)
+        updateData.email = email
+      }
+      if (nextType === 'freelancer' && current.employmentType !== 'freelancer') {
+        const unsettled = await tx.select({id:payrollPeriods.id}).from(payrollPeriods).where(and(eq(payrollPeriods.teamMemberId,memberId),sql`${payrollPeriods.status} <> 'closed'`))
+        const purchases = await tx.select({id:reimbursementRequests.id}).from(reimbursementRequests).where(and(eq(reimbursementRequests.employeeId,memberId),sql`${reimbursementRequests.status} IN ('pending','approved','confirmed')`))
+        if (unsettled.length || purchases.length) throw new FinanceValidationError('Settle open salary periods and resolve outstanding reimbursements before switching to Freelancer. Existing obligations must stay accessible.',409)
+      }
+      if (nextType === 'freelancer') {
+        if (requestedMonthlyRate != null && requestedMonthlyRate !== '' && cents(requestedMonthlyRate) > 0 && cents(requestedMonthlyRate) !== cents(current.monthlyRate || '0')) throw new FinanceValidationError('Freelancers use project fees instead of a monthly salary')
+        updateData.monthlyRate = null
+        updateData.monthlySalaryExtras = []
+        updateData.showOnCalendar = false
+      } else if (requestedMonthlyRate !== undefined && current.employmentType !== 'freelancer') await updateMonthlySalaryFromProfile(tx, memberId, requestedMonthlyRate ?? '0', req.user!.id)
+      if (current.employmentType === 'freelancer' && nextType !== 'freelancer') updateData.monthlyRate = requestedMonthlyRate ?? '0'
+      if (nextType !== current.employmentType) {
+        const effectiveDate = new Date().toISOString().slice(0,7)+'-01'
+        if (nextType !== 'freelancer') await tx.insert(salaryRateHistory).values({teamMemberId:memberId,employmentType:nextType,monthlyRate:requestedMonthlyRate ?? current.monthlyRate ?? '0',monthlyExtras:salaryExtras(current.monthlySalaryExtras || []),effectiveDate:current.startDate > effectiveDate ? current.startDate : effectiveDate,createdBy:req.user!.id,note:'Employment type changed; saved payroll periods remain unchanged'})
+        await tx.update(salaryRateHistory).set({employmentType:nextType}).where(and(eq(salaryRateHistory.teamMemberId,memberId),sql`${salaryRateHistory.effectiveDate} > ${effectiveDate}`))
+        await logFinanceActivity(tx,{action:'employment_type_updated',entityType:'team_member',entityId:memberId,teamMemberId:memberId,actorId:req.user!.id,summary:`Employment type: ${current.employmentType} → ${nextType}`,beforeData:{employmentType:current.employmentType},afterData:{employmentType:nextType}})
+      }
+      if (nextType === 'freelancer') {
+        const linked = await tx.select().from(users).where(sql`${users.teamMemberId} = ${memberId} OR lower(${users.email}) = ${current.email.toLowerCase()}`)
+        if (linked.some(user=>user.role==='admin' && user.isActive)) throw new FinanceValidationError('Reassign and deactivate the administrator account in Users before converting its profile to Freelancer',409)
+        const disabled = await tx.update(users).set({isActive:false,updatedAt:new Date()}).where(sql`${users.teamMemberId} = ${memberId} OR lower(${users.email}) = ${current.email.toLowerCase()}`).returning({id:users.id})
+        for (const user of disabled) revokeUserSockets(user.id)
+      }
       const [updated] = await tx.update(teamMembers).set(updateData).where(eq(teamMembers.id, memberId)).returning()
       return updated
     })
@@ -716,53 +757,32 @@ router.get('/team-members/:id', async (req, res) => {
 // This endpoint is restricted - team members should only be created via user creation
 router.post('/team-members', async (req, res) => {
   try {
-    const { userId } = req.body
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required. Team members can only be created by linking to an existing user with role="team_member"' })
-    }
-
-    // Verify user exists and has role='team_member'
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, Number(userId)))
-      .limit(1)
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
-    }
-
-    if (user.role !== 'team_member' && user.role !== 'admin') {
-      return res.status(400).json({ error: 'User must have role="team_member" or "admin" to create a team member' })
-    }
-
-    if (user.teamMemberId) {
-      return res.status(400).json({ error: 'User already has a team member linked' })
-    }
-
-    // Create team member from user data
-    const today = new Date().toISOString().slice(0, 10)
-    const [member] = await db
-      .insert(teamMembers)
-      .values({
-        name: user.fullName,
-        email: user.email,
-        startDate: today,
-        status: 'active',
-        isBillable: true,
-        position: user.position || 'Team Member',
-      })
-      .returning()
-
-    // Link user to team member
-    await db
-      .update(users)
-      .set({ teamMemberId: member.id, updatedAt: new Date() })
-      .where(eq(users.id, user.id))
+    const type = employmentType(req.body.employmentType)
+    const member = await db.transaction(async tx => {
+      if (type === 'freelancer') {
+        if (req.body.userId) throw new FinanceValidationError('Freelancers are created without a user account')
+        const name = typeof req.body.name === 'string' ? req.body.name.trim() : ''
+        const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+        if (!name || name.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new FinanceValidationError('Name and a valid contact email are required')
+        const [account] = await tx.select({id:users.id}).from(users).where(sql`lower(${users.email}) = ${email}`)
+        if (account) throw new FinanceValidationError('This email has a user account. Change its linked Team profile to Freelancer instead.',409)
+        const [created] = await tx.insert(teamMembers).values({name,email,position:typeof req.body.position==='string' && req.body.position.trim() ? req.body.position.trim() : 'Freelancer',employmentType:type,startDate:validDate(req.body.startDate || new Date().toISOString().slice(0,10)),status:'active',isBillable:true,showOnCalendar:false}).returning()
+        return created
+      }
+      const userId = positiveId(req.body.userId, 'User')
+      const [user] = await tx.select().from(users).where(eq(users.id,userId)).for('update')
+      if (!user) throw new FinanceValidationError('User not found',404)
+      await assertPortalAccount(user,tx)
+      if (!['team_member','admin'].includes(user.role)) throw new FinanceValidationError('An employee or admin user is required')
+      if (user.teamMemberId) throw new FinanceValidationError('User already has a team member linked',409)
+      const [created] = await tx.insert(teamMembers).values({name:user.fullName,email:user.email,startDate:new Date().toISOString().slice(0,10),status:'active',isBillable:true,position:user.position || 'Team Member',employmentType:type}).returning()
+      await tx.update(users).set({teamMemberId:created.id,updatedAt:new Date()}).where(eq(users.id,user.id))
+      return created
+    })
 
     res.json(member)
   } catch (error) {
+    if ((error as any).status || (error as any).code === '23505') return res.status((error as any).status || 409).json({error:(error as any).code==='23505'?'This email already has a team profile':(error as Error).message})
     console.error('Error creating team member:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to create team member'
     res.status(500).json({ error: errorMessage })
@@ -783,7 +803,7 @@ router.delete('/team-members/:id', async (req, res) => {
     if(!deleted)return res.status(409).json({error:'This employee is linked to a user. Deactivate the account to preserve its history.'})
     res.json({message:'Employee deleted',id:memberId})
   } catch(error:any) {
-    if(error.code==='23503'||error.cause?.code==='23503')return res.status(409).json({error:'This employee has employment or accounting history. Deactivate the account to preserve it.'})
+    if(error.code==='23503'||error.cause?.code==='23503')return res.status(409).json({error:'This profile has employment or accounting history. Keep it and mark it unavailable to preserve that history.'})
     res.status(500).json({error:'Failed to delete employee'})
   }
 })
@@ -848,6 +868,7 @@ router.get('/leave-balances', async (req, res) => {
         employeeName: teamMembers.name,
         leaveTypeId: leaveBalances.leaveTypeId,
         leaveTypeName: leaveTypes.name,
+        employmentType: teamMembers.employmentType,
         totalDays: leaveBalances.totalDays,
         adjustmentDays: leaveBalances.adjustmentDays,
       })
@@ -855,7 +876,7 @@ router.get('/leave-balances', async (req, res) => {
       .leftJoin(teamMembers, eq(leaveBalances.employeeId, teamMembers.id))
       .leftJoin(leaveTypes, eq(leaveBalances.leaveTypeId, leaveTypes.id))
 
-    res.json(balances)
+    res.json(balances.map(row=>({...row,totalDays:String(Number(row.totalDays)*benefitFactor(row.employmentType)),adjustmentDays:String(Number(row.adjustmentDays||0)*benefitFactor(row.employmentType))})))
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch leave balances' })
   }

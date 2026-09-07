@@ -21,8 +21,9 @@ const app=express(),server=createServer(app)
 app.use(express.json())
 const sessionMiddleware=session({secret:randomUUID(),resave:false,saveUninitialized:false,name:'vestov.sid',cookie:{httpOnly:true,sameSite:'lax'}})
 app.use(sessionMiddleware);setupPassport(pool);app.use(passport.initialize());app.use(passport.session())
+const fixturePath=process.env.UI_FIXTURE_PATH || 'output/fix-2026-09-06/ui-fixtures.json'
 const fixture=await (async()=> {
- try{return JSON.parse(await fs.readFile('output/fix-2026-09-06/ui-fixtures.json','utf8'))}catch{}
+ try{return JSON.parse(await fs.readFile(fixturePath,'utf8'))}catch{}
 const today=new Date().toISOString().slice(0,10)
 const [a,b]=await db.insert(s.clients).values([{name:'QA Acme',status:'active',email:'qa-client@example.test'},{name:'QA Other company',status:'active'}]).returning()
 const [employee,second]=await db.insert(s.teamMembers).values([{name:'QA Anna Employee',email:'qa-anna@example.test',position:'Engineer',startDate:'2026-01-01',monthlyRate:'2000.00',timezone:'Europe/Kyiv',employmentType:'fulltime',isBillable:true},{name:'QA Ben Employee',email:'qa-ben@example.test',position:'Designer',startDate:'2025-01-01',monthlyRate:'1500.00',timezone:'Europe/Kyiv',employmentType:'fulltime',isBillable:true}]).returning()
@@ -61,6 +62,6 @@ for(const [base,file,name] of [['','auth','authRouter'],['/admin','admin','admin
 }
 app.use((error:any,_req:any,res:any,_next:any)=>{console.error(error.message);res.status(500).json({error:error.message})})
 const {initializeSocket}=await import('../../server/src/socket.js');initializeSocket(server,['http://127.0.0.1:5178'],sessionMiddleware)
-await fs.writeFile('output/fix-2026-09-06/ui-fixtures.json',JSON.stringify(fixture,null,2))
+await fs.writeFile(fixturePath,JSON.stringify(fixture,null,2))
 server.listen(3018,'127.0.0.1',()=>console.log('Isolated fixture backend ready. UI role entry: http://127.0.0.1:5178/api/__fixture__/as/admin'))
 process.once('SIGTERM',()=>{server.close();pool.end();process.exit(0)})

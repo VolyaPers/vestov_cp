@@ -19,8 +19,8 @@ export async function resolveEmployeeId(user?: AccessUser | null): Promise<numbe
     ? eq(teamMembers.id, user.teamMemberId)
     : user.email ? eq(teamMembers.email, user.email.trim().toLowerCase()) : null
   if (!predicate) return null
-  const [member] = await db.select({ id: teamMembers.id, status: teamMembers.status }).from(teamMembers).where(predicate).limit(1)
-  return member && member.status !== 'inactive' ? member.id : null
+  const [member] = await db.select({ id: teamMembers.id, status: teamMembers.status, employmentType: teamMembers.employmentType }).from(teamMembers).where(predicate).limit(1)
+  return member && member.status !== 'inactive' && member.employmentType !== 'freelancer' ? member.id : null
 }
 
 export async function accessibleClientIds(user?: AccessUser | null): Promise<number[]> {

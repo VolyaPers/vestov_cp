@@ -35,6 +35,7 @@ interface ServiceType {
 }
 
 interface Developer {
+  employmentType?: 'fulltime'|'part_time'|'freelancer'
   id: number
   name: string
   email: string
@@ -2051,7 +2052,7 @@ export function ClientDetailsPage() {
           <DialogHeader>
             <DialogTitle>Add Team Member to Service</DialogTitle>
             <DialogDescription>
-              Assign a developer to this service with employment type and compensation details.
+              Assign a team member to this project. Employment type comes from their Team profile; rates here are client billing rates.
             </DialogDescription>
           </DialogHeader>
 
@@ -2060,7 +2061,7 @@ export function ClientDetailsPage() {
               <Label htmlFor="developer">Team Member</Label>
               <Select
                 value={newDeveloperData.developerId}
-                onValueChange={(value) => setNewDeveloperData({ ...newDeveloperData, developerId: value })}
+                onValueChange={(value) => setNewDeveloperData({ ...newDeveloperData, developerId: value, employmentType: developers.find(member=>String(member.id)===value)?.employmentType || 'fulltime' })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a team member" />
@@ -2077,19 +2078,8 @@ export function ClientDetailsPage() {
 
             <div>
               <Label htmlFor="employmentType">Employment Type</Label>
-              <Select
-                value={newDeveloperData.employmentType}
-                onValueChange={(value) => setNewDeveloperData({ ...newDeveloperData, employmentType: value as 'fulltime' | 'part_time' | 'freelancer' })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fulltime">Full-time</SelectItem>
-                  <SelectItem value="part_time">Part-time</SelectItem>
-                  <SelectItem value="freelancer">Freelancer</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input id="employmentType" readOnly value={newDeveloperData.employmentType==='freelancer'?'Freelancer':newDeveloperData.employmentType==='part_time'?'Part-time':'Full-time'}/>
+              <p className="mt-1 text-xs text-muted-foreground">Managed in the Team profile.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

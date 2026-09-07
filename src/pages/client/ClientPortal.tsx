@@ -21,7 +21,7 @@ interface ServiceDeveloper {
   skills: string[]
   hourlyRate?: number
   fixedPrice?: number
-  employmentType: 'fulltime' | 'part_time'
+  employmentType: 'fulltime' | 'part_time' | 'freelancer'
   isActive: boolean
   startDate: string
   endDate?: string

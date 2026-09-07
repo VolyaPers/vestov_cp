@@ -525,6 +525,7 @@ interface ClientPayment {
 }
 
 interface SalaryMember {
+  employmentType?:string
   id: number
   name: string
   position: string | null
@@ -551,7 +552,7 @@ interface RateHistoryEntry {
   createdAt: string
 }
 
-interface SalaryPeriod { salaryMonth: string; baseSalary: string; defaultExtras: SalaryExtra[]; remainingBase: string; paidBase: string; remainingExtras: SalaryExtra[]; remainingTotal: string; status: string; id?: number; legacyPaymentIds: number[]; requiresTermsReview?:boolean; termsEvidence?:{rateSource:string;extrasSource:string}; calculationNote?: string }
+interface SalaryPeriod { employmentType?:string; salaryMonth: string; baseSalary: string; defaultExtras: SalaryExtra[]; remainingBase: string; paidBase: string; remainingExtras: SalaryExtra[]; remainingTotal: string; status: string; id?: number; legacyPaymentIds: number[]; requiresTermsReview?:boolean; termsEvidence?:{rateSource:string;extrasSource:string}; calculationNote?: string }
 interface SalaryPayment {
   payrollData?: { version: number; salaryMonth: string; baseSalary: string; paidBase: string; extras: SalaryExtra[]; note: string } | null
   payrollPeriodId?: number | null
@@ -1289,7 +1290,8 @@ export function FinancesPage() {
 
   const plannedSalaryAmount = parseMoney(salaryForm.baseSalary)
   const salaryPaymentAmount = parseMoney(salaryForm.paymentAmount)
-  const extrasTotal = salaryForm.extras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
+  const salaryBenefitFactor=salaryPeriodInfo?.employmentType==='part_time'?0.5:1
+  const extrasTotal = salaryForm.extras.reduce((sum, extra) => sum + Math.round(parseMoney(extra.amount)*100*salaryBenefitFactor)/100, 0)
   const salaryTotal = Math.round((salaryPaymentAmount + extrasTotal) * 100) / 100
   const maxSalaryPayment = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase, 0)
   const remainingSalary = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase - salaryPaymentAmount, 0)
@@ -1310,7 +1312,7 @@ export function FinancesPage() {
       setSalaryRequestKey(crypto.randomUUID())
       setEditingSalaryPayment(null)
       setSelectedMember(member)
-      setSalaryForm({salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:cloneSalaryExtras(normalizeSalaryExtras(period.remainingExtras)),transactionDate:toInputDate(),note:''})
+      setSalaryForm({salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:normalizeSalaryExtras(period.remainingExtras).map(e=>({...e,amount:formatMoneyInput(parseMoney(e.amount)*(period.employmentType==='part_time'?2:1))})),transactionDate:toInputDate(),note:''})
       setShowSalaryModal(true)
     }catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period')}
   }
@@ -1320,7 +1322,7 @@ export function FinancesPage() {
       const period:SalaryPeriod=await api.request(`/finances/salaries/${selectedMember.id}/period/${salaryMonth}`)
       setSalaryPeriodInfo(period)
       setSalaryReviewConfirmed(false)
-      setSalaryForm(prev=>({...prev,salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:editingSalaryPayment?prev.paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:editingSalaryPayment?prev.extras:cloneSalaryExtras(normalizeSalaryExtras(period.remainingExtras))}))
+      setSalaryForm(prev=>({...prev,salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:editingSalaryPayment?prev.paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:editingSalaryPayment?prev.extras:normalizeSalaryExtras(period.remainingExtras).map(e=>({...e,amount:formatMoneyInput(parseMoney(e.amount)*(period.employmentType==='part_time'?2:1))}))}))
     }catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period')}
   }
 
@@ -1387,7 +1389,7 @@ export function FinancesPage() {
       salaryMonth: parsed.salaryMonth,
       baseSalary: formatMoneyInput(baseSalary),
       paymentAmount: formatMoneyInput(parsed.paidBase),
-      extras: parsed.extras,
+      extras: parsed.extras.map(e=>({...e,amount:formatMoneyInput(parseMoney(e.amount)*(period.employmentType==='part_time'?2:1))})),
       transactionDate: toInputDate(payment.transactionDate),
       note: parsed.note,
     })
@@ -2316,7 +2318,7 @@ export function FinancesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(salariesData?.members || []).map((member) => {
                   const initials = member.name.split(' ').map((n) => n[0]).join('')
-                  const monthlyExtras = normalizeSalaryExtras(member.monthlySalaryExtras)
+                  const monthlyExtras = normalizeSalaryExtras(member.monthlySalaryExtras).map(extra=>({...extra,amount:Math.round(parseMoney(extra.amount)*100*(member.employmentType==='part_time'?0.5:1))/100}))
                   const monthlyExtrasTotal = monthlyExtras.reduce((sum, extra) => sum + parseMoney(extra.amount), 0)
                   const monthlyTotalWithExtras = parseMoney(member.monthlyRate) + monthlyExtrasTotal
                   const remainingBalance = remainingSalaryByMember.get(member.id) ?? { total: 0, byMonth: [] }
@@ -2346,7 +2348,7 @@ export function FinancesPage() {
                           <h4 className="font-semibold stripe-text-primary text-base truncate">
                             {member.name}
                           </h4>
-                          <p className="text-sm stripe-text-muted truncate">{member.position || 'Team Member'}</p>
+                          <p className="text-sm stripe-text-muted truncate">{member.position || 'Team Member'}{member.employmentType==='part_time'?' · Part-time':''}</p>
                         </div>
                       </div>
 
@@ -3163,6 +3165,7 @@ export function FinancesPage() {
                     + Add Extra
                   </button>
                 </div>
+                {salaryBenefitFactor===0.5&&<p className="mb-3 text-sm text-blue-700">Enter full-time bonus and benefit amounts below. This part-time payment includes 50% of each extra. The actual base salary is unchanged.</p>}
                 {salaryForm.extras.length === 0 && (
                   <p className="text-xs stripe-text-muted italic py-2">
                     No extras added. Click "+ Add Extra" for subscriptions, bonuses, etc.
@@ -3254,7 +3257,7 @@ export function FinancesPage() {
                       extra.label && extra.amount ? (
                         <div key={i} className="flex justify-between text-xs stripe-text-muted">
                           <span>{extra.label}</span>
-                          <span>{formatCurrency(parseMoney(extra.amount))}</span>
+                          <span>{formatCurrency(Math.round(parseMoney(extra.amount)*100*salaryBenefitFactor)/100)}</span>
                         </div>
                       ) : null
                     ))}
@@ -3418,7 +3421,7 @@ export function FinancesPage() {
 
                 {rateForm.monthlyExtras.length === 0 && (
                   <p className="text-xs stripe-text-muted italic py-2">
-                    No default monthly extras. Add regular bonuses or subscriptions here. Workspace reimbursements are paid from the Reimbursements page.
+                    Enter default bonuses and subscriptions at their full-time amounts. Part-time payroll automatically pays 50%. Workspace reimbursements are paid from the Reimbursements page.
                   </p>
                 )}
 

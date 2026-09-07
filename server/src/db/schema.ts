@@ -260,6 +260,7 @@ export const financialData = pgTable('financial_data', {
 
 // Salary accruals are immutable snapshots of the conditions for an employee/month.
 export const payrollPeriods = pgTable('payroll_periods', {
+  employmentType: varchar('employment_type', { length: 20 }).notNull().default('fulltime'),
   id: serial('id').primaryKey(),
   teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
   salaryMonth: varchar('salary_month', { length: 7 }).notNull(),
@@ -423,6 +424,7 @@ export const clickupDailyRollups = pgTable('clickup_daily_rollups', {
 
 // Salary Rate History table
 export const salaryRateHistory = pgTable('salary_rate_history', {
+  employmentType: varchar('employment_type', { length: 20 }).notNull().default('fulltime'),
   monthlyExtras: jsonb('monthly_extras'),
   id: serial('id').primaryKey(),
   teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
@@ -584,7 +586,7 @@ export const clientServiceTeamMembers = pgTable('client_service_team_members', {
   id: serial('id').primaryKey(),
   clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
   teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
-  employmentType: varchar('employment_type', { length: 20 }).notNull(), // 'fulltime' | 'part_time'
+  employmentType: varchar('employment_type', { length: 20 }).notNull(), // 'fulltime' | 'part_time' | 'freelancer'
   hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
   fixedPrice: decimal('fixed_price', { precision: 10, scale: 2 }),
   workSchedule: jsonb('work_schedule'), // {"monday": "full", "tuesday": "full", "wednesday": "half", "thursday": "off", "friday": "full", "saturday": "off", "sunday": "off"}
@@ -732,4 +734,20 @@ export const leaveAdminEvents = pgTable('leave_admin_events', {
  afterData: jsonb('after_data'),
  reason: text('reason'),
  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// A project fee is an accrual; its payment is a separate, linked cash transaction.
+export const freelancerFees = pgTable('freelancer_fees', {
+  id: serial('id').primaryKey(),
+  teamMemberId: integer('team_member_id').references(() => teamMembers.id).notNull(),
+  clientServiceId: integer('client_service_id').references(() => clientServices.id).notNull(),
+  description: text('description').notNull(),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  accruedDate: date('accrued_date').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('accrued'),
+  paymentTransactionId: integer('payment_transaction_id').references(() => financialTransactions.id).unique(),
+  idempotencyKey: varchar('idempotency_key', { length: 100 }).notNull().unique(),
+  createdBy: integer('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

@@ -1,3 +1,4 @@
+import { EmploymentPolicyNotice } from './EmploymentPolicyNotice'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -182,7 +183,7 @@ export function EditTeamMemberDialog({
                 <Label htmlFor="edit-employmentType" className="text-sm font-medium text-gray-700">Employment Type</Label>
                 <Select
                   value={member.employmentType || 'fulltime'}
-                  onValueChange={(value) => onMemberChange({ employmentType: value as 'fulltime' | 'part_time' | 'freelancer' })}
+                  onValueChange={(value) => onMemberChange({ employmentType: value as 'fulltime' | 'part_time' | 'freelancer', ...(value==='freelancer'?{showOnCalendar:false}:{}) })}
                 >
                   <SelectTrigger className="border-gray-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 rounded-xl">
                     <SelectValue placeholder="Select employment type" />
@@ -195,7 +196,8 @@ export function EditTeamMemberDialog({
                 </Select>
               </div>
             </div>
-            <div className="flex items-center gap-6">
+            <EmploymentPolicyNotice type={member.employmentType}/>
+            <div className="flex flex-wrap items-center gap-6">
               <div className="flex items-center space-x-2">
                 <Switch
                   id="edit-billable"
@@ -209,7 +211,8 @@ export function EditTeamMemberDialog({
               <div className="flex items-center space-x-2">
                 <Switch
                   id="edit-showOnCalendar"
-                  checked={member.showOnCalendar}
+                  disabled={member.employmentType==='freelancer'}
+                  checked={member.employmentType!=='freelancer' && member.showOnCalendar}
                   onCheckedChange={(checked) => onMemberChange({ showOnCalendar: checked })}
                 />
                 <Label htmlFor="edit-showOnCalendar" className="text-sm font-medium text-gray-700">

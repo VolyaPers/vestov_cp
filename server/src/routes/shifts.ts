@@ -1,3 +1,4 @@
+import { assertEmployeeBenefits } from '../services/employmentPolicy.js';
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { shifts, shiftBreaks, shiftSchedules, shiftScheduleOverrides, teamMembers, clientServices, serviceTypes, clientServiceTeamMembers, clients, leaveRequests, leaveTypes } from '../db/schema.js';
@@ -456,7 +457,7 @@ router.get('/admin/history', wrap(async (req: any, res: any) => {
 router.get('/admin/late', wrap(async (req: any, res: any) => {
   admin(req);
   const now = new Date();
-  const members = await db.select().from(teamMembers).where(sql`${teamMembers.status} <> 'inactive'`);
+  const members = await db.select().from(teamMembers).where(sql`${teamMembers.status} <> 'inactive' AND ${teamMembers.employmentType} <> 'freelancer'`);
   const lateShifts: any[] = [],
     missedShifts: any[] = [];
   for (const member of members) {
@@ -550,6 +551,7 @@ async function saveSchedules(employeeId: number, raw: any) {
     await lock(tx, employeeId);
     const [member] = await tx.select().from(teamMembers).where(eq(teamMembers.id, employeeId));
     if (!member) throw new ShiftError('Employee not found', 404);
+    assertEmployeeBenefits(member);
     const existing = await tx.select().from(shiftSchedules).where(eq(shiftSchedules.employeeId, employeeId)).orderBy(desc(shiftSchedules.id));
     // Keep referenced IDs and history; disable removed weekdays instead of deleting FK targets.
     await tx.update(shiftSchedules).set({
@@ -574,7 +576,7 @@ router.put('/preferred/me', wrap(async (req: any, res: any) => res.json(await sa
 router.get('/preferred', wrap(async (req: any, res: any) => {
   const ids = await scopedEmployeeIds(req, res);
   if (res.headersSent) return;
-  const conditions: any[] = [eq(shiftSchedules.isActive, true)];
+  const conditions: any[] = [eq(shiftSchedules.isActive, true),sql`${teamMembers.employmentType} <> 'freelancer'`];
   if (ids !== null) {
     if (!ids.length) return res.json({
       members: []
@@ -675,7 +677,7 @@ router.get('/calendar/all', wrap(async (req: any, res: any) => {
     } = monthRange(req.query.month),
     ids = await scopedEmployeeIds(req, res);
   if (res.headersSent) return;
-  const conditions: any[] = [eq(teamMembers.status, 'active')];
+  const conditions: any[] = [eq(teamMembers.status, 'active'),sql`${teamMembers.employmentType} <> 'freelancer'`];
   if (ids !== null) conditions.push(inArray(teamMembers.id, ids));
   const members = await db.select().from(teamMembers).where(and(...conditions));
   res.json({

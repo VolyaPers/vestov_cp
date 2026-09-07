@@ -1,3 +1,4 @@
+import { assertPortalAccount } from './employmentPolicy.js'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { clientUsers, teamMembers, users } from '../db/schema.js'
@@ -48,6 +49,7 @@ export async function createUserAccount(
   const normalizedUsername = normalizeUsername(username || normalizedEmail.split('@')[0]).slice(0, 50)
 
   return db.transaction(async (tx) => {
+    await assertPortalAccount({ email: normalizedEmail, teamMemberId }, tx)
     // Check for existing user - this should only find users that weren't hard-deleted
     // If a user was hard-deleted, they should be completely removed from the database
     const [existingUser] = await tx

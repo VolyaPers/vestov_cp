@@ -27,6 +27,7 @@ interface VacationBalance {
   lockedUntilSecondHalf: number
 
   // Financial
+  benefitFactor?: number
   cashableAtYearEnd: number
   allocationWarning?: string | null
   willExpire: number
@@ -334,9 +335,9 @@ export function VacationBalanceCard({ balance, isLoading, error, employeeId, onR
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="flex items-center gap-1 text-green-600">
-                  Eligible for review (up to 5):
+                  Eligible for review (up to {5*(balance.benefitFactor ?? 1)}):
                   <Tooltip
-                    content="At cycle end, up to 5 unused days are eligible for compensation review. Payment requires an administrator to approve and record a salary adjustment; this display does not create a payment."
+                    content={`At cycle end, up to ${5*(balance.benefitFactor ?? 1)} unused days are eligible for compensation review. Payment requires an administrator to approve and record a salary adjustment; this display does not create a payment.`}
                     side="top"
                   >
                     <Info className="h-3.5 w-3.5 text-green-500 cursor-help" />
@@ -383,7 +384,7 @@ export function VacationBalanceCard({ balance, isLoading, error, employeeId, onR
               <Activity className="h-5 w-5 text-blue-600" />
               <h3 className="font-semibold text-lg">Sick Leave</h3>
               <Tooltip
-                content="Sick leave is available throughout the entire employment cycle with no 50/50 split restriction. All 7 days can be used at any time during the year."
+                content="Sick leave is available throughout the entire employment cycle with no 50/50 split restriction. Your allocated days can be used at any time during the year."
                 side="top"
               >
                 <Info className="h-4 w-4 text-muted-foreground cursor-help" />

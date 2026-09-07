@@ -1,3 +1,5 @@
+import freelancerFeesRouter from './freelancerFees.js'
+import { assertEmployeeBenefits } from '../services/employmentPolicy.js'
 import { Router } from 'express'
 import { eq, desc, and, sql, gte, lte, asc, isNull } from 'drizzle-orm'
 import { db } from '../db/index.js'
@@ -11,6 +13,7 @@ import {
   teamMembers,
   users,
   salaryRateHistory,
+  freelancerFees,
   payrollPeriods,
   reimbursementRequests,
 } from '../db/schema.js'
@@ -31,6 +34,7 @@ import { recordPayroll, initializePayrollPeriod, salaryPeriodView, salaryTerms, 
 
 const router = Router()
 router.use(requireAuth)
+router.use('/freelancer-fees', freelancerFeesRouter)
 
 // Admin check helper
 function isAdmin(req: any, res: any): boolean {
@@ -377,6 +381,7 @@ router.post('/transactions', async (req, res) => {
     }
 
     if (!['income', 'expense', 'extra_payment'].includes(type)) throw new FinanceValidationError('Use the salary payment workflow for payroll transactions')
+    if(type==='extra_payment' && teamMemberId) throw new FinanceValidationError('Record employee bonuses in payroll or freelancer project fees in the Team profile so employment rules apply')
     cents(amount, 'Amount', false)
     validDate(transactionDate, 'Transaction date')
     if (invoiceId) throw new FinanceValidationError('Invoice payments are recorded through the invoice payment workflow')
@@ -448,10 +453,12 @@ router.put('/transactions/:id', async (req, res) => {
         return [null]
       }
 
+      if ((await tx.select({id:freelancerFees.id}).from(freelancerFees).where(eq(freelancerFees.paymentTransactionId,id))).length) throw new FinanceValidationError('Project fee payments cannot be edited independently of the accrual',409)
       if (existing.type === 'salary' || existing.payrollPeriodId) throw new FinanceValidationError('Use the salary payment workflow to edit payroll', 409)
       if (existing.voidedAt) throw new FinanceValidationError('Voided transactions cannot be edited', 409)
       const linked = await tx.select({id:reimbursementRequests.id}).from(reimbursementRequests).where(eq(reimbursementRequests.paymentTransactionId,id))
       if (linked.length) throw new FinanceValidationError('Reimbursement payments require reconciliation and cannot be edited here',409)
+      if((type ?? existing.type)==='extra_payment' && (teamMemberId ?? existing.teamMemberId)) throw new FinanceValidationError('Record bonuses through payroll so employment rules apply')
       if (type !== undefined && !['income','expense','extra_payment'].includes(type)) throw new FinanceValidationError('Invalid transaction type')
       if (amount !== undefined) cents(amount, 'Amount', false)
       if (transactionDate !== undefined) validDate(transactionDate, 'Transaction date')
@@ -532,6 +539,7 @@ router.delete('/transactions/:id', async (req, res) => {
       if(existing.teamMemberId) await payrollLock(tx,existing.teamMemberId)
       ;[existing]=await tx.select().from(financialTransactions).where(eq(financialTransactions.id,id)).for('update')
       if(existing.voidedAt) return
+      if ((await tx.select({id:freelancerFees.id}).from(freelancerFees).where(eq(freelancerFees.paymentTransactionId,id))).length) throw new FinanceValidationError('Project fee payments require reconciliation before voiding',409)
       const linked=await tx.select({id:reimbursementRequests.id}).from(reimbursementRequests).where(eq(reimbursementRequests.paymentTransactionId,id))
       if(linked.length) throw new FinanceValidationError('This payment settles a reimbursement. It cannot be voided without reconciling that reimbursement.',409)
       await tx.update(financialTransactions).set({voidedAt:new Date(),voidReason:'Voided by administrator',updatedAt:new Date()}).where(eq(financialTransactions.id,id))
@@ -598,6 +606,7 @@ router.get('/salaries', async (req, res) => {
         avatarUrl: teamMembers.avatarUrl,
         status: teamMembers.status,
         monthlySalaryExtras: teamMembers.monthlySalaryExtras,
+        employmentType: teamMembers.employmentType,
       })
       .from(teamMembers)
       .orderBy(teamMembers.name)
@@ -662,7 +671,7 @@ router.get('/salaries', async (req, res) => {
       salaryPayments.map((p) => [p.teamMemberId, p])
     )
 
-    const membersWithPayments = await Promise.all(members.map(async (m) => {
+    const membersWithPayments = await Promise.all(members.filter(m=>m.employmentType!=='freelancer').map(async (m) => {
       const payments = paymentMap.get(m.id)
       const [activeTerms]=await db.select().from(salaryRateHistory).where(and(eq(salaryRateHistory.teamMemberId,m.id),lte(salaryRateHistory.effectiveDate,new Date().toISOString().slice(0,10)))).orderBy(desc(salaryRateHistory.effectiveDate),desc(salaryRateHistory.id)).limit(1)
       return {
@@ -1024,15 +1033,16 @@ async function updateSalaryTerms(req:any,res:any,extrasOnly=false){
       await payrollLock(tx,memberId)
       const [member]=await tx.select().from(teamMembers).where(eq(teamMembers.id,memberId))
       if(!member) throw new FinanceValidationError('Team member not found',404)
+      assertEmployeeBenefits(member)
       if(effectiveDate<member.startDate) throw new FinanceValidationError('Salary terms cannot predate employment')
       const history=await tx.select().from(salaryRateHistory).where(eq(salaryRateHistory.teamMemberId,memberId)).orderBy(desc(salaryRateHistory.effectiveDate),desc(salaryRateHistory.id))
       const baselineDate=member.startDate>`${new Date().toISOString().slice(0,7)}-01`?member.startDate:`${new Date().toISOString().slice(0,7)}-01`
-      if(!history.length&&effectiveDate>=baselineDate) await tx.insert(salaryRateHistory).values({teamMemberId:memberId,monthlyRate:member.monthlyRate || '0',monthlyExtras:salaryExtras(member.monthlySalaryExtras || []),effectiveDate:baselineDate,createdBy:req.user!.id,note:'Current-month profile baseline before terms change; earlier terms remain unverified'})
+      if(!history.length&&effectiveDate>=baselineDate) await tx.insert(salaryRateHistory).values({teamMemberId:memberId,employmentType:member.employmentType,monthlyRate:member.monthlyRate || '0',monthlyExtras:salaryExtras(member.monthlySalaryExtras || []),effectiveDate:baselineDate,createdBy:req.user!.id,note:'Current-month profile baseline before terms change; earlier terms remain unverified'})
       // Find the conditions at the effective date, not a future change.
       const applicable=history.find(h=>h.effectiveDate<=effectiveDate)
       const monthlyRate=extrasOnly?(applicable?.monthlyRate || member.monthlyRate || '0'):money(cents(req.body.monthlyRate))
       const monthlyExtras=(extrasOnly||req.body.monthlyExtras!==undefined)?salaryExtras(req.body.monthlyExtras):salaryExtras(applicable?.monthlyExtras ?? member.monthlySalaryExtras ?? [])
-      const [next]=await tx.insert(salaryRateHistory).values({teamMemberId:memberId,monthlyRate,monthlyExtras,effectiveDate,note:req.body.note || null,createdBy:req.user!.id}).returning()
+      const [next]=await tx.insert(salaryRateHistory).values({teamMemberId:memberId,employmentType:member.employmentType,monthlyRate,monthlyExtras,effectiveDate,note:req.body.note || null,createdBy:req.user!.id}).returning()
       if(effectiveDate<=new Date().toISOString().slice(0,10)) await tx.update(teamMembers).set({monthlyRate,monthlySalaryExtras:monthlyExtras,updatedAt:new Date()}).where(eq(teamMembers.id,memberId))
       await logFinanceActivity(tx,{action:extrasOnly?'salary_extras_updated':'salary_rate_updated',entityType:extrasOnly?'salary_extras':'salary_rate',entityId:memberId,teamMemberId:memberId,actorId:req.user!.id,summary:`Scheduled salary terms from ${effectiveDate}`,beforeData:{monthlyRate:member.monthlyRate,monthlyExtras:member.monthlySalaryExtras},afterData:{monthlyRate,monthlyExtras,effectiveDate}})
       return next
@@ -1083,6 +1093,7 @@ router.get('/salaries/:teamMemberId/history', async (req, res) => {
         name: teamMembers.name,
         monthlyRate: teamMembers.monthlyRate,
         monthlySalaryExtras: teamMembers.monthlySalaryExtras,
+        employmentType: teamMembers.employmentType,
       })
       .from(teamMembers)
       .where(eq(teamMembers.id, teamMemberId))

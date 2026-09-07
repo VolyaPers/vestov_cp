@@ -1,3 +1,4 @@
+import { reimbursementPolicy, benefitFactor } from '../services/employmentPolicy.js';
 import { Router } from 'express';
 import { calculateEmploymentMetrics } from '../utils/employment.js';
 import { calculateVacationBalance, configuredAllocation, isVacationType, loadLeaveContext } from '../utils/vacationBalanceCalculator.js';
@@ -5,7 +6,6 @@ import { timezoneLocalDate } from '../utils/calendar.js';
 import { requireAuth } from '../middleware/auth.js';
 import { resolveEmployeeId } from '../services/access.js';
 const router = Router();
-const reimbursementLimit = (year: number) => Math.min(700, 200 + year * 100);
 router.get('/', requireAuth, async (req, res) => {
   try {
     const employeeId = await resolveEmployeeId(req.user!);
@@ -18,18 +18,20 @@ router.get('/', requireAuth, async (req, res) => {
     const balance = await calculateVacationBalance(employeeId),
       type = context.types.find((t: any) => isVacationType(t.name));
     res.json({
+      employmentType: context.member.employmentType,
+      benefitFactor: benefitFactor(context.member.employmentType),
       currentYear: Number(today.slice(0, 4)),
       startDate: context.member.startDate,
       yearsAtCompany: employment.careerYear,
       currentVacationDays: balance?.totalAllocated || 0,
-      currentReimbursementLimit: reimbursementLimit(employment.careerYear),
+      currentReimbursementLimit: reimbursementPolicy(employment.careerYear, context.member.employmentType).yearlyLimit,
       nextMilestoneYear: employment.nextMilestoneYear,
       daysUntilNextMilestone: employment.daysUntilNextMilestone,
       nextMilestoneDate: employment.nextMilestoneDate,
       milestones: [1, 2, 3, 4, 5].map(year => ({
         year,
-        vacationDays: type ? configuredAllocation(context, type, year) : 0,
-        reimbursementLimit: reimbursementLimit(year)
+        vacationDays: type ? configuredAllocation(context, type, year) * benefitFactor(context.member.employmentType) : 0,
+        reimbursementLimit: reimbursementPolicy(year, context.member.employmentType).yearlyLimit
       }))
     });
   } catch (error) {

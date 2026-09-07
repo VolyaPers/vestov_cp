@@ -1,3 +1,4 @@
+import { benefitFactor, assertEmployeeBenefits } from '../services/employmentPolicy.js';
 import { db } from '../db/index.js';
 import { employmentCycles, leaveBalances, leaveRequests, leaveTypes, teamMembers, leaveAllocationSettings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -73,8 +74,9 @@ export function summarizeLeave(context: Awaited<ReturnType<typeof loadLeaveConte
   const cycle = cycles.find((c: any) => c.cycleStart === dates.cycleStart);
   const row = cycle ? balances.find((b: any) => b.employmentCycleId === cycle.id && b.leaveTypeId === type.id) : null;
   const baseAllocation = configuredAllocation(context, type, dates.careerYear);
-  const allocated = row ? Number(row.totalDays) : baseAllocation;
-  const adjustments = Number(row?.adjustmentDays || 0);
+  const factor = benefitFactor(member.employmentType);
+  const allocated = (row ? Number(row.totalDays) : baseAllocation) * factor;
+  const adjustments = Number(row?.adjustmentDays || 0) * factor;
   const totalAllocated = allocated + adjustments;
   let firstHalfUsed = 0,
     secondHalfUsed = 0,
@@ -106,8 +108,8 @@ export function summarizeLeave(context: Awaited<ReturnType<typeof loadLeaveConte
     secondHalfRemaining,
     currentlyAvailable: targetDate < member.startDate ? 0 : Math.max(0, isFirstHalf ? firstHalfRemaining : secondHalfRemaining),
     lockedUntilSecondHalf: split && isFirstHalf ? Math.max(0, secondHalfRemaining) : 0,
-    cashableAtYearEnd: isVacationType(type.name) ? Math.min(5, Math.max(0, totalRemaining)) : 0,
-    willExpire: Math.max(0, totalRemaining - (isVacationType(type.name) ? 5 : 0)),
+    cashableAtYearEnd: isVacationType(type.name) ? Math.min(5 * factor, Math.max(0, totalRemaining)) : 0,
+    willExpire: Math.max(0, totalRemaining - (isVacationType(type.name) ? 5 * factor : 0)),
     isFirstHalf,
     daysUntilSecondHalf: isFirstHalf ? Math.max(0, daysBetween(targetDate, dates.cycleMidpoint)) : 0,
     cycleStartDate: dates.cycleStart,
@@ -116,13 +118,14 @@ export function summarizeLeave(context: Awaited<ReturnType<typeof loadLeaveConte
     cycleId: cycle?.id || 0,
     cycleNumber: dates.careerYear,
     careerYear: dates.careerYear,
-    baseAllocation,
+    baseAllocation: baseAllocation * factor,
+    benefitFactor: factor,
     pendingDays,
     adjustments,
     allocated,
     leaveType: type.name,
     leaveTypeId: type.id,
-    allocationWarning: row && allocated !== baseAllocation ? 'Saved individual allocation differs from the current career-year setting. Review it before making an explicit adjustment.' : null
+    allocationWarning: row && allocated !== baseAllocation * factor ? 'Saved individual allocation differs from the current career-year setting. Review it before making an explicit adjustment.' : null
   };
 }
 export async function calculateVacationBalance(employeeId: number, currentDate: Date = new Date(), connection: any = db): Promise<VacationBalance | null> {
@@ -133,6 +136,7 @@ export async function calculateVacationBalance(employeeId: number, currentDate: 
 }
 export async function assertLeaveRequestAllowed(connection: any, employeeId: number, typeId: number, request: LeaveDates, excludeRequestId?: number) {
   const context = await loadLeaveContext(employeeId, connection);
+  assertEmployeeBenefits(context.member);
   const type = context.types.find((t: any) => t.id === typeId);
   if (!type) throw new Error('Leave type not found');
   if ((request.halfDayStart || request.halfDayEnd) && !type.halfDaySupported) throw new Error('This leave type does not support half days');

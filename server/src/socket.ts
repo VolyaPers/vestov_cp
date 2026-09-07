@@ -1,3 +1,4 @@
+import { isFreelancerAccount } from './services/employmentPolicy.js'
 import type { Request, RequestHandler } from 'express'
 import passport from 'passport'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -48,10 +49,13 @@ export function initializeSocket(httpServer: HttpServer, corsOrigin: string | st
   io.engine.use(sessionMiddleware)
   io.engine.use(passport.initialize())
   io.engine.use(passport.session())
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const request = socket.request as Request
     if (!request.isAuthenticated?.() || request.user?.isActive === false) return next(new Error('Authentication required'))
-    next()
+    try {
+      if (await isFreelancerAccount(request.user)) return next(new Error('Freelancers do not have portal access'))
+      next()
+    } catch (error) { next(error as Error) }
   })
   io.on('connection', (socket: Socket) => {
     const request = socket.request as Request

@@ -1,3 +1,4 @@
+import { CreateTeamMemberDialog } from '@/components/CreateTeamMemberDialog'
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'wouter'
 import { useQuery } from '@tanstack/react-query'
@@ -68,6 +69,8 @@ type AvailableUser = User
 
 // TeamOverview Component - Updated 2026-01-06
 export function TeamOverview() {
+  const [showCreate,setShowCreate]=useState(false)
+  const [employmentFilter,setEmploymentFilter]=useState('all')
   const [location] = useLocation()
   const { showAlert, showConfirm } = useCustomAlert()
   const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
@@ -630,14 +633,8 @@ export function TeamOverview() {
               <div className="relative team-member-dropdown">
                 <Button
                   type="button"
-                  onClick={() => {
-                    if (availableUsers.length === 0) {
-                      showAlert({ message: 'No users available with role "team_member". Please create a user with this role first.', type: 'info' })
-                      return
-                    }
-                    setIsSelectOpen(!isSelectOpen)
-                  }}
-                  disabled={availableUsers.length === 0 || isSubmitting}
+                  onClick={() => setShowCreate(true)}
+                  disabled={isSubmitting}
                   className="gap-2"
                 >
                   <Plus className="h-4 w-4" />
@@ -665,6 +662,8 @@ export function TeamOverview() {
             </div>
           </div>
 
+          <div className="flex items-center gap-3"><Label htmlFor="team-employment-filter">Employment type</Label><select id="team-employment-filter" className="h-10 rounded-md border bg-white px-3" value={employmentFilter} onChange={e=>setEmploymentFilter(e.target.value)}><option value="all">All types</option><option value="fulltime">Full-time</option><option value="part_time">Part-time</option><option value="freelancer">Freelancer</option></select></div>
+          {showCreate&&<CreateTeamMemberDialog open={showCreate} onOpenChange={setShowCreate} users={availableUsers} onCreated={async()=>{await Promise.all([loadTeamMembers(),loadAvailableUsers()])}}/>}
           <div className="flex flex-wrap gap-2">
             {[
               { id: 'all', label: `All team (${teamMembers.length})`, icon: Users },
@@ -694,11 +693,11 @@ export function TeamOverview() {
           {activeTab === 'all' && (
             <div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
-                {getFilteredMembers(teamMembers).map((member) => (
+                {getFilteredMembers(teamMembers.filter(m=>employmentFilter==='all'||(m.employmentType||'fulltime')===employmentFilter)).map((member) => (
                   <MemberCard key={member.id} member={member} />
                 ))}
               </div>
-              {getFilteredMembers(teamMembers).length === 0 && (
+              {getFilteredMembers(teamMembers.filter(m=>employmentFilter==='all'||(m.employmentType||'fulltime')===employmentFilter)).length === 0 && (
                 <EmptyState
                   icon={<Users className="h-5 w-5" />}
                   title="No team members found"
@@ -711,11 +710,11 @@ export function TeamOverview() {
           {activeTab === 'billable' && (
             <div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
-                {getFilteredMembers(billableMembers).map((member) => (
+                {getFilteredMembers(billableMembers.filter(m=>employmentFilter==='all'||(m.employmentType||'fulltime')===employmentFilter)).map((member) => (
                   <MemberCard key={member.id} member={member} />
                 ))}
               </div>
-              {getFilteredMembers(billableMembers).length === 0 && (
+              {getFilteredMembers(billableMembers.filter(m=>employmentFilter==='all'||(m.employmentType||'fulltime')===employmentFilter)).length === 0 && (
                 <EmptyState
                   icon={<DollarSign className="h-5 w-5" />}
                   title="No billable members found"
@@ -728,11 +727,11 @@ export function TeamOverview() {
           {activeTab === 'internal' && (
             <div>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
-                {getFilteredMembers(internalStaff).map((member) => (
+                {getFilteredMembers(internalStaff.filter(m=>employmentFilter==='all'||(m.employmentType||'fulltime')===employmentFilter)).map((member) => (
                   <MemberCard key={member.id} member={member} />
                 ))}
               </div>
-              {getFilteredMembers(internalStaff).length === 0 && (
+              {getFilteredMembers(internalStaff.filter(m=>employmentFilter==='all'||(m.employmentType||'fulltime')===employmentFilter)).length === 0 && (
                 <EmptyState
                   icon={<UserCheck className="h-5 w-5" />}
                   title="No internal staff found"

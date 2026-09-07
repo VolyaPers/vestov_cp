@@ -1,3 +1,5 @@
+import { FreelancerFees } from '@/components/FreelancerFees'
+import { EmploymentPolicyNotice, employmentLabels } from '@/components/EmploymentPolicyNotice'
 import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute, Link } from 'wouter'
@@ -139,16 +141,17 @@ export function TeamMemberDetails() {
   const { data: vacationBalance50, isLoading: isLoadingBalance, error: balanceError } = useQuery({
     queryKey: ['employeeVacationBalance', memberId],
     queryFn: () => memberId ? api.getEmployeeVacationBalance(parseInt(memberId)) : Promise.reject('No member ID'),
-    enabled: !!memberId,
+    enabled: !!memberId && !!member && member.employmentType !== 'freelancer',
   })
 
   useEffect(() => {
     if (memberId) {
       loadTeamMember()
-      loadVacationData()
-      loadPreferredShifts()
+
     } else setIsLoading(false)
   }, [memberId])
+
+  useEffect(()=>{if(member && member.employmentType!=='freelancer'){loadVacationData();loadPreferredShifts()}},[member?.id,member?.employmentType])
 
   const loadPreferredShifts = async () => {
     try {
@@ -418,7 +421,7 @@ export function TeamMemberDetails() {
   if (!match || !memberId) {
     console.error('TeamMemberDetails: Route did not match or member ID is missing', { match, memberId })
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           <Link href="/admin/team">
             <Button variant="ghost" className="hover:bg-gray-100">
@@ -436,7 +439,7 @@ export function TeamMemberDetails() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           <Link href="/admin/team">
             <Button variant="ghost" className="hover:bg-gray-100">
@@ -454,7 +457,7 @@ export function TeamMemberDetails() {
 
   if (!member) {
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           <Link href="/admin/team">
             <Button variant="ghost" className="hover:bg-gray-100">
@@ -471,10 +474,10 @@ export function TeamMemberDetails() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-8">
       <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/admin/team">
             <Button variant="ghost" className="hover:bg-gray-100">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -504,7 +507,7 @@ export function TeamMemberDetails() {
         {/* Member Profile Card */}
         <Card className="bg-white shadow-sm border border-gray-200">
           <CardHeader className="pb-6">
-            <div className="flex items-start gap-6">
+            <div className="flex flex-col items-start gap-6 sm:flex-row">
               <div className="relative">
                 <Avatar className="h-20 w-20 ring-4 ring-gray-100">
                   <AvatarImage src={member.avatarUrl} alt={member.name} className="object-cover" />
@@ -517,12 +520,13 @@ export function TeamMemberDetails() {
                   }`} />
               </div>
 
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-2xl text-gray-900 mb-2">{member.name}</CardTitle>
+                    <CardTitle className="break-words text-2xl text-gray-900 mb-2">{member.name}</CardTitle>
                     <CardDescription className="text-lg text-gray-600 mb-3">{member.position}</CardDescription>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Badge variant="secondary">{employmentLabels[member.employmentType || 'fulltime']}</Badge>
                       <Badge className={getStatusColor(member.status)}>
                         {member.status.charAt(0).toUpperCase() + member.status.slice(1)}
                       </Badge>
@@ -598,7 +602,7 @@ export function TeamMemberDetails() {
             </div>
 
             {/* Billing Information */}
-            {member.isBillable && (
+            {member.isBillable && (member.hourlyRate || member.clientName) && (
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Billing Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -634,7 +638,7 @@ export function TeamMemberDetails() {
         </Card>
 
         {/* Vacation Balance (50/50 Rule) */}
-        {member && (
+        {member.employmentType !== 'freelancer' && (
           <VacationBalanceCard
             balance={vacationBalance50}
             employeeId={Number(memberId)}
@@ -651,6 +655,8 @@ export function TeamMemberDetails() {
           />
         )}
 
+        <EmploymentPolicyNotice type={member.employmentType}/>
+        {member.employmentType === 'freelancer' ? <FreelancerFees memberId={member.id}/> : <>
         {/* Preferred Shifts */}
         <Card className="bg-white shadow-sm border border-gray-200">
           <CardHeader className="pb-4">
@@ -904,6 +910,7 @@ export function TeamMemberDetails() {
           </CardContent>
         </Card>
 
+        </>}
         {/* Edit Modal - Using shared component */}
         <EditTeamMemberDialog
           open={isEditModalOpen}
@@ -927,8 +934,8 @@ export function TeamMemberDetails() {
           <DialogContent><DialogHeader><DialogTitle>Review individual vacation allocation</DialogTitle></DialogHeader>
             {allocationReview && <div className="space-y-4">
               <p className="text-sm text-muted-foreground">An explicit correction keeps the previous values in the audit history. Approved leave consumption cannot be removed.</p>
-              <Label>Total allocated days<Input type="number" min="0" step="0.5" value={allocationReview.totalDays} onChange={e => setAllocationReview({ ...allocationReview, totalDays: e.target.value })} /></Label>
-              <Label>Adjustment days<Input type="number" step="0.5" value={allocationReview.adjustmentDays} onChange={e => setAllocationReview({ ...allocationReview, adjustmentDays: e.target.value })} /></Label>
+              <Label>{member.employmentType==='part_time'?'Full-time allocation days (50% applies)':'Total allocated days'}<Input type="number" min="0" step="0.5" value={allocationReview.totalDays} onChange={e => setAllocationReview({ ...allocationReview, totalDays: e.target.value })} /></Label>
+              <Label>{member.employmentType==='part_time'?'Full-time adjustment days (50% applies)':'Adjustment days'}<Input type="number" step="0.5" value={allocationReview.adjustmentDays} onChange={e => setAllocationReview({ ...allocationReview, adjustmentDays: e.target.value })} /></Label>
               <Label>Reason<Input value={allocationReview.reason} onChange={e => setAllocationReview({ ...allocationReview, reason: e.target.value })} /></Label>
               <Button disabled={savingAllocation || !allocationReview.reason.trim()} onClick={async () => {
                 setSavingAllocation(true)

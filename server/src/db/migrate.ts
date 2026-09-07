@@ -79,6 +79,9 @@ export async function runDatabaseMigrations(pool: Pool) {
     await connection.query('SELECT first_response_due_at, first_responded_at, resolved_at FROM feedback LIMIT 0')
     await connection.query('SELECT event_key, superseded_at, slack_next_attempt_at FROM workflow_notifications LIMIT 0')
     await connection.query('SELECT user_id, role FROM workflow_assignments LIMIT 0')
+    await connection.query('SELECT employment_type FROM payroll_periods LIMIT 0')
+    await connection.query('SELECT employment_type FROM salary_rate_history LIMIT 0')
+    await connection.query('SELECT team_member_id, payment_transaction_id FROM freelancer_fees LIMIT 0')
     await connection.query('COMMIT')
     console.info('[MIGRATIONS] Schema verified')
   } catch (error) {

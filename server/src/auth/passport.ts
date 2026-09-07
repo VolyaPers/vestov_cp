@@ -1,3 +1,4 @@
+import { assertPortalAccount, isFreelancerAccount } from '../services/employmentPolicy.js'
 import passport from 'passport'
 import { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -57,7 +58,7 @@ export function setupPassport(pool: Pool) {
         .where(eq(users.id, userId))
         .limit(1)
 
-      if (!user || !user.isActive) {
+      if (!user || !user.isActive || await isFreelancerAccount(user, db)) {
         return done(null, false)
       }
 
