@@ -218,6 +218,20 @@
       "when": 1788912000000,
       "tag": "0040_employment_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794182399999,
+      "tag": "0042_exclude_invoice_income",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794182400000,
+      "tag": "0041_stripe_invoices",
+      "breakpoints": true
     }
   ]
 }

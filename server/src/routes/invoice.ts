@@ -17,14 +17,19 @@ import {
   pickInvoiceSnapshot,
 } from '../lib/financeAudit.js'
 import { requireAuth } from '../middleware/auth.js'
+import { invoicePaymentExcluded } from '../lib/invoiceIncome.js'
 import { canAccessClient, accessibleClientIds } from '../services/access.js'
 import { calculateInvoice } from '../services/invoiceCalculator.js'
 import { cents, money, positiveId, validDate, FinanceValidationError, financeError } from '../lib/money.js'
 
+import { totalsForClient, totalsForClients, issuedStatuses } from '../services/invoiceTotals.js'
+import { stripeBillingRouter } from './stripe-billing.js'
+
 const router = Router()
 
 router.use(requireAuth)
-const issuedStatuses=['sent','overdue','paid']
+router.use(stripeBillingRouter)
+
 async function allowClient(req:any, clientId:number) {if(!['admin','client'].includes(req.user?.role)||!await canAccessClient(req.user,clientId)) throw new FinanceValidationError('Access denied',403)}
 function invoiceStatus(status:string, paidAt:any, dueDate:any){ if(status==='paid'&&paidAt) return 'paid'; if(['sent','overdue'].includes(status)&&dueDate) return dueDate<new Date().toISOString().slice(0,10)?'overdue':'sent'; return status }
 function financialState(input:any, prior?:any) {
@@ -37,12 +42,6 @@ function financialState(input:any, prior?:any) {
   if(paidAt)validDate(typeof paidAt==='string'?paidAt.slice(0,10):paidAt.toISOString().slice(0,10),'Payment date')
   if(paidAt&&!Number.isFinite(new Date(paidAt).getTime())) throw new FinanceValidationError('Invalid payment date')
   return {status,paidAt:paidAt?new Date(paidAt):null}
-}
-async function totalsForClient(clientId:number, admin:boolean){
-  const rows=await db.select().from(invoices).where(and(eq(invoices.clientId,clientId),admin?undefined:inArray(invoices.status,issuedStatuses)))
-  const totals={totalInvoiced:0,totalPaid:0,pendingAmount:0,overdueAmount:0}
-  for(const row of rows){if(row.status==='cancelled')continue; const amount=cents(row.amount); totals.totalInvoiced+=amount; if(row.status==='paid'&&row.paidAt)totals.totalPaid+=amount;else if(row.status!=='draft'){totals.pendingAmount+=amount;if(invoiceStatus(row.status,row.paidAt,row.dueDate)==='overdue')totals.overdueAmount+=amount}}
-  return Object.fromEntries(Object.entries(totals).map(([key,value])=>[key,Number(money(value))]))
 }
 async function persistLines(tx:any,invoiceId:number,calculation:any){
   for(const service of calculation.services){
@@ -88,6 +87,10 @@ router.get('/', async (req, res) => {
         status: invoices.status,
         dueDate: invoices.dueDate,
         paidAt: invoices.paidAt,
+        financePaymentExcluded: invoicePaymentExcluded,
+        stripeInvoiceId: invoices.stripeInvoiceId,
+        stripePaidAmount: invoices.stripePaidAmount,
+        stripeRemaining: invoices.stripeRemaining,
         notes: invoices.notes,
         createdAt: invoices.createdAt,
         updatedAt: invoices.updatedAt,
@@ -125,6 +128,9 @@ router.get('/client/:clientId', async (req, res) => {
         status: invoices.status,
         dueDate: invoices.dueDate,
         paidAt: invoices.paidAt,
+        stripeInvoiceId: invoices.stripeInvoiceId,
+        stripePaidAmount: invoices.stripePaidAmount,
+        stripeRemaining: invoices.stripeRemaining,
         notes: invoices.notes,
         createdAt: invoices.createdAt,
         updatedAt: invoices.updatedAt,
@@ -140,8 +146,25 @@ router.get('/client/:clientId', async (req, res) => {
   }
 })
 
-router.get('/totals',async(req,res)=>{
-  try{ if(!['admin','client'].includes(req.user!.role))throw new FinanceValidationError('Access denied',403);const requested=typeof req.query.clientIds==='string'?req.query.clientIds.split(',').map(id=>positiveId(id)):await accessibleClientIds(req.user);for(const id of requested)await allowClient(req,id);res.json(await Promise.all(requested.map(async id=>({clientId:id,...await totalsForClient(id,req.user!.role==='admin')}))))}catch(error){financeError(res,error,'Failed to fetch invoice totals')}
+router.get('/totals', async (req, res) => {
+  try {
+    const user = req.user!
+    if (!['admin', 'client'].includes(user.role)) throw new FinanceValidationError('Access denied', 403)
+    const admin = user.role === 'admin'
+    const specified = typeof req.query.clientIds === 'string'
+      ? req.query.clientIds.split(',').map(id => positiveId(id))
+      : undefined
+    const accessible = !admin || !specified ? await accessibleClientIds(user) : []
+    if (specified) {
+      const allowed = new Set(accessible)
+      if (user.isActive === false || (!admin && specified.some(id => !allowed.has(id)))) {
+        throw new FinanceValidationError('Access denied', 403)
+      }
+    }
+    res.json(await totalsForClients(specified ?? accessible, admin))
+  } catch (error) {
+    financeError(res, error, 'Failed to fetch invoice totals')
+  }
 })
 
 // Get a specific invoice
@@ -163,6 +186,9 @@ router.get('/:id', async (req, res) => {
         status: invoices.status,
         dueDate: invoices.dueDate,
         paidAt: invoices.paidAt,
+        stripeInvoiceId: invoices.stripeInvoiceId,
+        stripePaidAmount: invoices.stripePaidAmount,
+        stripeRemaining: invoices.stripeRemaining,
         notes: invoices.notes,
         createdBy: invoices.createdBy,
         createdAt: invoices.createdAt,
@@ -179,6 +205,8 @@ router.get('/:id', async (req, res) => {
     // Check if user has access to this invoice
     await allowClient(req,invoice.clientId)
     if(req.user!.role!=='admin'&&!issuedStatuses.includes(invoice.status)) throw new FinanceValidationError('Invoice not found',404)
+
+    if (req.user!.role !== 'admin') return res.json({ ...invoice, createdBy: undefined, amount: Number(invoice.amount), status: invoiceStatus(invoice.status, invoice.paidAt, invoice.dueDate) })
 
     const services = await db
       .select({
@@ -322,6 +350,9 @@ router.put('/:id', async (req, res) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(71422, ${invoiceId})`)
       const [prior] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for('update')
       if (!prior) throw new FinanceValidationError('Invoice not found', 404)
+      if (prior.stripeInvoiceId && ['status','paidAt','amount','dueDate','useServicePricing','serviceIds','developerRates','servicePrices'].some(key => input[key] !== undefined)) {
+        throw new FinanceValidationError('This invoice is managed by Stripe. Refresh it from its details.', 409)
+      }
       const update: any = { ...financialState(input, prior), updatedAt: new Date() }
       for (const field of ['description', 'notes']) if (input[field] !== undefined) update[field] = input[field] || null
       for (const field of ['invoiceDate', 'periodStart', 'periodEnd']) if (input[field] !== undefined) update[field] = validDate(input[field], field)
@@ -358,6 +389,7 @@ router.delete('/:id', async (req, res) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(71422, ${invoiceId})`)
       const [prior] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for('update')
       if (!prior) throw new FinanceValidationError('Invoice not found', 404)
+      if (prior.stripeInvoiceId) throw new FinanceValidationError('Cancel the invoice in Stripe first, then refresh it here.', 409)
       if (prior.paidAt || prior.status === 'paid') throw new FinanceValidationError('Reopen the paid invoice and clear its payment date before cancelling', 409)
       if (prior.status === 'cancelled') return prior
       const [row] = await tx.update(invoices).set({status:'cancelled',updatedAt:new Date()}).where(eq(invoices.id, invoiceId)).returning()

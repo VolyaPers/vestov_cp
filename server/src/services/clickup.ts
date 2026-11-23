@@ -437,7 +437,7 @@ export async function clickupRequest<T>(
   path: string,
   token: string,
   query?: Record<string, string | number | boolean | undefined>,
-  init?: { method?: 'GET' | 'POST'; body?: unknown },
+  init?: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal },
 ): Promise<T> {
   const url = new URL(`${CLICKUP_API_BASE}${path}`)
 
@@ -451,6 +451,7 @@ export async function clickupRequest<T>(
 
   const response = await fetch(url, {
     method: init?.method ?? 'GET',
+    signal: init?.signal,
     headers: {
       Authorization: token,
       'Content-Type': 'application/json',

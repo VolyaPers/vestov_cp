@@ -93,7 +93,8 @@ export function ClientLayout({ user }: ClientLayoutProps) {
     const selected = assignedClients.find(client => client.id === routeId)
       || assignedClients.find(client => client.id === savedId) || assignedClients[0]
     setCurrentClient(selected)
-    if (['/client', '/client/', '/client/portal'].includes(window.location.pathname)) setLocation(`/client/portal/${selected.id}`)
+    if (['/client', '/client/'].includes(window.location.pathname)) setLocation('/client/dashboard')
+    if (window.location.pathname === '/client/portal') setLocation(`/client/portal/${selected.id}`)
   }, [assignedClients, user.id, setLocation, search])
 
   useEffect(() => {
@@ -169,7 +170,7 @@ export function ClientLayout({ user }: ClientLayoutProps) {
                   </CardContent>
                 </Card>
               </div>
-            ) : (
+            ) : !currentClient ? <WorkspaceRouteSkeleton /> : (
               <Switch key={currentClient?.id}>
                 <Route path="/client/dashboard" component={ClientDashboardRoute} />
                 <Route path="/client/team-status" component={ClientTeamStatusRoute} />

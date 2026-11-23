@@ -64,6 +64,7 @@ interface Invoice {
   status: string
   invoiceDate: string
   paidAt?: string
+  financePaymentExcluded?: boolean
   periodStart?: string
   periodEnd?: string
 }
@@ -142,7 +143,15 @@ export function ReportsPage() {
     return filtered
   }, [allInvoices, selectedClient, startDate, endDate])
 
-  const receiptInvoices = useMemo(()=>allInvoices.filter(inv=>inv.status==='paid'&&inv.paidAt&&(selectedClient==='all'||inv.clientId===Number(selectedClient))&&(!startDate||inv.paidAt.slice(0,10)>=startDate)&&(!endDate||inv.paidAt.slice(0,10)<=endDate)),[allInvoices,selectedClient,startDate,endDate])
+  const paidIncomeInvoices = useMemo(() => allInvoices.filter((invoice): invoice is Invoice & { paidAt: string } =>
+    invoice.status === 'paid' && !!invoice.paidAt && !invoice.financePaymentExcluded
+      && (selectedClient === 'all' || invoice.clientId === Number(selectedClient))
+  ), [allInvoices, selectedClient])
+
+  const receiptInvoices = useMemo(() => paidIncomeInvoices.filter(invoice => {
+    const paidDate = invoice.paidAt.slice(0, 10)
+    return (!startDate || paidDate >= startDate) && (!endDate || paidDate <= endDate)
+  }), [paidIncomeInvoices, startDate, endDate])
 
   const filteredTeamMembers = useMemo(() => {
     let filtered = teamMembers
@@ -266,11 +275,10 @@ export function ReportsPage() {
 
   const totalRevenue = sumInvoiceAmounts(receiptInvoices)
   const previousPeriod = startDate && endDate && startDate<=endDate ? previousReportPeriod(startDate,endDate) : null
-  const previousRevenue = sumInvoiceAmounts(allInvoices.filter(inv=>{
-    if(!previousPeriod || (selectedClient!=='all' && inv.clientId!==Number(selectedClient)))return false
-    const date=new Date(inv.paidAt?.slice(0,10) || '')
-    return date>=previousPeriod.start&&date<=previousPeriod.end&&inv.status==='paid'
-  }))
+  const previousRevenue = previousPeriod ? sumInvoiceAmounts(paidIncomeInvoices.filter(invoice => {
+    const date = new Date(invoice.paidAt.slice(0, 10))
+    return date >= previousPeriod.start && date <= previousPeriod.end
+  })) : 0
 
   const revenueGrowth = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0
 

@@ -14,6 +14,8 @@ import { feedbackStatus } from '../services/feedbackWorkflow.js'
 import { getWorkflowAccess } from '../services/workflow.js'
 import { requireClient } from '../middleware/auth.js'
 
+import { totalsForClient } from '../services/invoiceTotals.js'
+
 const router = Router()
 
 // Apply client middleware to all routes
@@ -34,18 +36,32 @@ router.get('/dashboard', async (req, res) => {
     const projects = await db.select({ service: clientServices, type: serviceTypes }).from(clientServices)
       .leftJoin(serviceTypes, eq(clientServices.serviceTypeId, serviceTypes.id)).where(eq(clientServices.clientId, clientId))
     const activeProjects = projects.filter(row => coversDate(row.service, dateKey()))
-    const assignments = activeProjects.length ? await db.select({ assignment: clientServiceTeamMembers, employee: teamMembers }).from(clientServiceTeamMembers)
+    const assignments = activeProjects.length ? await db.select({
+      assignment: { clientServiceId: clientServiceTeamMembers.clientServiceId, isActive: clientServiceTeamMembers.isActive, startDate: clientServiceTeamMembers.startDate, endDate: clientServiceTeamMembers.endDate },
+      employee: { id: teamMembers.id, status: teamMembers.status, startDate: teamMembers.startDate, name: teamMembers.name, position: teamMembers.position },
+    }).from(clientServiceTeamMembers)
       .innerJoin(teamMembers, eq(clientServiceTeamMembers.teamMemberId, teamMembers.id))
       .where(inArray(clientServiceTeamMembers.clientServiceId, activeProjects.map(row => row.service.id))) : []
-    const assignedTeam = [...new Set(assignments.filter(row => coversDate(row.assignment, dateKey()) && row.employee.status === 'active').map(row => row.employee.id))]
+    const today = dateKey()
+    const roster = new Map<number, { id: number; name: string; position: string; projects: string[] }>()
+    const projectTitles = new Map(activeProjects.map(({ service, type }) => [service.id, service.serviceTitle || type?.name || 'Project']))
+    for (const { employee, assignment } of assignments) {
+      if (employee.status !== 'active' || employee.startDate > today || !coversDate(assignment, today)) continue
+      const member = roster.get(employee.id) || { id: employee.id, name: employee.name, position: employee.position, projects: [] }
+      const project = projectTitles.get(assignment.clientServiceId)!
+      if (!member.projects.includes(project)) member.projects.push(project)
+      roster.set(employee.id, member)
+    }
+    const assignedTeam = [...roster.values()].sort((a,b) => a.name.localeCompare(b.name))
     const feedbackScope = and(eq(feedback.userId, req.user!.id), eq(feedback.clientId, clientId))
-    const [recentFeedback, pending] = await Promise.all([
+    const [recentFeedback, pending, billing] = await Promise.all([
       // Explicit outer table names keep Drizzle's single-table projection from
       // resolving the correlated ID against the inner message table.
       db.select({ id: feedback.id, comments: feedback.comments, status: feedback.status, createdAt: feedback.createdAt,
         adminResponse: sql<string>`coalesce((select fm.body from feedback_messages fm where fm.feedback_id = feedback.id and fm.author_id <> feedback.user_id and fm.kind in ('reply', 'resolution_requested') order by fm.id desc limit 1), ${feedback.adminResponse})`,
       }).from(feedback).where(feedbackScope).orderBy(desc(feedback.createdAt)).limit(5),
       db.select({ count: sql<number>`count(*)::int` }).from(feedback).where(and(feedbackScope, eq(feedback.status, 'pending'))),
+      totalsForClient(clientId, false),
     ])
     const dashboardFeedback = recentFeedback.map(item => ({ ...item, status: feedbackStatus(item.status) }))
     const contractActive = client.status === 'active' && (!client.contractStart || client.contractStart <= dateKey()) && (!client.contractEnd || client.contractEnd >= dateKey())
@@ -54,6 +70,7 @@ router.get('/dashboard', async (req, res) => {
       client: { ...client, status: contractActive ? 'active' : 'inactive', activeServices: activeProjects.map(row => row.service.serviceTitle || row.type?.name || 'Project') },
       viewer: { fullName: req.user!.fullName },
       teamSize: assignedTeam.length,
+      team: assignedTeam, billing,
       activeServices: activeProjects.map(row => row.service.serviceTitle || row.type?.name || 'Project'),
       recentFeedback: dashboardFeedback,
       stats: {

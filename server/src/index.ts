@@ -12,6 +12,7 @@ import { authRouter } from './routes/auth.js'
 import { adminRouter } from './routes/admin.js'
 import { clientRouter } from './routes/client.js'
 import { servicesRouter } from './routes/services.js'
+import { stripeWebhook } from './routes/stripe-billing.js'
 import { invoiceRouter } from './routes/invoice.js'
 import { clientCalendarRouter } from './routes/client-calendar.js'
 import { runDatabaseMigrations } from './db/migrate.js'
@@ -30,6 +31,8 @@ import { searchRouter } from './routes/search.js'
 import { clickupRouter } from './routes/clickup.js'
 import { projectBotRouter } from './routes/project-bot.js'
 import { workflowRouter } from './routes/workflow.js'
+import { mcpRouter } from './mcp/server.js'
+import { aiInsightsRouter } from './routes/ai-insights.js'
 import { startWorkflowScheduler } from './services/workflowNotifications.js'
 import { setupPassport } from './auth/passport.js'
 import path from 'path'
@@ -67,6 +70,8 @@ app.use(helmet({
     },
   },
 }))
+
+app.use('/api/mcp', mcpRouter)
 
 // Normalize CORS origin - remove trailing slashes
 const normalizeUrl = (url: string | undefined): string | false => {
@@ -175,6 +180,7 @@ const captureRawBody = (req: express.Request, _res: express.Response, buffer: Bu
 }
 
 app.use(express.json({ limit: '10mb', verify: captureRawBody }))
+app.post('/api/stripe/invoice-events', stripeWebhook)
 app.use(express.urlencoded({ extended: true, limit: '10mb', verify: captureRawBody }))
 
 const isProduction = process.env.NODE_ENV === 'production'
@@ -227,12 +233,14 @@ app.use('/api/search', searchRouter)
 app.use('/api/clickup', clickupRouter)
 app.use('/api/project-bot', projectBotRouter)
 app.use('/api/workflow', workflowRouter)
+app.use('/api/admin/ai-insights', aiInsightsRouter)
 
 app.use('/api/uploads', uploadsRouter)
 app.use('/uploads', uploadsRouter)
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  const revision = process.env.RENDER_GIT_COMMIT?.match(/^[0-9a-f]{40}$/i)?.[0].slice(0, 12)
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), revision })
 })
 
 app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {

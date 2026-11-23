@@ -25,6 +25,8 @@ interface Invoice {
   description?: string
   status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
   dueDate?: string
+  stripePaidAmount?: string | null
+  stripeRemaining?: string | null
   paidAt?: string
   notes?: string
   createdAt: string
@@ -106,15 +108,15 @@ export function InvoicesPage() {
           />
           <MetricTile
             label="Total Paid"
-            value={`$${sumInvoiceAmounts(invoices.filter(inv => inv.status==='paid' && inv.paidAt)).toFixed(2)}`}
-            hint="Settled invoice value"
+            value={`$${sumInvoiceAmounts(invoices.filter(inv=>inv.status!=='cancelled').map(inv=>({amount: inv.stripePaidAmount ?? (inv.status==='paid' && inv.paidAt ? inv.amount : 0)}))).toFixed(2)}`}
+            hint="Includes recorded partial payments"
             icon={<TrendingUp className="h-5 w-5" />}
             tone="emerald"
             className="bg-white/10 border-white/12 text-white [&_p]:text-current"
           />
           <MetricTile
             label="Outstanding"
-            value={`$${sumInvoiceAmounts(invoices.filter(inv=>['sent','overdue'].includes(inv.status))).toFixed(2)}`}
+            value={`$${sumInvoiceAmounts(invoices.filter(inv=>['sent','overdue'].includes(inv.status)).map(inv=>({amount:inv.stripeRemaining ?? inv.amount}))).toFixed(2)}`}
             hint="Issued invoices awaiting payment"
             icon={<Receipt className="h-5 w-5" />}
             tone="amber"
@@ -241,7 +243,7 @@ export function InvoicesPage() {
           )}
         </CardContent>
       </Card>
-      <InvoiceDetailsDialog invoiceId={viewInvoiceId} onClose={()=>setViewInvoiceId(null)}/>
+      <InvoiceDetailsDialog onUpdated={loadInvoices} invoiceId={viewInvoiceId} onClose={()=>setViewInvoiceId(null)}/>
     </div>
   )
 }

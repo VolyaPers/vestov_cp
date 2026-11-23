@@ -119,6 +119,17 @@ export interface SalaryHistoryEntry {
   metadata: Record<string, any> | null
 }
 
+export interface SalaryPayment {
+  payrollData?: { version: number; salaryMonth: string; baseSalary: string; paidBase: string; extras: Array<{ label: string; amount: string | number }>; note: string } | null
+  payrollPeriodId?: number | null
+  id: number
+  teamMemberId: number
+  teamMemberName: string
+  amount: string | number
+  transactionDate: string
+  description: string | null
+}
+
 export interface SalaryHistoryResponse {
   member: {
     id: number
@@ -127,6 +138,7 @@ export interface SalaryHistoryResponse {
     monthlySalaryExtras: Array<{ label: string; amount: number | string }>
   }
   history: SalaryHistoryEntry[]
+  payments?: SalaryPayment[]
 }
 
 export interface NavigationIndicators {
@@ -499,6 +511,21 @@ class ApiClient {
     return this.request('/admin/dashboard/summary')
   }
 
+  async getAiInsights() {
+    return this.request('/admin/ai-insights')
+  }
+
+  async refreshAiInsights() {
+    return this.request('/admin/ai-insights/refresh', { method: 'POST' })
+  }
+
+  async askAiScenario(question: string) {
+    return this.request('/admin/ai-insights/scenario', {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    })
+  }
+
   async getAdminNavigationIndicators(): Promise<NavigationIndicators> {
     return this.request('/admin/navigation-indicators') as Promise<NavigationIndicators>
   }
@@ -728,16 +755,24 @@ class ApiClient {
     return this.request(`/finances/transactions/${id}`, { method: 'DELETE' })
   }
 
-  async getClientPayments(params?: { startDate?: string; endDate?: string }) {
+  async getClientPayments(params?: { startDate?: string; endDate?: string; includeExcluded?: boolean }) {
     const sp = new URLSearchParams()
     if (params?.startDate) sp.append('startDate', params.startDate)
     if (params?.endDate) sp.append('endDate', params.endDate)
+    if (params?.includeExcluded) sp.append('includeExcluded', 'true')
     const q = sp.toString()
     return this.request(`/finances/client-payments${q ? `?${q}` : ''}`)
   }
 
+  async setClientPaymentExcluded(id: number, paidAt: string, excluded: boolean) {
+    return this.request(`/finances/client-payments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ paidAt, excluded }),
+    })
+  }
+
   async getFinancesSalaries(year?: number) {
-    return this.request(`/finances/salaries${year ? `?year=${year}` : ''}`)
+    return this.request(`/finances/salaries?paymentScope=year${year ? `&year=${year}` : ''}`)
   }
 
   async getFinanceLogs(params?: { teamMemberId?: number; entityType?: string; action?: string; entityId?: number; startDate?: string; endDate?: string; q?: string; limit?: number }): Promise<FinanceAuditLog[]> {
@@ -1169,6 +1204,10 @@ class ApiClient {
 
   async getClientTeamSchedules(clientId?: number, month?: string) {
     return this.request(`/vacation/client/team/schedules${buildQueryString({ clientId, month })}`)
+  }
+
+  async getClientTeamActivity(clientId: number) {
+    return this.request(`/vacation/client/activity${buildQueryString({ clientId })}`)
   }
 
   async getClientCalendar(clientId: number, month: string) {

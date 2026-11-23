@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react'
+import { StripeInvoiceButton } from '@/components/StripeInvoiceButton'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useRoute } from 'wouter'
 import { hasRouteParam, getRouteParam } from '@/lib/routeHelpers'
 import { DollarSign, Calendar, FileText, Eye } from 'lucide-react'
@@ -19,6 +21,9 @@ import { EmptyState, MetricTile, PageHero } from '@/components/page-primitives'
 
 interface Invoice {
   id: number
+  stripeInvoiceId?: string | null
+  stripePaidAmount?: string | null
+  stripeRemaining?: string | null
   invoiceNumber: string
   amount: number
   invoiceDate: string
@@ -37,43 +42,16 @@ export function ClientInvoices() {
     return <div>Client ID not found</div>
   }
   const clientId = getRouteParam(params, 'clientId')
-  const [loadError, setLoadError] = useState('')
-  const [retry, setRetry] = useState(0)
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
-  const [totals, setTotals] = useState<{
-    totalAmount?: number
-    totalInvoiced?: number
-    paidAmount?: number
-    totalPaid?: number
-    pendingAmount?: number
-    overdueAmount?: number
-  } | null>(null)
-
-  useEffect(() => {
-    const loadInvoices = async () => {
-      if (!clientId) return
-
-      try {
-        setIsLoading(true)
-        setLoadError('')
-        // Load invoices
-        const invoicesResponse = await api.request(`/invoices/client/${clientId}`)
-        setInvoices(invoicesResponse)
-
-        // Load totals
-        const totalsResponse = await api.getClientInvoiceTotals(parseInt(clientId))
-        setTotals(totalsResponse)
-      } catch (error) {
-        setLoadError('Unable to load your invoices and balances. Please retry.')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadInvoices()
-  }, [clientId, retry])
+  const query = useQuery({
+    queryKey: ['clientBilling', clientId],
+    queryFn: async () => {
+      const [rows, totals] = await Promise.all([api.getClientInvoices(Number(clientId)), api.getClientInvoiceTotals(Number(clientId))])
+      return { invoices: rows as Invoice[], totals }
+    },
+    staleTime: 15_000, refetchInterval: 60_000,
+  })
+  const { invoices = [], totals } = query.data || {}
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -98,7 +76,7 @@ export function ClientInvoices() {
     }
   }
 
-  if (isLoading) {
+  if (query.isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -106,7 +84,7 @@ export function ClientInvoices() {
     )
   }
 
-  if (loadError) return <ClientLoadError message={loadError} onRetry={() => setRetry(value => value + 1)} />
+  if (query.isError) return <ClientLoadError message="Unable to load invoices and balances." onRetry={() => query.refetch()} />
 
   return (
     <div className="space-y-6">
@@ -127,7 +105,7 @@ export function ClientInvoices() {
       {totals && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
           <MetricTile label="Total Billed" value={formatCurrency(totals.totalAmount || totals.totalInvoiced || 0)} hint="Total generated invoice value" icon={<DollarSign className="h-5 w-5" />} tone="primary" />
-          <MetricTile label="Paid" value={formatCurrency(totals.paidAmount || totals.totalPaid || 0)} hint="Settled invoices" icon={<DollarSign className="h-5 w-5" />} tone="emerald" />
+          <MetricTile label="Paid" value={formatCurrency(totals.paidAmount || totals.totalPaid || 0)} hint="Includes recorded partial payments" icon={<DollarSign className="h-5 w-5" />} tone="emerald" />
           <MetricTile label="Pending" value={formatCurrency(totals.pendingAmount || 0)} hint="Open balance awaiting payment" icon={<DollarSign className="h-5 w-5" />} tone="amber" />
           <MetricTile label="Overdue" value={formatCurrency(totals.overdueAmount || 0)} hint="Requires attention" icon={<DollarSign className="h-5 w-5" />} tone="rose" />
         </div>
@@ -138,8 +116,8 @@ export function ClientInvoices() {
           {invoices.map((invoice) => (
             <Card key={invoice.id} className="hover:shadow-md transition-shadow" data-testid="invoice-item">
               <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4 flex-1">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 items-start gap-4 flex-1">
                     <div className="rounded-[0.95rem] bg-muted/70 p-2">
                       <FileText className="h-6 w-6 text-muted-foreground" />
                     </div>
@@ -174,15 +152,17 @@ export function ClientInvoices() {
                           Paid on {formatDate(invoice.paidAt)}
                         </p>
                       )}
+                      {invoice.stripePaidAmount != null && <p className="mt-2 text-sm">Paid: {formatCurrency(Number(invoice.stripePaidAmount))} · Remaining: {formatCurrency(Number(invoice.stripeRemaining))}</p>}
                       {invoice.notes && (
                         <p className="mt-2 text-sm italic text-muted-foreground">"{invoice.notes}"</p>
                       )}
                     </div>
                   </div>
-                  <div className="text-right flex items-center space-x-4">
+                  <div className="flex flex-wrap items-center gap-3 lg:justify-end">
                     <div>
                       <p className="text-2xl font-bold text-foreground">{formatCurrency(invoice.amount)}</p>
                     </div>
+                    {invoice.stripeInvoiceId && <StripeInvoiceButton id={invoice.id}/>}
                     <Button
                       variant="outline"
                       size="sm"

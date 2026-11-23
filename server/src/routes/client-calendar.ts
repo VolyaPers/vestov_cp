@@ -1,9 +1,11 @@
+import { clientTeamActivity } from '../services/clientTeamActivity.js'
+import { timezoneLocalDate } from '../utils/calendar.js'
 import { Router } from 'express'
 import { and, eq, inArray, lte, gte } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { clientServices, serviceTypes, clientServiceTeamMembers, teamMembers, leaveRequests, leaveTypes, shiftSchedules, shiftScheduleOverrides } from '../db/schema.js'
 import { requireAuth } from '../middleware/auth.js'
-import { resolveClientScope, overlapsPeriod, dateKey, assignmentCapacity, scopedLeaveSegments } from '../services/clientWorkspace.js'
+import { resolveClientScope, overlapsPeriod, coversDate, dateKey, assignmentCapacity, scopedLeaveSegments } from '../services/clientWorkspace.js'
 import { getEffectiveDay, dateRange, weekday, addDays } from '../utils/calendar.js'
 
 const router = Router()
@@ -29,7 +31,7 @@ async function loadCalendar(clientId: number, start: string, end: string) {
     id: assignment.id, assignmentId: assignment.id, employeeId: employee.id, teamMemberId: employee.id, projectId: assignment.clientServiceId,
     projectTitle: projects.find(project => project.id === assignment.clientServiceId)!.title,
     startDate: assignment.startDate, endDate: assignment.endDate, employeeStartDate: employee.startDate, isActive: assignment.isActive, workSchedule: assignment.workSchedule,
-    name: employee.name, email: employee.email, avatarUrl: employee.avatarUrl, position: employee.position, timezone: employee.timezone || 'UTC',
+    employeeStatus: employee.status, name: employee.name, email: employee.email, avatarUrl: employee.avatarUrl, position: employee.position, timezone: employee.timezone || 'UTC',
   }))
   const employeeIds = [...new Set(members.map(member => member.employeeId))]
   if (!employeeIds.length) return { projects, members, vacations: [], days: [] }
@@ -68,6 +70,30 @@ async function loadCalendar(clientId: number, start: string, end: string) {
   const scopedVacations = vacations.flatMap(leave => scopedLeaveSegments(leave, days.filter(day => day.employeeId === leave.employeeId).map(day => day.date)))
   return { projects, members, vacations: scopedVacations, days }
 }
+
+router.get('/client/activity', async (req, res) => {
+  try {
+    const clientId = await resolveClientScope(req, res)
+    if (!clientId) return
+    const now = new Date()
+    const today = now.toISOString().slice(0, 10)
+    const calendar = await loadCalendar(clientId, addDays(today, -1), addDays(today, 1))
+    const currentDays = calendar.days.filter(day => day.date === timezoneLocalDate(now, day.timezone)).map(day => ({
+      ...day, projectIds: day.projectIds.filter(id => coversDate(calendar.projects.find(project => project.id === id)!, day.date)
+        && calendar.members.some(member => member.employeeId === day.employeeId && member.projectId === id && member.employeeStatus === 'active' && coversDate(member, day.date))),
+    })).filter(day => day.projectIds.length > 0)
+    const activity = await clientTeamActivity(clientId, currentDays)
+    res.json({ updatedAt: new Date().toISOString(), members: currentDays.map(day => {
+      const member = calendar.members.find(member => member.employeeId === day.employeeId)!
+      return { id: day.employeeId, name: member.name, position: member.position, avatarUrl: member.avatarUrl,
+        projects: day.projectIds.map(id => calendar.projects.find(project => project.id === id)!.title),
+        leave: day.absenceUnits > 0 ? { label: /vacation|holiday|annual/i.test(day.leaveType || '') ? 'On vacation' : 'On leave', halfDay: day.absenceUnits === 0.5 } : null,
+        ...activity.find(item => item.id === day.employeeId) }
+    }) })
+  } catch {
+    res.status(500).json({ error: 'Unable to load team activity' })
+  }
+})
 
 router.get('/client/calendar', async (req, res) => {
   try {

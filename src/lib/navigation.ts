@@ -91,7 +91,7 @@ export const teamMemberNavigation: NavItem[] = [
 export function getClientNavigation(clientId?: number): NavItem[] {
   if (!clientId) {
     return [
-      { name: 'Team Status', href: '/client/team-status', icon: Users, section: 'Overview' },
+      { name: 'Team calendar', href: '/client/team-status', icon: Calendar, section: 'Overview' },
       { name: 'Feedback', href: '/client/feedback', icon: Star, section: 'Collaboration' },
       { name: 'Profile', href: '/client/profile', icon: User, section: 'Account' },
     ]
@@ -100,7 +100,7 @@ export function getClientNavigation(clientId?: number): NavItem[] {
   return [
     { name: 'Overview', href: '/client/dashboard', icon: Home, section: 'Overview' },
     { name: 'Projects', href: `/client/portal/${clientId}`, icon: Building, section: 'Overview' },
-    { name: 'Team Status', href: '/client/team-status', icon: Users, section: 'Overview' },
+    { name: 'Team calendar', href: '/client/team-status', icon: Calendar, section: 'Overview' },
     { name: 'Documents', href: `/client/documents/${clientId}`, icon: FileText, section: 'Shared Data' },
     { name: 'Invoices', href: `/client/invoices/${clientId}`, icon: DollarSign, section: 'Shared Data' },
     { name: 'Feedback', href: '/client/feedback', icon: Star, section: 'Collaboration' },
@@ -135,7 +135,7 @@ export function getPrimaryMobileNavigation(role: UserRole, currentClient?: Clien
 
   if (currentClient?.id) {
     return [
-      { name: 'Overview', href: `/client/portal/${currentClient.id}`, icon: Building },
+      { name: 'Overview', href: '/client/dashboard', icon: Home },
       { name: 'Team', href: '/client/team-status', icon: Users },
       { name: 'Docs', href: `/client/documents/${currentClient.id}`, icon: FileText },
       { name: 'Bills', href: `/client/invoices/${currentClient.id}`, icon: DollarSign },
@@ -213,7 +213,7 @@ export function getSearchShortcuts(role: UserRole, currentClientId?: number | nu
   return [
     { id: 'page:client-overview', type: 'page', title: 'Overview', subtitle: 'Your client workspace', href: '/client/dashboard', badge: 'Page', keywords: ['overview', 'dashboard', 'home'] },
     { id: 'page:client-projects', type: 'page', title: 'Projects', subtitle: 'Active projects and assigned team', href: clientId ? `/client/portal/${clientId}` : '/client/portal', badge: 'Page', keywords: ['projects', 'portal', 'services'] },
-    { id: 'page:client-team-status', type: 'page', title: 'Team Status', subtitle: 'Assigned team activity', href: '/client/team-status', badge: 'Page', keywords: ['team status', 'team', 'activity'] },
+    { id: 'page:client-team-status', type: 'page', title: 'Team calendar', subtitle: 'Schedules and availability', href: '/client/team-status', badge: 'Page', keywords: ['calendar', 'team', 'schedule', 'availability'] },
     ...(clientId ? [{ id: 'page:client-documents', type: 'page' as const, title: 'Documents', subtitle: 'Shared documents and folders', href: `/client/documents/${clientId}`, badge: 'Page', keywords: ['documents', 'files'] }] : []),
     ...(clientId ? [{ id: 'page:client-invoices', type: 'page' as const, title: 'Invoices', subtitle: 'Client invoice history', href: `/client/invoices/${clientId}`, badge: 'Page', keywords: ['invoices', 'billing'] }] : []),
     { id: 'page:client-feedback', type: 'page', title: 'Feedback', subtitle: 'Send service feedback', href: '/client/feedback', badge: 'Page', keywords: ['feedback', 'review'] },

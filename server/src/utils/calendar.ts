@@ -21,16 +21,23 @@ export function dateRange(start: string, end: string): string[] {
 export function weekday(date: string): number {
   return new Date(`${isoDate(date)}T12:00:00Z`).getUTCDay();
 }
-export function validTimezone(timezone?: string | null): string {
+// Calendar grids convert many shifts in the same few zones; reuse the ICU formatter.
+const wallClocks = new Map<string, Intl.DateTimeFormat>();
+function wallClock(timezone?: string | null) {
   const tz = timezone || 'UTC';
-  try {
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: tz
-    }).format(new Date());
-  } catch {
-    throw new Error('Invalid IANA timezone');
+  let formatter = wallClocks.get(tz);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    } catch { throw new Error('Invalid IANA timezone'); }
+    if (wallClocks.size >= 128) wallClocks.delete(wallClocks.keys().next().value!);
+    wallClocks.set(tz, formatter);
   }
-  return tz;
+  return formatter;
+}
+export function validTimezone(timezone?: string | null): string {
+  wallClock(timezone);
+  return timezone || 'UTC';
 }
 export function timezoneLocalDate(now: Date = new Date(), timezone?: string | null): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -56,16 +63,7 @@ export function zonedDateTime(date: string, time: string, timezone?: string | nu
   validTime(time);
   const target = Date.parse(`${date}T${time}:00Z`);
   let instant = target;
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23'
-  });
+  const fmt = wallClock(tz);
   for (let n = 0; n < 4; n++) {
     const parts = fmt.formatToParts(new Date(instant));
     const get = (t: string) => parts.find(p => p.type === t)!.value;

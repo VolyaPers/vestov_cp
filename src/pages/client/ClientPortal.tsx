@@ -1,3 +1,5 @@
+import { AccountContact } from '@/components/AccountContact'
+import { StripeInvoiceButton } from '@/components/StripeInvoiceButton'
 import { useState, useEffect } from 'react'
 import { useRoute } from 'wouter'
 import { Building, FileText, DollarSign, Users, Calendar, Mail, Phone, Download, Eye, Star } from 'lucide-react'
@@ -67,6 +69,7 @@ interface ClientContact {
 
 interface Invoice {
   id: number
+  stripeInvoiceId?: string | null
   invoiceNumber: string
   amount: number
   invoiceDate: string
@@ -351,6 +354,8 @@ export function ClientPortal() {
         </div>
       </div>
 
+      <AccountContact/>
+
       <Card className="content-auto">
         <CardHeader>
           <SectionHeading title="Contract Information" description="Current contract details and timeline" icon={<Calendar className="h-5 w-5" />} />
@@ -488,7 +493,7 @@ export function ClientPortal() {
       ) : contacts.length > 0 && (
         <Card className="content-auto">
           <CardHeader>
-            <SectionHeading title="Contact Information" description="Your main points of contact" icon={<Mail className="h-5 w-5" />} />
+            <SectionHeading title="Company contacts" description="Contacts listed for your company" icon={<Mail className="h-5 w-5" />} />
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
@@ -632,6 +637,7 @@ export function ClientPortal() {
                   </div>
                   <div className="text-left sm:text-right">
                     <p className="text-lg font-bold text-gray-900">{formatCurrency(invoice.amount)}</p>
+                    {invoice.stripeInvoiceId && <StripeInvoiceButton id={invoice.id}/>}
                     <Badge className={
                       invoice.status === 'paid' ? 'bg-green-100 text-green-800' :
                       invoice.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :

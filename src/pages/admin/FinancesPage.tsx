@@ -2,7 +2,8 @@ import { lazy } from 'react'
 import { DeferredChart } from '@/components/DeferredChart'
 const FinanceProfitChart = lazy(() => import('@/components/charts/FinancesPageCharts').then(module => ({default: module.FinanceProfitChart})))
 const FinanceRevenueChart = lazy(() => import('@/components/charts/FinancesPageCharts').then(module => ({default: module.FinanceRevenueChart})))
-import { useState, useEffect, useMemo, useCallback, type MouseEvent } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, type MouseEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import {
   TrendingUp,
@@ -14,7 +15,6 @@ import {
   Wallet,
   ArrowUpRight,
   ArrowDownRight,
-  CreditCard,
   Settings,
   X,
   Receipt,
@@ -40,7 +40,7 @@ import { Tooltip as InfoTooltip } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DateRangePicker } from '@/components/ui/advanced-date-picker'
 import { useLocation } from 'wouter'
-import { api, type FinanceCategory, type FinanceCategoryKind, type FinanceAuditLog, type SalaryHistoryEntry } from '@/lib/api'
+import { api, type FinanceCategory, type FinanceCategoryKind, type FinanceAuditLog, type SalaryHistoryEntry, type SalaryPayment } from '@/lib/api'
 import { CardSkeleton, MetricTileSkeleton, TableSkeleton } from '@/components/page-primitives'
 import { useWorkflowAccess } from '@/lib/workflow'
 
@@ -522,6 +522,7 @@ interface ClientPayment {
   clientId: number
   clientName: string
   description: string | null
+  excluded?: boolean
 }
 
 interface SalaryMember {
@@ -553,20 +554,14 @@ interface RateHistoryEntry {
 }
 
 interface SalaryPeriod { employmentType?:string; salaryMonth: string; baseSalary: string; defaultExtras: SalaryExtra[]; remainingBase: string; paidBase: string; remainingExtras: SalaryExtra[]; remainingTotal: string; status: string; id?: number; legacyPaymentIds: number[]; requiresTermsReview?:boolean; termsEvidence?:{rateSource:string;extrasSource:string}; calculationNote?: string }
-interface SalaryPayment {
-  payrollData?: { version: number; salaryMonth: string; baseSalary: string; paidBase: string; extras: SalaryExtra[]; note: string } | null
-  payrollPeriodId?: number | null
-  id: number
-  teamMemberId: number
-  teamMemberName: string
-  amount: string | number
-  transactionDate: string
-  description: string | null
+interface SalaryPeriodDetails extends SalaryPeriod {
+  payments?: Array<{ id: number; baseSalary: string; paidBase: string }>
 }
 
 interface SalariesData {
   members: SalaryMember[]
-  recentPayments: SalaryPayment[]
+  payments?: SalaryPayment[]
+  recentPayments?: SalaryPayment[]
   allPayments?: SalaryPayment[]
   year: number
 }
@@ -592,8 +587,7 @@ type MergedRow = {
   date: string
   category: string
   description: string
-  isClientPayment: boolean
-  invoiceNumber?: string
+  clientPayment?: ClientPayment
   editable: boolean
   teamMemberName?: string
 }
@@ -603,6 +597,7 @@ type FinanceSection = 'overview' | 'transactions' | 'salaries' | 'categories' | 
 const FINANCE_SECTIONS: FinanceSection[] = ['overview', 'transactions', 'salaries', 'categories', 'logs']
 
 export function FinancesPage() {
+  const queryClient = useQueryClient()
   const workflowAccess = useWorkflowAccess()
   const canRecordPayment = workflowAccess.data?.canRecordPayment === true && !workflowAccess.error
   const [loadErrors,setLoadErrors]=useState<Record<string,string|undefined>>({})
@@ -629,6 +624,8 @@ export function FinancesPage() {
   // Transactions state
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [clientPayments, setClientPayments] = useState<ClientPayment[]>([])
+  const [showExcludedPayments, setShowExcludedPayments] = useState(false)
+  const [updatingClientPayment, setUpdatingClientPayment] = useState<number | null>(null)
   const [txLoading, setTxLoading] = useState(true)
   const [txTypeFilter, setTxTypeFilter] = useState(() => new URLSearchParams(window.location.search).get('type') ?? 'all')
   const [txDatePreset, setTxDatePreset] = useState<TransactionDatePreset>(() => {
@@ -678,6 +675,7 @@ export function FinancesPage() {
   // Salaries state
   const [salariesYear, setSalariesYear] = useState(currentYear)
   const [salariesData, setSalariesData] = useState<SalariesData | null>(null)
+  const salariesRequest = useRef(0)
   const [salariesLoading, setSalariesLoading] = useState(true)
   const [showSalaryModal, setShowSalaryModal] = useState(false)
   const [selectedMember, setSelectedMember] = useState<SalaryMember | null>(null)
@@ -692,7 +690,10 @@ export function FinancesPage() {
   })
   const [salarySaving, setSalarySaving] = useState(false)
   const [salaryReviewConfirmed,setSalaryReviewConfirmed]=useState(false)
-  const [salaryPeriodInfo, setSalaryPeriodInfo] = useState<SalaryPeriod | null>(null)
+  const [salaryPeriodInfo, setSalaryPeriodInfo] = useState<SalaryPeriodDetails | null>(null)
+  const [salaryPeriodLoading, setSalaryPeriodLoading] = useState(false)
+  const [salaryPeriodError, setSalaryPeriodError] = useState('')
+  const salaryPeriodRequest = useRef(0)
   const [salaryRequestKey, setSalaryRequestKey] = useState('')
 
   // Rate editing state
@@ -721,6 +722,9 @@ export function FinancesPage() {
   const [showSalaryHistoryModal, setShowSalaryHistoryModal] = useState(false)
   const [salaryHistoryMember, setSalaryHistoryMember] = useState<SalaryMember | null>(null)
   const [salaryHistoryEntries, setSalaryHistoryEntries] = useState<SalaryHistoryEntry[]>([])
+  const [salaryHistoryPayments, setSalaryHistoryPayments] = useState<SalaryPayment[]>([])
+  const [salaryHistoryError, setSalaryHistoryError] = useState(false)
+  const salaryHistoryRequest = useRef(0)
   const [salaryHistoryLoading, setSalaryHistoryLoading] = useState(false)
 
 
@@ -953,11 +957,11 @@ export function FinancesPage() {
 
       const [txResult, cpResult] = await Promise.allSettled([
         api.getFinancialTransactions(params),
-        api.getClientPayments(
-          txStartDate || txEndDate
-            ? { startDate: txStartDate || undefined, endDate: txEndDate || undefined }
-            : undefined
-        ),
+        api.getClientPayments({
+          startDate: txStartDate || undefined,
+          endDate: txEndDate || undefined,
+          includeExcluded: true,
+        }),
       ])
       if(txResult.status==='rejected')throw txResult.reason
       if(cpResult.status==='rejected')throw cpResult.reason
@@ -971,14 +975,17 @@ export function FinancesPage() {
   }
 
   const loadSalaries = async () => {
+    const request = ++salariesRequest.current
     try {
       setSalariesLoading(true)
       const data = await api.getFinancesSalaries(salariesYear)
-      setSalariesData(data)
+      if (request === salariesRequest.current) setSalariesData(data)
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Salary data is unavailable')
+      if (request === salariesRequest.current) {
+        window.alert(error instanceof Error ? error.message : 'Salary data is unavailable')
+      }
     } finally {
-      setSalariesLoading(false)
+      if (request === salariesRequest.current) setSalariesLoading(false)
     }
   }
 
@@ -1126,7 +1133,6 @@ export function FinancesPage() {
         date: tx.transactionDate,
         category: tx.category || '',
         description: tx.description || '',
-        isClientPayment: false,
         editable: !isSalary,
         teamMemberName: isSalary ? tx.teamMemberName || undefined : undefined,
       })
@@ -1135,15 +1141,15 @@ export function FinancesPage() {
     // Add client payments only if type filter is 'all' or 'income'
     if (txTypeFilter === 'all' || txTypeFilter === 'income') {
       for (const cp of clientPayments) {
+        if (cp.excluded && !showExcludedPayments) continue
         rows.push({
           id: `cp-${cp.id}`,
           type: 'income',
           amount: typeof cp.amount === 'string' ? parseFloat(cp.amount) : cp.amount,
           date: cp.paidAt || cp.invoiceDate,
           category: 'Client Payment',
-          description: cp.clientName + (cp.description ? ` - ${cp.description}` : ''),
-          isClientPayment: true,
-          invoiceNumber: cp.invoiceNumber,
+          description: [cp.clientName, `Invoice #${cp.invoiceNumber}`, cp.description].filter(Boolean).join(' · '),
+          clientPayment: cp,
           editable: false,
         })
       }
@@ -1157,8 +1163,7 @@ export function FinancesPage() {
             r.type.toLowerCase().includes(txSearch.toLowerCase()) ||
             r.description.toLowerCase().includes(txSearch.toLowerCase()) ||
             r.category.toLowerCase().includes(txSearch.toLowerCase()) ||
-            (r.teamMemberName || '').toLowerCase().includes(txSearch.toLowerCase()) ||
-            (r.invoiceNumber || '').toLowerCase().includes(txSearch.toLowerCase())
+            (r.teamMemberName || '').toLowerCase().includes(txSearch.toLowerCase())
         )
       : rows
 
@@ -1236,51 +1241,54 @@ export function FinancesPage() {
     setTransactions((current) => current.filter((transaction) => transaction.id !== id))
     try {
       await api.deleteFinancialTransaction(id)
+      void queryClient.invalidateQueries({ queryKey: ['adminDashboardSummary'] })
       loadOverview()
+      loadComparison()
     } catch (error) {
       setTransactions(previousTransactions)
-      console.error('Failed to delete transaction:', error)
+      window.alert(error instanceof Error ? error.message : 'Failed to void transaction')
     }
   }
 
-  const parsedSalaryPayments = useMemo(() => {
-    const payments = salariesData?.allPayments ?? salariesData?.recentPayments ?? []
-    return payments.map((payment) => ({
-      payment,
-      parsed: parseSalaryPayment(payment),
-    }))
-  }, [salariesData])
+  const handleClientPaymentExclusion = async (payment: ClientPayment) => {
+    const excluded = !payment.excluded
+    if (excluded && !confirm(`Exclude ${payment.clientName}'s ${formatCurrency(Number(payment.amount))} payment for invoice #${payment.invoiceNumber} from Finances? The invoice will stay paid.`)) return
 
-  const getSalaryMonthContext = (teamMemberId: number, salaryMonth: string, excludePaymentId?: number) => {
-    const matchingPayments = parsedSalaryPayments.filter(({ payment, parsed }) => {
-      if (payment.payrollData?.version!==1 || payment.teamMemberId !== teamMemberId) return false
-      if (parsed.salaryMonth !== salaryMonth) return false
-      if (excludePaymentId && payment.id === excludePaymentId) return false
-      return true
-    })
+    try {
+      setUpdatingClientPayment(payment.id)
+      await api.setClientPaymentExcluded(payment.id, payment.paidAt, excluded)
+      void queryClient.invalidateQueries({ queryKey: ['adminDashboardSummary'] })
+      void queryClient.invalidateQueries({ queryKey: ['allInvoices'] })
+      await Promise.all([loadTransactions(), loadOverview(), loadComparison()])
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Failed to update invoice income')
+    } finally {
+      setUpdatingClientPayment(null)
+    }
+  }
 
-    const alreadyPaidBase = matchingPayments.reduce((sum, entry) => sum + entry.parsed.paidBase, 0)
-    const existingBase =
-      matchingPayments.find((entry) => entry.parsed.plannedBase > 0)?.parsed.plannedBase ?? 0
+  const salaryPaymentsForYear = useMemo(() => {
+    if (salariesData?.year !== salariesYear) return []
+    return salariesData.payments ?? (salariesData.allPayments ?? salariesData.recentPayments ?? [])
+      .filter(payment => toInputMonth(payment.transactionDate).startsWith(String(salariesYear)))
+  }, [salariesData, salariesYear])
 
+  const getSalaryMonthContext = (period: SalaryPeriodDetails, teamMemberId: number, excludePaymentId?: number) => {
+    // The fallback also supports an older server during a rolling release.
+    const payments = period.payments ?? (salariesData?.allPayments ?? salariesData?.recentPayments ?? [])
+      .filter(({ teamMemberId: memberId, payrollData }) => memberId === teamMemberId
+        && payrollData?.version === 1 && payrollData.salaryMonth === period.salaryMonth)
+      .map(({ id, payrollData }) => ({ id, baseSalary: payrollData!.baseSalary, paidBase: payrollData!.paidBase }))
+    const matching = payments.filter(payment => payment.id !== excludePaymentId)
     return {
-      matchingPayments,
-      alreadyPaidBase,
-      existingBase,
+      alreadyPaidBase: matching.reduce((sum, payment) => sum + parseMoney(payment.paidBase), 0),
+      existingBase: parseMoney(matching.find(payment => parseMoney(payment.baseSalary) > 0)?.baseSalary),
     }
   }
 
-  const salaryMonthContext = useMemo(() => {
-    if (!selectedMember) {
-      return {
-        matchingPayments: [],
-        alreadyPaidBase: 0,
-        existingBase: 0,
-      }
-    }
-
-    return getSalaryMonthContext(selectedMember.id, salaryForm.salaryMonth, editingSalaryPayment?.id)
-  }, [selectedMember, salaryForm.salaryMonth, editingSalaryPayment?.id, parsedSalaryPayments])
+  const salaryMonthContext = selectedMember && salaryPeriodInfo
+    ? getSalaryMonthContext(salaryPeriodInfo, selectedMember.id, editingSalaryPayment?.id)
+    : { alreadyPaidBase: 0, existingBase: 0 }
 
   const remainingSalaryByMember = useMemo(() => new Map((salariesData?.members || []).map(member => {
     const periods = member.periods || []
@@ -1297,17 +1305,43 @@ export function FinancesPage() {
   const remainingSalary = Math.max(plannedSalaryAmount - salaryMonthContext.alreadyPaidBase - salaryPaymentAmount, 0)
   const salaryOverpayment = Math.max(salaryPaymentAmount - maxSalaryPayment, 0)
   const salaryBaseTooLow = plannedSalaryAmount < salaryMonthContext.alreadyPaidBase
-  const salaryNeedsReview=Boolean(salaryPeriodInfo?.requiresTermsReview || (editingSalaryPayment&&editingSalaryPayment.payrollData?.version!==1))
-  const salaryCanSave = canRecordPayment && (!salaryNeedsReview||(salaryReviewConfirmed&&Boolean(salaryForm.note.trim()))) && salaryTotal > 0 && salaryPaymentAmount >= 0 && plannedSalaryAmount >= 0 && salaryForm.extras.every(e => e.label.trim() && parseMoney(e.amount) > 0) && !salaryBaseTooLow && salaryOverpayment <= 0 && (!salaryPeriodInfo?.legacyPaymentIds?.length || !!editingSalaryPayment)
+  const isHistoricalSalary = salaryForm.salaryMonth !== '' && salaryForm.salaryMonth < toInputMonth()
+  const salaryNeedsReview = Boolean(salaryPeriodInfo?.requiresTermsReview || (editingSalaryPayment && editingSalaryPayment.payrollData?.version !== 1))
+  const salaryNeedsNote = salaryNeedsReview || Boolean(
+    salaryPeriodInfo && !salaryPeriodInfo.id && plannedSalaryAmount !== parseMoney(salaryPeriodInfo.baseSalary)
+  )
+  const salaryBlockedByLegacy = Boolean(salaryPeriodInfo?.legacyPaymentIds.length && !editingSalaryPayment)
+  const salaryValidationMessages: string[] = []
+  if (salaryPeriodInfo) {
+    if (salaryNeedsReview && !salaryReviewConfirmed) salaryValidationMessages.push('Confirm the historical salary details.')
+    if (salaryNeedsNote && !salaryForm.note.trim()) salaryValidationMessages.push('Enter a reason in Note.')
+    if (!salaryForm.transactionDate) salaryValidationMessages.push('Enter the date this payment was made.')
+    if (salaryTotal <= 0) salaryValidationMessages.push('Enter a salary payment amount or an extra.')
+    if (salaryPaymentAmount < 0 || plannedSalaryAmount < 0) salaryValidationMessages.push('Enter non-negative salary amounts.')
+    if (salaryForm.extras.some(extra => !extra.label.trim() || parseMoney(extra.amount) <= 0)) {
+      salaryValidationMessages.push('Enter a label and a positive amount for each extra.')
+    }
+  }
+  const salaryCanSave = canRecordPayment && !!salaryPeriodInfo && !salaryPeriodLoading
+    && !salaryBlockedByLegacy && !salaryBaseTooLow && salaryOverpayment <= 0 && salaryValidationMessages.length === 0
   const salaryIsAdvance = remainingSalary > 0
+
+  const closeSalaryModal = () => {
+    salaryPeriodRequest.current++
+    setSalaryPeriodLoading(false)
+    setSalaryPeriodError('')
+    setShowSalaryModal(false)
+    setEditingSalaryPayment(null)
+  }
 
   // Salary payment
   const openRecordSalary = async (member: SalaryMember) => {
     if (!canRecordPayment) return
     try {
       const salaryMonth=toInputMonth()
-      const period:SalaryPeriod=await api.request(`/finances/salaries/${member.id}/period/${salaryMonth}`)
+      const period:SalaryPeriodDetails=await api.request(`/finances/salaries/${member.id}/period/${salaryMonth}`)
       setSalaryPeriodInfo(period)
+      setSalaryPeriodError('')
       setSalaryReviewConfirmed(false)
       setSalaryRequestKey(crypto.randomUUID())
       setEditingSalaryPayment(null)
@@ -1318,12 +1352,42 @@ export function FinancesPage() {
   }
   const handleSalaryMonthChange = async (salaryMonth:string) => {
     if(!selectedMember) return
-    try{
-      const period:SalaryPeriod=await api.request(`/finances/salaries/${selectedMember.id}/period/${salaryMonth}`)
+    const request = ++salaryPeriodRequest.current
+    setSalaryPeriodInfo(null)
+    setSalaryReviewConfirmed(false)
+    setSalaryPeriodError('')
+    setSalaryPeriodLoading(false)
+    setSalaryForm(prev => ({
+      ...prev,
+      salaryMonth,
+      transactionDate: editingSalaryPayment ? prev.transactionDate : salaryMonth < toInputMonth() ? '' : toInputDate(),
+      note: editingSalaryPayment ? prev.note : '',
+    }))
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(salaryMonth)) return
+    if (salaryMonth < selectedMember.startDate.slice(0, 7)) {
+      setSalaryPeriodError('Choose a salary month on or after the employee’s start month.')
+      return
+    }
+
+    try {
+      setSalaryPeriodLoading(true)
+      const period: SalaryPeriodDetails = await api.request(`/finances/salaries/${selectedMember.id}/period/${salaryMonth}`)
+      if (request !== salaryPeriodRequest.current) return
       setSalaryPeriodInfo(period)
-      setSalaryReviewConfirmed(false)
-      setSalaryForm(prev=>({...prev,salaryMonth,baseSalary:formatMoneyInput(parseMoney(period.baseSalary)),paymentAmount:editingSalaryPayment?prev.paymentAmount:formatMoneyInput(parseMoney(period.remainingBase)),extras:editingSalaryPayment?prev.extras:normalizeSalaryExtras(period.remainingExtras).map(e=>({...e,amount:formatMoneyInput(parseMoney(e.amount)*(period.employmentType==='part_time'?2:1))}))}))
-    }catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period')}
+      setSalaryForm(prev => ({
+        ...prev,
+        baseSalary: formatMoneyInput(parseMoney(period.baseSalary)),
+        paymentAmount: editingSalaryPayment ? prev.paymentAmount : formatMoneyInput(parseMoney(period.remainingBase)),
+        extras: editingSalaryPayment ? prev.extras : normalizeSalaryExtras(period.remainingExtras)
+          .map(extra => ({ ...extra, amount: formatMoneyInput(parseMoney(extra.amount) * (period.employmentType === 'part_time' ? 2 : 1)) })),
+      }))
+    } catch (error) {
+      if (request === salaryPeriodRequest.current) {
+        setSalaryPeriodError(error instanceof Error ? error.message : 'Failed to load salary period')
+      }
+    } finally {
+      if (request === salaryPeriodRequest.current) setSalaryPeriodLoading(false)
+    }
   }
 
   const addSalaryExtra = () => {
@@ -1359,11 +1423,12 @@ export function FinancesPage() {
         const response=await api.recordSalaryPayment(payload)
         if(response.email && !response.email.delivered && !response.email.skipped) window.alert(`Salary recorded. Email delivery failed: ${response.email.error || 'Please check email settings.'}`)
       }
-      setShowSalaryModal(false)
+      closeSalaryModal()
       setSelectedMember(null)
-      setEditingSalaryPayment(null)
+      void queryClient.invalidateQueries({ queryKey: ['adminDashboardSummary'] })
       await loadSalaries()
       loadOverview()
+      loadComparison()
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Failed to record salary payment')
     } finally {
@@ -1378,9 +1443,9 @@ export function FinancesPage() {
     if (!member) return
 
     const parsed = parseSalaryPayment(payment)
-    let period:SalaryPeriod
+    let period:SalaryPeriodDetails
     try { period=await api.request(`/finances/salaries/${member.id}/period/${parsed.salaryMonth}`);setSalaryPeriodInfo(period);setSalaryReviewConfirmed(false) } catch(error){window.alert(error instanceof Error?error.message:'Failed to load salary period');return}
-    const monthContext = getSalaryMonthContext(member.id, parsed.salaryMonth, payment.id)
+    const monthContext = getSalaryMonthContext(period, member.id, payment.id)
     const baseSalary = period.id || payment.payrollData?.version!==1 ? parseMoney(period.baseSalary) : parsed.plannedBase || monthContext.existingBase || parseMoney(period.baseSalary)
 
     setEditingSalaryPayment(payment)
@@ -1393,6 +1458,8 @@ export function FinancesPage() {
       transactionDate: toInputDate(payment.transactionDate),
       note: parsed.note,
     })
+    setSalaryPeriodError('')
+    setShowSalaryHistoryModal(false)
     setShowSalaryModal(true)
   }
 
@@ -1454,19 +1521,24 @@ export function FinancesPage() {
   }
 
   const openSalaryHistory = async (member: SalaryMember) => {
+    const request = ++salaryHistoryRequest.current
     setSalaryHistoryMember(member)
     setSalaryHistoryEntries([])
+    setSalaryHistoryPayments([])
+    setSalaryHistoryError(false)
     setShowSalaryHistoryModal(true)
     setSalaryHistoryLoading(true)
 
     try {
       const response = await api.getSalaryHistory(member.id)
+      if (request !== salaryHistoryRequest.current) return
       setSalaryHistoryEntries(response.history || [])
+      setSalaryHistoryPayments(response.payments ?? (salariesData?.allPayments ?? []).filter(payment => payment.teamMemberId === member.id))
     } catch (error) {
+      if (request === salaryHistoryRequest.current) setSalaryHistoryError(true)
       console.error('Failed to load salary history:', error)
-      setSalaryHistoryEntries([])
     } finally {
-      setSalaryHistoryLoading(false)
+      if (request === salaryHistoryRequest.current) setSalaryHistoryLoading(false)
     }
   }
 
@@ -1575,6 +1647,7 @@ export function FinancesPage() {
   // Current month (for highlighting)
   const currentMonth = new Date().getMonth() // 0-indexed
   const currentMonthYear = new Date().getFullYear()
+  const transactionRows = activeTab === 'transactions' ? getMergedRows() : []
 
   return (
     <div className="space-y-6">
@@ -1922,7 +1995,7 @@ export function FinancesPage() {
                   </h3>
                   <div className="space-y-3">
                     {[
-                      { label: 'Client Payments', value: overviewData?.clientPayments || 0, color: 'bg-emerald-500', pct: totalIncome > 0 ? ((overviewData?.clientPayments || 0) / totalIncome) * 100 : 0 },
+                      { label: 'Income from Paid Invoices', value: overviewData?.clientPayments || 0, color: 'bg-emerald-500', pct: totalIncome > 0 ? ((overviewData?.clientPayments || 0) / totalIncome) * 100 : 0 },
                       { label: 'Other Income', value: overviewData?.manualIncome || 0, color: 'bg-teal-400', pct: totalIncome > 0 ? ((overviewData?.manualIncome || 0) / totalIncome) * 100 : 0 },
                     ].map(item => (
                       <div key={item.label}>
@@ -2162,6 +2235,12 @@ export function FinancesPage() {
                 </button>
               </div>
             </div>
+            {(txTypeFilter === 'all' || txTypeFilter === 'income') && (
+              <label className="mt-3 inline-flex items-center gap-2 text-sm stripe-text-secondary">
+                <input type="checkbox" checked={showExcludedPayments} onChange={event => setShowExcludedPayments(event.target.checked)} />
+                Show excluded invoice payments
+              </label>
+            )}
           </div>
 
           {/* Transactions Table */}
@@ -2194,7 +2273,7 @@ export function FinancesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y stripe-border">
-                    {getMergedRows().length === 0 ? (
+                    {transactionRows.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-6 py-12 text-center">
                           <Wallet className="w-12 h-12 mx-auto stripe-text-muted opacity-50 mb-3" />
@@ -2202,18 +2281,13 @@ export function FinancesPage() {
                         </td>
                       </tr>
                     ) : (
-                      getMergedRows().map((row) => (
+                      transactionRows.map((row) => (
                         <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-6 py-4 text-sm stripe-text-primary whitespace-nowrap">
                             {formatDate(row.date)}
                           </td>
                           <td className="px-6 py-4">
-                            {row.isClientPayment ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                <CreditCard className="w-3 h-3" />
-                                Invoice #{row.invoiceNumber}
-                              </span>
-                            ) : row.type === 'salary' ? (
+                            {row.type === 'salary' ? (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                                 <Banknote className="w-3 h-3" />
                                 Salary
@@ -2245,11 +2319,12 @@ export function FinancesPage() {
                           </td>
                           <td
                             className={`px-6 py-4 text-sm font-semibold text-right whitespace-nowrap ${
-                              row.type === 'income' ? 'text-green-600' : 'text-red-600'
+                              row.clientPayment?.excluded ? 'stripe-text-muted' : row.type === 'income' ? 'text-green-600' : 'text-red-600'
                             }`}
                           >
                             {row.type === 'income' ? '+' : '-'}
                             {formatCurrency(Math.abs(row.amount))}
+                            {row.clientPayment?.excluded && <p className="text-xs font-normal">Excluded</p>}
                           </td>
                           <td className="px-6 py-4 text-right">
                             {row.editable ? (
@@ -2272,8 +2347,16 @@ export function FinancesPage() {
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
+                            ) : row.clientPayment ? (
+                              <button
+                                onClick={() => handleClientPaymentExclusion(row.clientPayment!)}
+                                disabled={updatingClientPayment !== null}
+                                className="whitespace-nowrap rounded-lg border stripe-border px-2 py-1 text-xs stripe-text-secondary hover:bg-gray-100 disabled:opacity-50"
+                              >
+                                {row.clientPayment.excluded ? 'Restore to Finances' : 'Exclude from Finances'}
+                              </button>
                             ) : (
-                              <span className="text-xs stripe-text-muted">{row.type === 'salary' ? 'Salary' : 'Auto'}</span>
+                              <span className="text-xs stripe-text-muted">Salary</span>
                             )}
                           </td>
                         </tr>
@@ -2484,7 +2567,7 @@ export function FinancesPage() {
               </div>
 
               {/* Payment History */}
-              {(salariesData?.recentPayments || []).length > 0 && (
+              {salaryPaymentsForYear.length > 0 && (
                 <div className="stripe-card overflow-hidden">
                   <div className="px-6 py-4 border-b stripe-border">
                     <h3 className="text-lg font-semibold stripe-text-primary">Payment History</h3>
@@ -2511,7 +2594,7 @@ export function FinancesPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y stripe-border">
-                        {(salariesData!.allPayments || salariesData!.recentPayments).filter(p => toInputMonth(p.transactionDate).startsWith(String(salariesYear))).map((payment) => (
+                        {salaryPaymentsForYear.map((payment) => (
                           <tr key={payment.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-4 text-sm stripe-text-primary whitespace-nowrap">
                               {formatDate(payment.transactionDate)}
@@ -2606,6 +2689,8 @@ export function FinancesPage() {
                   <option value="invoice_created">Invoice created</option>
                   <option value="invoice_updated">Invoice updated</option>
                   <option value="invoice_deleted">Invoice deleted</option>
+                  <option value="invoice_income_excluded">Invoice income excluded</option>
+                  <option value="invoice_income_restored">Invoice income restored</option>
                   <option value="transaction_created">Transaction created</option>
                   <option value="transaction_updated">Transaction updated</option>
                   <option value="transaction_deleted">Transaction deleted</option>
@@ -3073,7 +3158,7 @@ export function FinancesPage() {
       {showSalaryModal && selectedMember && canRecordPayment && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => { setShowSalaryModal(false); setEditingSalaryPayment(null) }}
+          onClick={closeSalaryModal}
         >
           <div
             className="stripe-card p-6 w-full max-w-lg rounded-xl max-h-[90vh] overflow-y-auto"
@@ -3089,22 +3174,64 @@ export function FinancesPage() {
             <div className="space-y-4">
               {/* Salary Month */}
               <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
+                <label htmlFor="salary-month" className="block text-sm font-medium stripe-text-secondary mb-1.5">
                   Salary Month
                 </label>
                 <input
+                  id="salary-month"
                   type="month"
+                  min={selectedMember.startDate.slice(0, 7)}
+                  disabled={salarySaving || !!editingSalaryPayment?.payrollPeriodId}
                   value={salaryForm.salaryMonth}
                   onChange={(e) => handleSalaryMonthChange(e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 />
                 <p className="text-xs stripe-text-muted mt-1.5">
                   Salary terms apply to periods beginning on or after their effective date, and are saved when the accrual is opened or the first payment is recorded. Attendance does not automatically change the fixed monthly amount.
-                  {salaryPeriodInfo?.legacyPaymentIds?.length ? <span className="block text-amber-700">Historical payments require review: {salaryPeriodInfo.legacyPaymentIds.join(', ')}. Open each payment in History and reconcile its month and components.</span> : null}
                 </p>
+                {salaryPeriodLoading && <p role="status" className="mt-2 text-sm stripe-text-muted">Loading salary period…</p>}
+                {salaryPeriodError && <p role="alert" className="mt-2 text-sm text-red-700">{salaryPeriodError}</p>}
               </div>
 
-              {salaryNeedsReview&&<div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><p>Historical terms need review. The suggested base may come from the current profile; unknown past monthly extras are not added automatically. Verify the salary month and every component against payroll records.</p>{editingSalaryPayment?.payrollData?.version!==1&&editingSalaryPayment?.description&&<p className="mt-2 whitespace-pre-wrap text-xs">Original description (reference only): {editingSalaryPayment.description}</p>}<label className="mt-3 flex gap-2 items-start"><input type="checkbox" checked={salaryReviewConfirmed} onChange={event=>setSalaryReviewConfirmed(event.target.checked)}/><span>I confirmed the month, base salary and extras. My reconciliation reason is entered in Note.</span></label></div>}
+              {salaryBlockedByLegacy && (
+                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p>Review this employee’s earlier salary payments before adding a new one.</p>
+                  <Button variant="outline" size="sm" className="mt-2" onClick={() => {
+                    closeSalaryModal()
+                    void openSalaryHistory(selectedMember)
+                  }}>Open Salary History</Button>
+                </div>
+              )}
+              {salaryNeedsReview && salaryPeriodInfo && (
+                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p>Verify the month, base salary and extras against your payroll records.</p>
+                  {salaryPeriodInfo.termsEvidence?.rateSource === 'current_profile' && (
+                    <p className="mt-1">The suggested base salary comes from the employee’s current profile.</p>
+                  )}
+                  {editingSalaryPayment?.payrollData?.version !== 1 && editingSalaryPayment?.description && (
+                    <p className="mt-2 whitespace-pre-wrap text-xs">{editingSalaryPayment.description}</p>
+                  )}
+                  <label className="mt-3 flex items-start gap-2">
+                    <input type="checkbox" checked={salaryReviewConfirmed} onChange={event => setSalaryReviewConfirmed(event.target.checked)} />
+                    I verified the historical salary details.
+                  </label>
+                </div>
+              )}
+
+              <fieldset disabled={!salaryPeriodInfo || salarySaving} className="space-y-4">
+              {salaryNeedsNote && (
+                <div>
+                  <label htmlFor="salary-note" className="block text-sm font-medium stripe-text-secondary mb-1.5">Note (required)</label>
+                  <input
+                    id="salary-note"
+                    type="text"
+                    value={salaryForm.note}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, note: e.target.value })}
+                    placeholder="Reason for this payroll entry"
+                    className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
+                  />
+                </div>
+              )}
 
               {/* Planned Salary */}
               <div>
@@ -3132,7 +3259,7 @@ export function FinancesPage() {
               {/* Payment Amount */}
               <div>
                 <label className="block text-sm font-medium stripe-text-secondary mb-1.5">
-                  Pay Salary Now
+                  {isHistoricalSalary ? 'Base Salary Paid' : 'Pay Salary Now'}
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm stripe-text-muted">$</span>
@@ -3148,7 +3275,7 @@ export function FinancesPage() {
                   />
                 </div>
                 <p className="text-xs stripe-text-muted mt-1.5">
-                  Enter a partial payout to record an advance. Use extras for bonuses. Record workspace reimbursements from the Reimbursements page to keep their payment references linked.
+                  Use extras for bonuses paid to the employee. Record company payroll fees with Add Cost in Transactions and workspace reimbursements through Reimbursements.
                 </p>
               </div>
 
@@ -3288,8 +3415,9 @@ export function FinancesPage() {
 
               {/* Date */}
               <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">Date</label>
+                <label htmlFor="salary-payment-date" className="block text-sm font-medium stripe-text-secondary mb-1.5">Payment Date</label>
                 <input
+                  id="salary-payment-date"
                   type="date"
                   value={salaryForm.transactionDate}
                   onClick={openNativeDatePicker}
@@ -3298,22 +3426,30 @@ export function FinancesPage() {
                 />
               </div>
 
-              {/* Note */}
-              <div>
-                <label className="block text-sm font-medium stripe-text-secondary mb-1.5">Note (optional)</label>
+              {!salaryNeedsNote && <div>
+                <label htmlFor="salary-note" className="block text-sm font-medium stripe-text-secondary mb-1.5">Note (optional)</label>
                 <input
+                  id="salary-note"
                   type="text"
                   value={salaryForm.note}
                   onChange={(e) => setSalaryForm({ ...salaryForm, note: e.target.value })}
                   placeholder="Any additional notes"
                   className="w-full px-3 py-2 border rounded-lg stripe-border bg-white stripe-text-primary text-sm"
                 />
-              </div>
+              </div>}
+              </fieldset>
+
+              {salaryValidationMessages.length > 0 && (
+                <ul className="list-disc space-y-1 pl-5 text-sm text-amber-900">
+                  {salaryValidationMessages.map(message => <li key={message}>{message}</li>)}
+                </ul>
+              )}
 
               {/* Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => { setShowSalaryModal(false); setEditingSalaryPayment(null) }}
+                  onClick={closeSalaryModal}
+                  disabled={salarySaving}
                   className="flex-1 px-4 py-2 border rounded-lg stripe-border stripe-text-primary text-sm font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
@@ -3518,8 +3654,10 @@ export function FinancesPage() {
         onOpenChange={(open) => {
           setShowSalaryHistoryModal(open)
           if (!open) {
+            salaryHistoryRequest.current++
             setSalaryHistoryMember(null)
             setSalaryHistoryEntries([])
+            setSalaryHistoryPayments([])
           }
         }}
       >
@@ -3531,7 +3669,7 @@ export function FinancesPage() {
                   Salary History{salaryHistoryMember ? ` • ${salaryHistoryMember.name}` : ''}
                 </DialogTitle>
                 <DialogDescription>
-                  Audit trail for salary payments, salary rate changes, and default extras.
+                  Recorded payments and the audit trail for salary changes.
                 </DialogDescription>
               </div>
               <button
@@ -3548,11 +3686,37 @@ export function FinancesPage() {
             </div>
           </DialogHeader>
 
+          {!salaryHistoryLoading && salaryHistoryPayments.length > 0 && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold stripe-text-primary">Recorded payments</h3>
+              <ul className="divide-y rounded-lg border stripe-border">
+                {salaryHistoryPayments.map(payment => (
+                  <li key={payment.id} className="flex items-start justify-between gap-3 p-3 text-sm">
+                    <div>
+                      <p className="font-medium stripe-text-primary">{formatDate(payment.transactionDate)}</p>
+                      {payment.description && <p className="stripe-text-muted">{payment.description}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold stripe-text-primary">{formatCurrency(payment.amount)}</p>
+                      {canRecordPayment && payment.payrollData?.version !== 1 && (
+                        <Button size="sm" variant="outline" className="mt-1" onClick={() => openEditSalaryPayment(payment)}>
+                          Reconcile Payment
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {salaryHistoryLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="h-4 w-40 animate-pulse rounded-full bg-blue-200/50" />
             </div>
-          ) : salaryHistoryEntries.length === 0 ? (
+          ) : salaryHistoryError ? (
+            <p role="alert" className="text-sm text-red-700">Salary history could not be loaded.</p>
+          ) : salaryHistoryEntries.length === 0 && salaryHistoryPayments.length === 0 ? (
             <div className="rounded-xl border stripe-border bg-gray-50/70 p-6 text-sm stripe-text-muted">
               No salary history found for this team member yet.
             </div>

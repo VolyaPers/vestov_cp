@@ -1,9 +1,9 @@
+import { ClientTeamActivity } from '@/components/ClientTeamActivity'
+import { AccountContact } from '@/components/AccountContact'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'wouter'
 import {
   ArrowUpRight,
-  CheckCircle2,
-  Clock3,
   Files,
   MessageSquareQuote,
   Settings,
@@ -17,6 +17,8 @@ import { CardSkeleton, MetricTile, MetricTileSkeleton, PageHero, PageHeroSkeleto
 import { useClientWorkspace, ClientLoadError } from '@/lib/clientWorkspace'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+
+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
 function normalizeServices(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -69,6 +71,7 @@ export function ClientDashboard() {
     queryKey: ['client', 'dashboard', selectedClientId],
     queryFn: () => api.getClientDashboard(selectedClientId),
     enabled: !!selectedClientId,
+    staleTime: 15_000, refetchInterval: 60_000,
   })
 
   if (isLoading) {
@@ -92,7 +95,7 @@ export function ClientDashboard() {
 
   if (isError) return <ClientLoadError message="Unable to load your workspace overview." onRetry={() => refetch()} />
 
-  const { client, stats, recentFeedback, viewer } = dashboardData || {}
+  const { client, stats, recentFeedback, viewer, team, billing } = dashboardData || {}
   const services = normalizeServices(client?.activeServices)
   const clientId = client?.id
 
@@ -101,7 +104,7 @@ export function ClientDashboard() {
       <PageHero
         eyebrow="Client Overview"
         title={viewer?.fullName ? `Welcome back, ${viewer.fullName}.` : 'Welcome to your workspace.'}
-        description="Review your active projects, team, feedback, shared documents and invoices."
+        description="See who is working with you, what you have paid and how to reach your account lead."
         theme="teal"
         meta={(
           <>
@@ -118,9 +121,9 @@ export function ClientDashboard() {
         )}
         actions={clientId ? (
           <>
-            <Link href={`/client/portal/${clientId}`}>
+            <Link href="/client/team-status">
               <Button>
-                Open portal
+                Team calendar
                 <ArrowUpRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
@@ -133,6 +136,8 @@ export function ClientDashboard() {
           </>
         ) : undefined}
       />
+
+      {selectedClientId && <ClientTeamActivity clientId={selectedClientId} />}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -148,18 +153,16 @@ export function ClientDashboard() {
           icon={<Settings className="h-5 w-5" />}
         />
         <StatCard
-          title="Pending Feedback"
-          value={stats?.pendingFeedback || 0}
-          hint="Your feedback awaiting review"
-          icon={<Clock3 className="h-5 w-5" />}
+          title="Total paid"
+          value={usd.format(billing.totalPaid)}
+          hint="Payments recorded across all issued invoices"
+          icon={null}
         />
-        <StatCard
-          title="Contract Status"
-          value={client?.status === 'active' ? 'Active' : 'Inactive'}
-          hint={client?.contractEnd ? `Renews through ${formatDate(client.contractEnd)}` : 'No expiry date set'}
-          icon={<CheckCircle2 className="h-5 w-5" />}
-        />
+        <StatCard title="Outstanding" value={usd.format(billing.pendingAmount)}
+          hint={billing.overdueAmount ? `${usd.format(billing.overdueAmount)} of this is overdue` : 'Balance on issued invoices'} icon={null}/>
       </div>
+
+      <AccountContact />
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="border-white/80 bg-white/82">

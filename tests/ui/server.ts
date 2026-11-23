@@ -26,7 +26,7 @@ const fixture=await (async()=> {
  try{return JSON.parse(await fs.readFile(fixturePath,'utf8'))}catch{}
 const today=new Date().toISOString().slice(0,10)
 const [a,b]=await db.insert(s.clients).values([{name:'QA Acme',status:'active',email:'qa-client@example.test'},{name:'QA Other company',status:'active'}]).returning()
-const [employee,second]=await db.insert(s.teamMembers).values([{name:'QA Anna Employee',email:'qa-anna@example.test',position:'Engineer',startDate:'2026-01-01',monthlyRate:'2000.00',timezone:'Europe/Kyiv',employmentType:'fulltime',isBillable:true},{name:'QA Ben Employee',email:'qa-ben@example.test',position:'Designer',startDate:'2025-01-01',monthlyRate:'1500.00',timezone:'Europe/Kyiv',employmentType:'fulltime',isBillable:true}]).returning()
+const [employee,second]=await db.insert(s.teamMembers).values([{name:'QA Anna Employee',email:'qa-anna@example.test',position:'Software Developer',startDate:'2026-01-01',monthlyRate:'2000.00',timezone:'Europe/Kyiv',employmentType:'fulltime',isBillable:true},{name:'QA Ben Employee',email:'qa-ben@example.test',position:'QA Engineer',startDate:'2025-01-01',monthlyRate:'1500.00',timezone:'Europe/Kyiv',employmentType:'fulltime',isBillable:true}]).returning()
 const people=await db.insert(s.users).values([{username:'qa-admin',email:'qa-admin@example.test',fullName:'QA Admin',role:'admin',authProvider:'clerk'},{username:'qa-employee',email:employee.email,fullName:employee.name,role:'team_member',teamMemberId:employee.id,authProvider:'clerk'},{username:'qa-client',email:'qa-client@example.test',fullName:'QA Client',role:'client',authProvider:'clerk'},{username:'qa-outsider',email:'qa-outsider@example.test',fullName:'QA Outsider',role:'client',authProvider:'clerk'}]).returning()
 const roles={admin:people[0],employee:people[1],client:people[2],outsider:people[3]}
 await db.insert(s.clientUsers).values([{userId:roles.client.id,clientId:a.id,accessLevel:'write',assignedBy:roles.admin.id},{userId:roles.client.id,clientId:b.id,accessLevel:'read',assignedBy:roles.admin.id},{userId:roles.outsider.id,clientId:b.id,accessLevel:'read',assignedBy:roles.admin.id}])
@@ -57,6 +57,14 @@ app.get('/api/__fixture__/summary/:state',(req,res)=>{
  res.redirect('/admin/dashboard')
 })
 app.use('/api/admin/dashboard/summary',(_req,res,next)=>summaryUnavailable?res.status(503).json({error:'QA fixture: summary temporarily unavailable'}):next())
+// Exercise publication without using real Stripe credentials or contacting a customer.
+const {createStripeBillingRouter}=await import('../../server/src/routes/stripe-billing.js')
+app.use('/api/invoices',createStripeBillingRouter(async id=>{
+  if(id!=='in_UIFixture') throw new Error('Unknown test invoice')
+  return {id,currency:'usd',total:10025,amount_paid:2500,amount_remaining:7525,status:'open',customer_email:'qa-client@example.test',metadata:{},
+    due_date:null,hosted_invoice_url:'https://invoice.stripe.com/i/fixture/preview',
+    status_transitions:{paid_at:null,finalized_at:1,marked_uncollectible_at:null,voided_at:null}}
+}))
 for(const [base,file,name] of [['','auth','authRouter'],['/admin','admin','adminRouter'],['/client','client','clientRouter'],['/services','services','servicesRouter'],['/invoices','invoice','invoiceRouter'],['/vacation','client-calendar','clientCalendarRouter'],['/vacation','vacation','default'],['/documents','documents','documentsRouter'],['/uploads','uploads','uploadsRouter'],['/client-contacts','client-contacts','clientContactsRouter'],['/users','users','default'],['/reimbursements','reimbursements','default'],['/roadmap','roadmap','default'],['/shifts','shifts','default'],['/feedback','feedback','feedbackRouter'],['/finances','finances','financesRouter'],['/settings','settings','settingsRouter'],['/search','search','searchRouter'],['/clickup','clickup','clickupRouter'],['/project-bot','project-bot','projectBotRouter'],['/workflow','workflow','workflowRouter']]){
  const module=await import(`../../server/src/routes/${file}.ts`);app.use('/api'+base,module[name])
 }

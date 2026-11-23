@@ -1,6 +1,7 @@
 import { assertEmployeeBenefits, payableExtras } from './employmentPolicy.js'
-import { and, eq, gte, lte, desc, isNull, sql } from 'drizzle-orm'
+import { and, eq, gte, lte, desc, inArray, isNull, or, sql } from 'drizzle-orm'
 import { teamMembers, salaryRateHistory, payrollPeriods, financialTransactions, reimbursementRequests, users } from '../db/schema.js'
+import type { db } from '../db/index.js'
 import { cents, money, salaryExtras, validDate, validMonth, positiveId, idempotencyKey, FinanceValidationError, type MoneyExtra } from '../lib/money.js'
 import { logFinanceActivity, pickTransactionSnapshot } from '../lib/financeAudit.js'
 
@@ -28,12 +29,19 @@ export async function assertPayrollDatesOpen(tx: any, memberId: number, startDat
   const rows = await tx.select({id:payrollPeriods.id}).from(payrollPeriods).where(and(eq(payrollPeriods.teamMemberId,memberId),gte(payrollPeriods.salaryMonth,startDate.slice(0,7)),lte(payrollPeriods.salaryMonth,endDate.slice(0,7)),eq(payrollPeriods.status,'closed')))
   if(rows.length) throw new FinanceValidationError('This date range contains a settled payroll period. Review payroll before changing its underlying records.',409)
 }
-export async function salaryTerms(tx: any, member: any, month: string) {
+type SalaryMember = Pick<typeof teamMembers.$inferSelect, 'id' | 'startDate' | 'monthlyRate' | 'monthlySalaryExtras' | 'employmentType'>
+type RateRow = typeof salaryRateHistory.$inferSelect
+type PeriodRow = typeof payrollPeriods.$inferSelect
+type PaymentRow = Pick<typeof financialTransactions.$inferSelect, 'id' | 'payrollData'>
+
+function termsDate(member: SalaryMember, month: string) {
   const firstOfMonth = `${validMonth(month)}-01`
-  const date = member.startDate?.slice(0,7)===month ? member.startDate : firstOfMonth
-  const history = await tx.select().from(salaryRateHistory).where(and(eq(salaryRateHistory.teamMemberId,member.id),lte(salaryRateHistory.effectiveDate,date))).orderBy(desc(salaryRateHistory.effectiveDate),desc(salaryRateHistory.id))
+  return member.startDate?.slice(0, 7) === month ? member.startDate : firstOfMonth
+}
+
+function salaryTermsFromHistory(member: SalaryMember, month: string, history: RateRow[]) {
   const rate = history[0]
-  const knownExtras = history.find((row:any)=>row.monthlyExtras !== null)
+  const knownExtras = history.find(row => row.monthlyExtras !== null)
   const past=month<new Date().toISOString().slice(0,7)
   const requiresTermsReview=past&&(!rate||!knownExtras)
   const employmentType=rate?.employmentType ?? member.employmentType ?? 'fulltime'
@@ -42,17 +50,123 @@ export async function salaryTerms(tx: any, member: any, month: string) {
     requiresTermsReview,
     termsEvidence:{rateSource:rate?'effective_history':'current_profile',extrasSource:knownExtras?'effective_history':past?'unknown_no_automatic_extras':'current_profile',rateHistoryId:rate?.id ?? null},
     calculationNote:(employmentType==='part_time'?'Part-time: actual base salary; bonuses and benefits at 50%. ':'')+'Fixed monthly salary in USD. Rates apply to periods beginning on or after their effective date. Attendance and leave are shown separately; no automatic hourly, tax, or absence deductions. A monthly adjustment requires an explicit reason.'+(requiresTermsReview?' Historical terms are not fully evidenced. The base is a suggestion from the current profile when rate history is absent; unknown past monthly extras are not accrued automatically. Confirm the period, base and extras against payroll records.':'') }
-
 }
-export async function salaryPeriodView(tx: any, member: any, month: string) {
-  const [period] = await tx.select().from(payrollPeriods).where(and(eq(payrollPeriods.teamMemberId,member.id),eq(payrollPeriods.salaryMonth,month)))
-  const payments = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.teamMemberId,member.id),eq(financialTransactions.type,'salary'),isNull(financialTransactions.voidedAt)))
+
+export async function salaryTerms(tx: any, member: SalaryMember, month: string) {
+  const history = await tx.select().from(salaryRateHistory)
+    .where(and(eq(salaryRateHistory.teamMemberId, member.id), lte(salaryRateHistory.effectiveDate, termsDate(member, month))))
+    .orderBy(desc(salaryRateHistory.effectiveDate), desc(salaryRateHistory.id))
+  return salaryTermsFromHistory(member, month, history)
+}
+
+function groupPayrollPayments(payments: PaymentRow[]) {
   // Never guess legacy money or dates from a free-text description. Explicit reconciliation is required.
-  const legacy = payments.filter((p:any)=>!readPayrollData(p.payrollData))
-  const matching = payments.filter((p:any)=>readPayrollData(p.payrollData)?.salaryMonth===month)
-  const terms = period || await salaryTerms(tx,member,month)
-  const summary = summarizePeriod(terms.baseSalary,terms.defaultExtras,matching)
-  return { ...terms, salaryMonth:month, ...summary, status: legacy.length ? 'needs_review' : period?.status || 'draft', legacyPaymentIds:legacy.map((p:any)=>p.id), currency:'USD' }
+  const legacyPaymentIds: number[] = []
+  const byMonth = new Map<string, { id: number; payrollData: PayrollData }[]>()
+  for (const { id, payrollData } of payments) {
+    const data = readPayrollData(payrollData)
+    if (!data) {
+      legacyPaymentIds.push(id)
+      continue
+    }
+    const matching = byMonth.get(data.salaryMonth) ?? []
+    matching.push({ id, payrollData: data })
+    byMonth.set(data.salaryMonth, matching)
+  }
+  return { legacyPaymentIds, byMonth }
+}
+
+function buildSalaryPeriod(
+  terms: PeriodRow | Awaited<ReturnType<typeof salaryTerms>>,
+  month: string,
+  payments: ReturnType<typeof groupPayrollPayments>,
+) {
+  const { legacyPaymentIds, byMonth } = payments
+  const summary = summarizePeriod(terms.baseSalary, terms.defaultExtras, byMonth.get(month) ?? [])
+  const status = 'status' in terms ? terms.status : 'draft'
+  return { ...terms, salaryMonth: month, ...summary, status: legacyPaymentIds.length ? 'needs_review' : status, legacyPaymentIds, currency: 'USD' }
+}
+
+export async function salaryPeriodDetails(tx: any, member: SalaryMember, month: string) {
+  const [period]: PeriodRow[] = await tx.select().from(payrollPeriods)
+    .where(and(eq(payrollPeriods.teamMemberId, member.id), eq(payrollPeriods.salaryMonth, month)))
+  const rows: PaymentRow[] = await tx.select({ id: financialTransactions.id, payrollData: financialTransactions.payrollData })
+    .from(financialTransactions)
+    .where(and(eq(financialTransactions.teamMemberId, member.id), eq(financialTransactions.type, 'salary'), isNull(financialTransactions.voidedAt)))
+    .orderBy(desc(financialTransactions.transactionDate), desc(financialTransactions.id))
+  const payments = groupPayrollPayments(rows)
+  const terms = period ?? await salaryTerms(tx, member, month)
+  return {
+    ...buildSalaryPeriod(terms, month, payments),
+    payments: (payments.byMonth.get(month) ?? []).map(({ id, payrollData }) => ({
+      id,
+      baseSalary: payrollData.baseSalary,
+      paidBase: payrollData.paidBase,
+    })),
+  }
+}
+
+export async function salaryPeriodView(tx: any, member: SalaryMember, month: string) {
+  const { payments: _payments, ...period } = await salaryPeriodDetails(tx, member, month)
+  return period
+}
+
+function groupByMember<T extends { teamMemberId: number | null }>(rows: T[]) {
+  const grouped = new Map<number, T[]>()
+  for (const row of rows) {
+    if (row.teamMemberId === null) continue
+    const entries = grouped.get(row.teamMemberId) ?? []
+    entries.push(row)
+    grouped.set(row.teamMemberId, entries)
+  }
+  return grouped
+}
+
+export async function salaryOverviewPeriods(database: typeof db, members: SalaryMember[], year: number, today: string) {
+  if (!members.length) return []
+  const ids = members.map(member => member.id)
+  const month = today.slice(0, 7)
+  const firstMonth = `${year}-01`
+  const lastMonth = `${year}-12`
+  const lastTermsDate = members.reduce((latest, member) => {
+    const date = termsDate(member, month)
+    return date > latest ? date : latest
+  }, today)
+  const [periodRows, rateRows, paymentRows] = await Promise.all([
+    database.select().from(payrollPeriods).where(and(
+      inArray(payrollPeriods.teamMemberId, ids),
+      or(eq(payrollPeriods.salaryMonth, month), and(gte(payrollPeriods.salaryMonth, firstMonth), lte(payrollPeriods.salaryMonth, lastMonth))),
+    )).orderBy(payrollPeriods.salaryMonth),
+    database.select().from(salaryRateHistory).where(and(
+      inArray(salaryRateHistory.teamMemberId, ids), lte(salaryRateHistory.effectiveDate, lastTermsDate),
+    )).orderBy(desc(salaryRateHistory.effectiveDate), desc(salaryRateHistory.id)),
+    database.select({ id: financialTransactions.id, teamMemberId: financialTransactions.teamMemberId, payrollData: financialTransactions.payrollData })
+      .from(financialTransactions).where(and(
+        inArray(financialTransactions.teamMemberId, ids), eq(financialTransactions.type, 'salary'), isNull(financialTransactions.voidedAt),
+      )),
+  ])
+
+  const periodsByMember = groupByMember(periodRows)
+  const ratesByMember = groupByMember(rateRows)
+  const paymentsByMember = groupByMember(paymentRows)
+  return members.map(member => {
+    const storedPeriods = periodsByMember.get(member.id) ?? []
+    const rates = ratesByMember.get(member.id) ?? []
+    const payments = groupPayrollPayments(paymentsByMember.get(member.id) ?? [])
+    const current = storedPeriods.find(period => period.salaryMonth === month)
+    const effectiveDate = termsDate(member, month)
+    const currentTerms = current ?? salaryTermsFromHistory(member, month, rates.filter(rate => rate.effectiveDate <= effectiveDate))
+    const currentPeriod = buildSalaryPeriod(currentTerms, month, payments)
+    const periods = storedPeriods
+      .filter(period => period.salaryMonth >= firstMonth && period.salaryMonth <= lastMonth)
+      .map(period => period === current ? currentPeriod : buildSalaryPeriod(period, period.salaryMonth, payments))
+    return {
+      member,
+      activeTerms: rates.find(rate => rate.effectiveDate <= today),
+      currentPeriod,
+      periods,
+    }
+  })
 }
 /** Establish an accrual explicitly without pretending that a cash payment occurred. */
 export async function initializePayrollPeriod(tx:any,memberId:number,month:string,userId:number){
@@ -65,7 +179,7 @@ export async function initializePayrollPeriod(tx:any,memberId:number,month:strin
   if(month!==new Date().toISOString().slice(0,7))throw new FinanceValidationError('Open the current month here. Historical periods require payment reconciliation and an explicit adjustment reason.')
   const view=await salaryPeriodView(tx,member,month)
   if(view.legacyPaymentIds.length)throw new FinanceValidationError('Reconcile legacy payments before opening a salary period',409)
-  if(view.id)return view
+  if ('id' in view) return view
   if(cents(view.baseSalary)===0&&!view.defaultExtras.length)throw new FinanceValidationError('Configure monthly salary terms before opening a salary period')
   const [period]=await tx.insert(payrollPeriods).values({teamMemberId:memberId,salaryMonth:month,currency:'USD',employmentType:view.employmentType,baseSalary:view.baseSalary,defaultExtras:view.defaultExtras,calculationNote:view.calculationNote,status:'open',createdBy:userId}).returning()
   await logFinanceActivity(tx,{action:'salary_period_opened',entityType:'salary_period',entityId:period.id,teamMemberId:memberId,actorId:userId,summary:`Opened salary accrual for ${month}`,afterData:{salaryMonth:month,baseSalary:period.baseSalary,defaultExtras:period.defaultExtras}})

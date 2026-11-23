@@ -418,7 +418,7 @@ export function InvoiceList({ clientId, clientName }: InvoiceListProps) {
         </CardContent>
       </Card>
 
-      <InvoiceDetailsDialog invoiceId={viewInvoiceId} onClose={()=>setViewInvoiceId(null)}/>
+      <InvoiceDetailsDialog onUpdated={()=>{queryClient.invalidateQueries({queryKey:['invoices']});queryClient.invalidateQueries({queryKey:['client-invoice-totals']})}} invoiceId={viewInvoiceId} onClose={()=>setViewInvoiceId(null)}/>
       {/* Enhanced Invoice Form */}
       <EnhancedInvoiceForm
         clientId={clientId}

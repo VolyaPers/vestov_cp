@@ -1,6 +1,7 @@
 export interface Invoice {
   id: number
   clientId: number
+  stripeInvoiceId?: string | null
   invoiceNumber: string
   amount: string // decimal as string for precision
   invoiceDate: string // ISO date string

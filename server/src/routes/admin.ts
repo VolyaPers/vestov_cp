@@ -2,6 +2,7 @@ import { employmentType, assertPortalAccount, benefitFactor } from '../services/
 import { FinanceValidationError, positiveId, validDate, cents, salaryExtras } from '../lib/money.js'
 import { revokeUserSockets } from '../socket.js'
 import { logFinanceActivity } from '../lib/financeAudit.js'
+import { invoicePaymentExcluded, paidInvoiceConditions } from '../lib/invoiceIncome.js'
 import { payrollLock } from '../services/payroll.js'
 import { Router } from 'express'
 import { eq, desc, and, sql, isNull } from 'drizzle-orm'
@@ -328,15 +329,7 @@ router.get('/dashboard/summary', async (req, res) => {
       sql`${financialTransactions.transactionDate} >= ${startDate}`,
       sql`${financialTransactions.transactionDate} <= ${endDate}`,
     ]
-    const invoiceDateConditions = [
-      sql`${invoices.paidAt} >= ${startDate}::date`,
-      sql`${invoices.paidAt} < (${endDate}::date + interval '1 day')`,
-    ]
-    const paidInvoiceConditions = [
-      sql`${invoices.status} = 'paid'`,
-      sql`${invoices.paidAt} IS NOT NULL`,
-      ...invoiceDateConditions,
-    ]
+    const invoiceIncomeFilter = paidInvoiceConditions(startDate, endDate)
 
     const [
       [clientCount],
@@ -405,6 +398,7 @@ router.get('/dashboard/summary', async (req, res) => {
           invoiceDate: invoices.invoiceDate,
           dueDate: invoices.dueDate,
           paidAt: invoices.paidAt,
+          financePaymentExcluded: invoicePaymentExcluded,
         })
         .from(invoices)
         .leftJoin(clients, eq(invoices.clientId, clients.id))
@@ -447,7 +441,7 @@ router.get('/dashboard/summary', async (req, res) => {
           total: sql<string>`COALESCE(SUM(CAST(${invoices.amount} AS DECIMAL)), 0)`,
         })
         .from(invoices)
-        .where(and(...paidInvoiceConditions)),
+        .where(invoiceIncomeFilter),
       db
         .select({
           month: sql<number>`EXTRACT(MONTH FROM ${invoices.paidAt})::int`,
@@ -455,7 +449,7 @@ router.get('/dashboard/summary', async (req, res) => {
           total: sql<string>`COALESCE(SUM(CAST(${invoices.amount} AS DECIMAL)), 0)`,
         })
         .from(invoices)
-        .where(and(...paidInvoiceConditions))
+        .where(invoiceIncomeFilter)
         .groupBy(
           sql`EXTRACT(MONTH FROM ${invoices.paidAt})`,
           sql`EXTRACT(YEAR FROM ${invoices.paidAt})`,

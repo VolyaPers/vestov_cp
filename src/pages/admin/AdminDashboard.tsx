@@ -1,6 +1,7 @@
-import { lazy } from 'react'
+import { lazy, Suspense } from 'react'
 import { DeferredChart } from '@/components/DeferredChart'
 const DashboardRevenueChart = lazy(() => import('@/components/charts/AdminDashboardCharts').then(module => ({default: module.DashboardRevenueChart})))
+const AiInsightsPanel = lazy(() => import('@/components/AiInsights').then(module => ({default: module.AiInsightsPanel})))
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'wouter'
@@ -66,6 +67,7 @@ interface InvoiceDashboard {
   invoiceDate?: string
   dueDate?: string | null
   paidAt?: string | null
+  financePaymentExcluded?: boolean
 }
 
 interface LeaveDashboard {
@@ -408,6 +410,7 @@ export function AdminDashboard() {
       invoiceDate: toDate(invoice.invoiceDate),
       dueDate: toDate(invoice.dueDate),
       paidAt: toDate(invoice.paidAt),
+      financePaymentExcluded: invoice.financePaymentExcluded === true,
     }))
   }, [allInvoices])
 
@@ -440,6 +443,7 @@ export function AdminDashboard() {
 
   const paidThisMonth = normalizedInvoices.filter((invoice) => (
     invoice.status === 'paid' &&
+    !invoice.financePaymentExcluded &&
     invoice.paidAt &&
     invoice.paidAt >= monthStart &&
     invoice.paidAt <= monthEnd
@@ -447,6 +451,7 @@ export function AdminDashboard() {
 
   const paidPreviousMonth = normalizedInvoices.filter((invoice) => (
     invoice.status === 'paid' &&
+    !invoice.financePaymentExcluded &&
     invoice.paidAt &&
     invoice.paidAt >= previousMonthStart &&
     invoice.paidAt <= previousMonthEnd
@@ -530,7 +535,7 @@ export function AdminDashboard() {
     const aggregated = new Map<number, { name: string; revenue: number }>()
 
     for (const invoice of normalizedInvoices) {
-      if (invoice.status !== 'paid' || !invoice.paidAt || invoice.paidAt < last90Days) continue
+      if (invoice.financePaymentExcluded || invoice.status !== 'paid' || !invoice.paidAt || invoice.paidAt < last90Days) continue
 
       const previous = aggregated.get(invoice.clientId)
       aggregated.set(invoice.clientId, {
@@ -1026,6 +1031,12 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Suspense fallback={
+        <Card><CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />Loading AI insights...</CardContent></Card>
+      }>
+        <AiInsightsPanel />
+      </Suspense>
 
       {isLoadingCore && (
         <Card>

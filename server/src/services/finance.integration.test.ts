@@ -10,7 +10,9 @@ import { calculateInvoice } from './invoiceCalculator.js'
 
 const url=process.env.TEST_DATABASE_URL
 if(url&&!/(?:audit|test|fresh_)/.test(new URL(url).pathname))throw new Error('Finance integration tests require an explicitly named test/audit/fresh database')
-test('real PostgreSQL payroll transactions protect balances, retries, snapshots, and invoice assignment selection',{skip:!url},async()=>{
+test('real PostgreSQL payroll transactions protect balances, retries, snapshots, and invoice assignment selection',{skip:!url},async(t)=>{
+  // These fixtures exercise September as the current payroll month, and August as historical.
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-20T12:00:00Z')})
   process.env.DATABASE_URL=url!
   delete process.env.WORKFLOW_OWNER_USER_IDS
   delete process.env.WORKFLOW_DEPUTY_USER_IDS
